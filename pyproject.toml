@@ -1,0 +1,30 @@
+[project]
+name = "vangja"
+version = "0.1.0"
+description = "A time-series forecasting package with an intuitive API capable of modeling short time series with prior knowledge derived from a similar long time series."
+authors = [{ name = "Jovan Krajevski", email = "jovan.krajevski@gmail.com" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+]
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+ "numpy<2.0.0",
+ "pandas~=2.2.3",
+ "matplotlib~=3.9.2",
+ "pymc~=5.18.2",
+ "scikit-learn~=1.5.2",
+]
+
+[tool.setuptools]
+py-modules = []
+
+[tool.pip-tools]
+generate-hashes = true
+# TODO(deps): Can remove this once they become defaults in next major version
+allow-unsafe = true
+strip-extras = true
+
+[project.urls]
+Repository = "https://github.com/jovan-krajevski/vangja"
