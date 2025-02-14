@@ -4,7 +4,7 @@
 
 A time-series forecasting package based on Facebook Prophet with an intuitive API capable of modeling short time-series with prior knowledge derived from a similar long time-series.
 
-The package has been inspired by:
+This package has been inspired by:
 
 * [Facebook Prophet](https://facebook.github.io/prophet/docs/quick_start.html)
 * [Facebook Prophet implementation in PyMC3](https://www.ritchievink.com/blog/2018/10/09/build-facebooks-prophet-in-pymc3-bayesian-time-series-analyis-with-generalized-additive-models/)
@@ -59,7 +59,7 @@ model = LinearTrend() * FourierSeasonality(365.25, 10)
 Currently, `vangja` supports the following components:
 
 * `LinearTrend(n_changepoints=25, changepoint_range=0.8, slope_mean=0, slope_sd=5, intercept_mean=0, intercept_sd=5, delta_mean=0, delta_sd=0.05, allow_tune=False)`
-* `FourierSeasonality(period, series_order, beta_mean=0, beta_sd=10, shrinkage_strength=100, allow_tune=False,tune_method="simple")`
+* `FourierSeasonality(period, series_order, beta_mean=0, beta_sd=10, allow_tune=False,tune_method="simple")`
 * `UniformConstant(lower, upper, allow_tune=False)`
 * `BetaConstant(lower, upper, alpha=0.5, beta=0.5, allow_tune=False)`
 * `NormalConstant(mu=0, sd=1, allow_tune=False)`
@@ -77,4 +77,4 @@ model.predict(365)
 
 # Contributing
 
-PR's and suggestions are always welcome. Please open an issue on the issue list before submitting in order to avoid doing unnecessary work.
+Pull requests and suggestions are always welcome. Please open an issue on the issue list before submitting in order to avoid doing unnecessary work.

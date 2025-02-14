@@ -15,7 +15,6 @@ class FourierSeasonality(TimeSeriesModel):
         series_order,
         beta_mean=0,
         beta_sd=10,
-        shrinkage_strength=100,
         allow_tune=False,
         tune_method: Literal["simple"] = "simple",
     ):
@@ -23,7 +22,6 @@ class FourierSeasonality(TimeSeriesModel):
         self.series_order = series_order
         self.beta_mean = beta_mean
         self.beta_sd = beta_sd
-        self.shrinkage_strength = shrinkage_strength
 
         self.allow_tune = allow_tune
         self.tune_method = tune_method
