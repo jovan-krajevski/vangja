@@ -5,7 +5,7 @@ import numpy as np
 import pymc as pm
 import pytensor.tensor as pt
 
-from vangja_simple.time_series import TimeSeriesModel
+from vangja.time_series import TimeSeriesModel
 
 
 class FourierSeasonality(TimeSeriesModel):

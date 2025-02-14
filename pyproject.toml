@@ -8,13 +8,9 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 readme = "README.md"
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.12,<3.14"
 dependencies = [
- "numpy<2.0.0",
- "pandas~=2.2.3",
- "matplotlib~=3.9.2",
- "pymc~=5.18.2",
- "scikit-learn~=1.5.2",
+ "scikit-learn~=1.6.1",
 ]
 
 [tool.setuptools]
