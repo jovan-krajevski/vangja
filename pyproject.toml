@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vangja"
-version = "0.1.0"
+version = "0.1.1"
 description = "A time-series forecasting package with an intuitive API capable of modeling short time series with prior knowledge derived from a similar long time series."
 authors = [{ name = "Jovan Krajevski", email = "jovan.krajevski@gmail.com" }]
 classifiers = [
@@ -16,15 +16,6 @@ requires-python = ">=3.12,<3.14"
 dependencies = [
  "scikit-learn~=1.6.1",
 ]
-
-[tool.setuptools]
-py-modules = []
-
-[tool.pip-tools]
-generate-hashes = true
-# TODO(deps): Can remove this once they become defaults in next major version
-allow-unsafe = true
-strip-extras = true
 
 [project.urls]
 Repository = "https://github.com/jovan-krajevski/vangja"

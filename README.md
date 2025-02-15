@@ -1,6 +1,6 @@
 # vangja
 
-<img src="images/logo.webp" width="35%" height="35%" align="right" />
+<img src="https://raw.githubusercontent.com/jovan-krajevski/vangja/refs/heads/main/images/logo.webp" width="35%" height="35%" align="right" />
 
 A time-series forecasting package based on Facebook Prophet with an intuitive API capable of modeling short time-series with prior knowledge derived from a similar long time-series.
 
