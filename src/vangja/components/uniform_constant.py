@@ -28,8 +28,8 @@ class UniformConstant(TimeSeriesModel):
     def _tune(self, model, data, initvals, model_idxs, prev):
         return self.definition(model, data, initvals, model_idxs)
 
-    def _set_initval(self, initvals, model: pm.Model):
-        pass
+    def _get_initval(self, initvals, model: pm.Model):
+        return {}
 
     def _predict_map(self, future, map_approx):
         future[f"uc_{self.model_idx}"] = (

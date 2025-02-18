@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pymc as pm
+import pymc_extras as pmx
 from sklearn.metrics import (
     mean_absolute_error,
     mean_absolute_percentage_error,
@@ -42,9 +43,11 @@ class TimeSeriesModel:
             "sigma": 1.0,
         }
 
-    def set_initval(self, initvals, model: pm.Model):
-        model.set_initval(model.named_vars["sigma"], initvals.get("sigma", 1))
-        self._set_initval(initvals, model)
+    def get_initval(self, initvals, model: pm.Model):
+        return {
+            model.named_vars["sigma"]: initvals.get("sigma", 1),
+            **self._get_initval(initvals, model),
+        }
 
     def fit(
         self,
@@ -74,18 +77,27 @@ class TimeSeriesModel:
             sigma = pm.HalfNormal("sigma", sigma_sd)
             _ = pm.Normal("obs", mu=mu, sigma=sigma, observed=self.data["y"])
 
-            self.set_initval(self.initvals, self.model)
+            initval_dict = self.get_initval(self.initvals, self.model)
 
             self.map_approx = None
             self.trace = None
             if self.mcmc_samples == 0:
-                self.map_approx = pm.find_MAP(progressbar=progressbar, maxeval=1e4)
+                self.map_approx = pmx.find_MAP(
+                    method="L-BFGS-B",
+                    use_grad=True,
+                    initvals=initval_dict,
+                    progressbar=progressbar,
+                    gradient_backend="jax",
+                    compile_kwargs={"mode": "JAX"},
+                    options={"maxiter": 1e4},
+                )
             else:
                 self.trace = pm.sample(
                     self.mcmc_samples,
                     chains=chains,
                     cores=cores,
                     nuts_sampler=nuts_sampler,
+                    initvals=initval_dict,
                 )
 
             self.fit_params = {"map_approx": self.map_approx, "trace": self.trace}
@@ -128,27 +140,34 @@ class TimeSeriesModel:
 
             with model:
                 observed = pm.Data("data", self.data["y"])
-                sigma = pm.HalfNormal(
-                    "sigma", sigma_sd, initval=self.initvals.get("sigma", 1)
-                )
+                sigma = pm.HalfNormal("sigma", sigma_sd)
                 _ = pm.Normal("obs", mu=mu, sigma=sigma, observed=observed)
 
             self.tuned_model = model
 
         self.model = self.tuned_model
-        self.set_initval(self.initvals, self.model)
+        initval_dict = self.get_initval(self.initvals, self.model)
         with self.model:
             pm.set_data({"data": self.data["y"]})
             self.map_approx = None
             self.trace = None
             if self.mcmc_samples == 0:
-                self.map_approx = pm.find_MAP(progressbar=progressbar, maxeval=1e4)
+                self.map_approx = pmx.find_MAP(
+                    method="L-BFGS-B",
+                    use_grad=True,
+                    initvals=initval_dict,
+                    progressbar=progressbar,
+                    gradient_backend="jax",
+                    compile_kwargs={"mode": "JAX"},
+                    options={"maxiter": 1e4},
+                )
             else:
                 self.trace = pm.sample(
                     self.mcmc_samples,
                     chains=chains,
                     cores=cores,
                     nuts_sampler=nuts_sampler,
+                    initvals=initval_dict,
                 )
 
     def _make_future_df(self, days):
@@ -277,12 +296,16 @@ class AdditiveTimeSeries(TimeSeriesModel):
 
         return left + right
 
-    def _set_initval(self, *args, **kwargs):
+    def _get_initval(self, *args, **kwargs):
+        left = {}
+        right = {}
         if not (type(self.left) is int or type(self.left) is float):
-            self.left._set_initval(*args, **kwargs)
+            left = self.left._get_initval(*args, **kwargs)
 
         if not (type(self.right) is int or type(self.right) is float):
-            self.right._set_initval(*args, **kwargs)
+            right = self.right._get_initval(*args, **kwargs)
+
+        return {**left, **right}
 
     def _plot(self, *args, **kwargs):
         if not (type(self.left) is int or type(self.left) is float):
@@ -333,12 +356,16 @@ class MultiplicativeTimeSeries(TimeSeriesModel):
 
         return left * (1 + right)
 
-    def _set_initval(self, *args, **kwargs):
+    def _get_initval(self, *args, **kwargs):
+        left = {}
+        right = {}
         if not (type(self.left) is int or type(self.left) is float):
-            self.left._set_initval(*args, **kwargs)
+            left = self.left._get_initval(*args, **kwargs)
 
         if not (type(self.right) is int or type(self.right) is float):
-            self.right._set_initval(*args, **kwargs)
+            right = self.right._get_initval(*args, **kwargs)
+
+        return {**left, **right}
 
     def _plot(self, *args, **kwargs):
         if not (type(self.left) is int or type(self.left) is float):
@@ -393,12 +420,16 @@ class SimpleMultiplicativeTimeSeries(TimeSeriesModel):
 
         return left * right
 
-    def _set_initval(self, *args, **kwargs):
+    def _get_initval(self, *args, **kwargs):
+        left = {}
+        right = {}
         if not (type(self.left) is int or type(self.left) is float):
-            self.left._set_initval(*args, **kwargs)
+            left = self.left._get_initval(*args, **kwargs)
 
         if not (type(self.right) is int or type(self.right) is float):
-            self.right._set_initval(*args, **kwargs)
+            right = self.right._get_initval(*args, **kwargs)
+
+        return {**left, **right}
 
     def _plot(self, *args, **kwargs):
         if not (type(self.left) is int or type(self.left) is float):

@@ -105,17 +105,8 @@ class FourierSeasonality(TimeSeriesModel):
 
         return pm.math.sum(x * beta, axis=1)
 
-    def _set_initval(self, initvals, model: pm.Model):
-        beta_initval = initvals.get("beta", None)
-        if beta_initval is not None:
-            beta_initval = np.array([beta_initval] * 2 * self.series_order)
-
-        model.set_initval(
-            model.named_vars[
-                f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"
-            ],
-            beta_initval,
-        )
+    def _get_initval(self, initvals, model: pm.Model):
+        return {}
 
     def _det_seasonality_posterior(self, beta, x):
         return np.dot(x, beta.T)
