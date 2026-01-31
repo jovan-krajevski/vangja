@@ -7,7 +7,7 @@ from sklearn.metrics import (
     root_mean_squared_error,
 )
 
-from vangja_hierarchical.types import PoolType
+from vangja.types import PoolType
 
 
 def get_group_definition(
