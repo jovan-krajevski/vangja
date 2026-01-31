@@ -17,7 +17,7 @@ This package has been inspired by:
 You need to create a conda PyMC environment before installing `vangja`. The recommended way of installing PyMC is by running:
 
 ```bash
-conda create -c conda-forge -n pymc_env python=3.12 "pymc>=5.20.1"
+conda create -c conda-forge -n pymc_env python=3.13 "pymc>=5.27.1"
 ```
 
 Install `vangja` with pip:
