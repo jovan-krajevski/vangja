@@ -127,19 +127,19 @@ class TestUniformConstantInit:
 
         assert uc.lower == 0
         assert uc.upper == 10
-        assert uc.allow_tune is False
+        assert uc.tune_method is None
 
     def test_with_tune_enabled(self):
         """Test UniformConstant with tuning enabled."""
-        uc = UniformConstant(lower=-5, upper=5, allow_tune=True)
+        uc = UniformConstant(lower=-5, upper=5, tune_method="parametric")
 
         assert uc.lower == -5
         assert uc.upper == 5
-        assert uc.allow_tune is True
+        assert uc.tune_method == "parametric"
 
     def test_str_representation(self):
         """Test string representation of UniformConstant."""
-        uc = UniformConstant(lower=0, upper=1, allow_tune=False)
+        uc = UniformConstant(lower=0, upper=1)
 
         assert "UC" in str(uc)
         assert "l=0" in str(uc)
@@ -155,19 +155,19 @@ class TestNormalConstantInit:
 
         assert nc.mu == 0
         assert nc.sd == 1
-        assert nc.allow_tune is False
+        assert nc.tune_method is None
 
     def test_custom_initialization(self):
         """Test NormalConstant with custom parameters."""
-        nc = NormalConstant(mu=5, sd=2, allow_tune=True)
+        nc = NormalConstant(mu=5, sd=2, tune_method="parametric")
 
         assert nc.mu == 5
         assert nc.sd == 2
-        assert nc.allow_tune is True
+        assert nc.tune_method == "parametric"
 
     def test_str_representation(self):
         """Test string representation of NormalConstant."""
-        nc = NormalConstant(mu=10, sd=3, allow_tune=True)
+        nc = NormalConstant(mu=10, sd=3, tune_method="parametric")
 
         assert "NC" in str(nc)
         assert "mu=10" in str(nc)

@@ -494,9 +494,14 @@ class FourierSeasonality(TimeSeriesModel):
             f"FourierSeasonality({self.model_idx},p={self.period},n={self.series_order})"
         )
         plt.grid()
+        # Handle series parameter - use _0 as default for complete pooling
+        if series == "":
+            series_suffix = "_0"
+        else:
+            series_suffix = f"_{series}"
         plt.plot(
             date[-int(self.period) :],
-            future[f"fs_{self.model_idx}{series}"][-int(self.period) :],
+            future[f"fs_{self.model_idx}{series_suffix}"][-int(self.period) :],
             lw=1,
         )
 

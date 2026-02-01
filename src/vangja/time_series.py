@@ -1,3 +1,22 @@
+"""Time series model classes for vangja.
+
+This module provides the core time series modeling classes that support
+additive and multiplicative composition of model components.
+
+Classes
+-------
+TimeSeriesModel
+    Base class for all time series model components.
+AdditiveTimeSeries
+    Combination of two components using addition.
+MultiplicativeTimeSeries
+    Combination of two components using y = left * (1 + right).
+SimpleMultiplicativeTimeSeries
+    Combination of two components using y = left * right.
+CombinedTimeSeries
+    Base class for combined time series models.
+"""
+
 import arviz as az
 import matplotlib.pyplot as plt
 import numpy as np
@@ -19,6 +38,65 @@ from vangja.utils import get_group_definition
 
 
 class TimeSeriesModel:
+    """Base class for time series model components.
+
+    This class provides the foundation for building time series models in vangja.
+    It handles data preprocessing, scaling, model fitting, and prediction. Model
+    components can be combined using arithmetic operators (+, *, **) to create
+    complex models.
+
+    Attributes
+    ----------
+    data : pd.DataFrame
+        The processed training data after fitting.
+    y_scale_params : YScaleParams | dict[int, YScaleParams]
+        Scaling parameters for the target variable y. Either a single dict for
+        complete scaling or a dict of dicts for individual scaling.
+    t_scale_params : TScaleParams
+        Scaling parameters for the time variable t.
+    group : np.ndarray
+        Array of group codes for each data point.
+    n_groups : int
+        Number of unique groups/series in the data.
+    groups_ : dict[int, str]
+        Mapping from group codes to series names.
+    model : pm.Model
+        The PyMC model after fitting.
+    model_idxs : dict[str, int]
+        Counter for component indices by type.
+    samples : int
+        Number of posterior samples (for MCMC/VI methods).
+    method : Method
+        The inference method used for fitting.
+    initvals : dict[str, float]
+        Initial values for model parameters.
+    map_approx : dict[str, np.ndarray] | None
+        MAP parameter estimates (if using MAP inference).
+    trace : az.InferenceData | None
+        Posterior samples (if using MCMC/VI inference).
+
+    Examples
+    --------
+    >>> from vangja import LinearTrend, FourierSeasonality
+    >>> # Create an additive model
+    >>> model = LinearTrend() + FourierSeasonality(period=365.25, series_order=10)
+    >>> model.fit(data)
+    >>> predictions = model.predict(horizon=30)
+
+    >>> # Create a multiplicative model
+    >>> model = LinearTrend() ** FourierSeasonality(period=7, series_order=3)
+    >>> model.fit(data)
+
+    Notes
+    -----
+    Subclasses should implement:
+    - `definition`: Add parameters to the PyMC model
+    - `_get_initval`: Provide initial values for parameters
+    - `_predict_map`: Predict using MAP estimates
+    - `_predict_mcmc`: Predict using MCMC samples
+    - `_plot`: Plot the component's contribution
+    """
+
     data: pd.DataFrame
     y_scale_params: YScaleParams | dict[int, YScaleParams]
     t_scale_params: TScaleParams
@@ -251,7 +329,7 @@ class TimeSeriesModel:
 
         with self.model:
             if self.method == "mapx":
-                self.map_approx = pmx.find_MAP(
+                map_result = pmx.find_MAP(
                     method="L-BFGS-B",
                     use_grad=True,
                     initvals=initval_dict,
@@ -260,6 +338,11 @@ class TimeSeriesModel:
                     compile_kwargs={"mode": "JAX"},
                     options={"maxiter": 1e4},
                 )
+                # Convert InferenceData to dict format for consistent access
+                self.map_approx = {
+                    var: map_result.posterior[var].values.squeeze()
+                    for var in map_result.posterior.data_vars
+                }
             elif self.method == "map":
                 self.map_approx = pm.find_MAP(
                     start=initval_dict,
@@ -411,12 +494,12 @@ class TimeSeriesModel:
 
         Parameters
         ----------
-        future: pd.DataFrame
+        future : pd.DataFrame
             Pandas dataframe containing the timestamps for which inference should be
             performed.
-        series: str
+        series : str
             The name of the time series.
-        y_true: pd.DataFrame | None
+        y_true : pd.DataFrame | None
             A pandas dataframe containing the true values for the inference period that
             must at least have columns ds (predictor), y (target) and series (name of
             time series).
@@ -429,14 +512,26 @@ class TimeSeriesModel:
         if group_code is None:
             raise ValueError(f"Time series {series} is not present in the dataset!")
 
+        # Check if we have individual scaling
+        is_individual = "scaler" not in self.y_scale_params
+
         plt.figure(figsize=(14, 100 * 6))
         plt.subplot(100, 1, 1)
         plt.title("Predictions")
         plt.grid()
 
+        # Get the correct y_max for this series
+        if is_individual:
+            y_max = self.y_scale_params[group_code]["y_max"]
+        else:
+            y_max = self.y_scale_params["y_max"]
+
+        # Filter data to only show the specific series
+        series_data = self.data[self.data["series"] == series]
+
         plt.scatter(
-            self.data["ds"],
-            self.data["y"] * self.scale_params["y_max"],
+            series_data["ds"],
+            series_data["y"] * y_max,
             s=0.5,
             color="C0",
             label="train y",
@@ -458,7 +553,7 @@ class TimeSeriesModel:
         plt.legend()
         plot_params = {"idx": 1}
         self._plot(
-            plot_params, future, self.data, self.scale_params, y_true, group_code
+            plot_params, future, self.data, self.y_scale_params, y_true, group_code
         )
 
     def needs_priors(self, *args, **kwargs):

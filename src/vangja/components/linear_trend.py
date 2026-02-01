@@ -717,8 +717,17 @@ class LinearTrend(TimeSeriesModel):
         plt.title(f"LinearTrend({self.model_idx})")
         plt.grid()
 
-        plt.plot(future["ds"], future[f"lt_{self.model_idx}{series}"], lw=1)
-
+        # Handle series parameter - use _0 as default for complete pooling
+        if series == "":
+            series_suffix = "_0"
+        else:
+            series_suffix = f"_{series}"
+        plt.plot(
+            future["ds"],
+            future[f"lt_{self.model_idx}{series_suffix}"],
+            lw=1,
+            label=f"lt_{self.model_idx}",
+        )
         plt.legend()
 
     def needs_priors(self, *args, **kwargs):

@@ -58,21 +58,136 @@ model = LinearTrend() * FourierSeasonality(365.25, 10)
 
 Currently, `vangja` supports the following components:
 
-* `LinearTrend(n_changepoints=25, changepoint_range=0.8, slope_mean=0, slope_sd=5, intercept_mean=0, intercept_sd=5, delta_mean=0, delta_sd=0.05, allow_tune=False)`
-* `FourierSeasonality(period, series_order, beta_mean=0, beta_sd=10, allow_tune=False,tune_method="simple")`
-* `UniformConstant(lower, upper, allow_tune=False)`
-* `BetaConstant(lower, upper, alpha=0.5, beta=0.5, allow_tune=False)`
-* `NormalConstant(mu=0, sd=1, allow_tune=False)`
+### LinearTrend
 
-## Model tuning
-
-If you are given a long time-series and a "similar" short time-series, you can fit a model on the long time-series and then tune it on the short time-series. This is especially useful if you want to model a long seasonality on the short time-series, but you do not have enough data to do it (e.g. you have 3 months of data and want to model the yearly seasonality). In `vangja`, this can be written like this:
+A piecewise linear trend with changepoints.
 
 ```python
-model = LinearTrend() + FourierSeasonality(365.25, 10, allow_tune=True)
+LinearTrend(
+    n_changepoints=25,       # Number of potential changepoints
+    changepoint_range=0.8,   # Proportion of data for changepoint placement
+    slope_mean=0,            # Prior mean for initial slope
+    slope_sd=5,              # Prior std for initial slope
+    intercept_mean=0,        # Prior mean for intercept
+    intercept_sd=5,          # Prior std for intercept
+    delta_mean=0,            # Prior mean for changepoint adjustments
+    delta_sd=0.05,           # Prior std for changepoint adjustments
+    pool_type="complete",    # Pooling: "complete", "partial", or "individual"
+    tune_method=None         # Transfer learning: "parametric" or "prior_from_idata"
+)
+```
+
+### FourierSeasonality
+
+Seasonal patterns modeled using Fourier series.
+
+```python
+FourierSeasonality(
+    period,                  # Period in days (e.g., 365.25 for yearly)
+    series_order,            # Number of Fourier terms (higher = more flexible)
+    beta_mean=0,             # Prior mean for Fourier coefficients
+    beta_sd=10,              # Prior std for Fourier coefficients
+    pool_type="complete",    # Pooling: "complete", "partial", or "individual"
+    tune_method=None         # Transfer learning: "parametric" or "prior_from_idata"
+)
+```
+
+### NormalConstant
+
+A constant term with a Normal prior, useful for baseline offsets.
+
+```python
+NormalConstant(
+    mu=0,                    # Prior mean
+    sigma=1,                 # Prior standard deviation
+    pool_type="complete",    # Pooling: "complete", "partial", or "individual"
+    tune_method=None         # Transfer learning: "parametric" or "prior_from_idata"
+)
+```
+
+### UniformConstant
+
+A constant term with a Uniform prior.
+
+```python
+UniformConstant(
+    lower=0,                 # Lower bound
+    upper=1,                 # Upper bound
+    pool_type="complete",    # Pooling: "complete", "partial", or "individual"
+    tune_method=None         # Transfer learning: "parametric" or "prior_from_idata"
+)
+```
+
+### BetaConstant
+
+A constant term with a scaled Beta prior, bounded between [lower, upper].
+
+```python
+BetaConstant(
+    lower=0,                 # Lower bound for scaling
+    upper=1,                 # Upper bound for scaling
+    alpha=2,                 # Beta distribution alpha parameter
+    beta=2,                  # Beta distribution beta parameter
+    pool_type="complete",    # Pooling: "complete", "partial", or "individual"
+    tune_method=None         # Transfer learning: "parametric" or "prior_from_idata"
+)
+```
+
+## Pooling Types
+
+When modeling multiple time-series together, you can control how parameters are shared:
+
+- **`"complete"`**: All series share the same parameters (default).
+- **`"partial"`**: Hierarchical pooling with shared hyperpriors - parameters are similar but can differ.
+- **`"individual"`**: Each series has completely independent parameters.
+
+Note that the pandas dataframe is required to have a `series` column that denotes which rows belong to which time-series.
+
+```python
+# Multi-series data with a 'series' column identifying each series
+model = LinearTrend(pool_type="partial") + FourierSeasonality(365.25, 10, pool_type="complete")
+model.fit(multi_series_data)
+```
+
+## Model Tuning (Transfer Learning)
+
+If you have a long time-series and a "similar" short time-series, you can fit a model on the long time-series and then tune it on the short time-series. This is especially useful if you want to model long seasonality on short data (e.g., you have 3 months of data and want to model yearly seasonality).
+
+There are two tuning methods available:
+
+- **`"parametric"`**: Uses posterior mean and standard deviation from the fitted model to set new priors.
+- **`"prior_from_idata"`**: Uses the posterior samples directly via multivariate normal approximation.
+
+```python
+# Fit on long time-series, transfer knowledge to short time-series
+model = LinearTrend() + FourierSeasonality(365.25, 10, tune_method="parametric")
 model.fit(long_time_series)
 model.tune(short_time_series)
 model.predict(365)
+```
+
+## Plotting
+
+After fitting, you can visualize the model components:
+
+```python
+# Plot the overall model fit
+model.plot()
+
+# Make predictions and plot
+predictions = model.predict(periods=365)
+```
+
+## Metrics
+
+Evaluate forecast accuracy using built-in metrics:
+
+```python
+from vangja import metrics
+
+# Compare actual vs predicted values
+results = metrics(actual_df, predicted_df, group_col="group")
+# Returns MAE, MSE, RMSE, MAPE per group
 ```
 
 # Contributing
