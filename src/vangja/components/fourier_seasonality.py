@@ -78,10 +78,10 @@ class FourierSeasonality(TimeSeriesModel):
 
     def _fourier_series(self, data: pd.DataFrame, shift=None):
         # convert to days since epoch
-        NANOSECONDS_TO_SECONDS = 1000 * 1000 * 1000
+        MICROSECONDS_TO_SECONDS = 1000 * 1000
         t = (
             data["ds"].to_numpy(dtype=np.int64)
-            // NANOSECONDS_TO_SECONDS
+            // MICROSECONDS_TO_SECONDS
             / (3600 * 24.0)
         )
         if shift is not None:
@@ -283,9 +283,11 @@ class FourierSeasonality(TimeSeriesModel):
                 new = pm.math.dot(beta, reg_x.T)
                 lam = np.array(
                     [
-                        2 * data[self.group == group_code].shape[0]
-                        if self.period > 2 * data[self.group == group_code].shape[0]
-                        else 0
+                        (
+                            2 * data[self.group == group_code].shape[0]
+                            if self.period > 2 * data[self.group == group_code].shape[0]
+                            else 0
+                        )
                         for group_code in self.groups_
                     ]
                 )
@@ -375,9 +377,11 @@ class FourierSeasonality(TimeSeriesModel):
                 new = pm.math.dot(beta, reg_x.T)
                 lam = np.array(
                     [
-                        2 * data[self.group == group_code].shape[0]
-                        if self.period > 2 * data[self.group == group_code].shape[0]
-                        else 0
+                        (
+                            2 * data[self.group == group_code].shape[0]
+                            if self.period > 2 * data[self.group == group_code].shape[0]
+                            else 0
+                        )
                         for group_code in self.groups_
                     ]
                 )
