@@ -35,20 +35,20 @@ The API is heavily inspired by TimeSeers. A simple model consisting of a linear 
 ```python
 from vangja import LinearTrend, FourierSeasonality
 
-model = LinearTrend() + FourierSeasonality(365.25, 10) + FourierSeasonality(7, 10)
+model = LinearTrend() + FourierSeasonality(365.25, 10) + FourierSeasonality(7, 3)
 model.fit(data)
 model.predict(365)
 ```
 
-## Multiplicative compositions
+## Multiplicative operators
 
-There are two types of multiplicative compositions that `vangja` supports. The first one supports creating models from components $g(t)$ and $s(t)$ in the form $y(t)=g(t) * (1 + s(t))$. Using `vangja`, this can be written by using the `__pow__` operator:
+There are two types of multiplicative operators that `vangja` supports. The first one supports creating models from components $g(t)$ and $s(t)$ in the form $y(t)=g(t) * (1 + s(t))$. Using `vangja`, this can be written by using the `__pow__` operator:
 
 ```python
 model = LinearTrend() ** FourierSeasonality(365.25, 10)
 ```
 
-The second multiplicative composition supports creating models from components $g(t)$ and $s(t)$ in the form $y(t)=g(t) * s(t)$. Using `vangja`, this can be written by using the `__mul__` operator:
+The second multiplicative operator supports creating models from components $g(t)$ and $s(t)$ in the form $y(t)=g(t) * s(t)$. Using `vangja`, this can be written by using the `__mul__` operator:
 
 ```python
 model = LinearTrend() * FourierSeasonality(365.25, 10)
