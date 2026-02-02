@@ -4,6 +4,13 @@
 
 A **Bayesian time series forecasting package** that extends Facebook Prophet with hierarchical modeling and transfer learning capabilities. Vangja enables practitioners to model short time series using prior knowledge derived from similar long time series and is particularly good at forecasting horizons longer than the available data.
 
+The package has been inspired by:
+* [Facebook Prophet](https://facebook.github.io/prophet/docs/quick_start.html)
+* [Facebook Prophet implementation in PyMC3](https://www.ritchievink.com/blog/2018/10/09/build-facebooks-prophet-in-pymc3-bayesian-time-series-analyis-with-generalized-additive-models/)
+* [TimeSeers](https://github.com/MBrouns/timeseers)
+* [Modeling short time series with prior knowledge](https://minimizeregret.com/short-time-series-prior-knowledge)
+* [Modeling short time series with prior knowledge - PyMC](https://juanitorduz.github.io/short_time_series_pymc/)
+
 ## Key Features
 
 - 🚀 **Vectorized Multi-Series Fitting** — Fit multiple time series simultaneously with vectorized computations, significantly faster than fitting sequentially with Facebook Prophet
@@ -11,14 +18,6 @@ A **Bayesian time series forecasting package** that extends Facebook Prophet wit
 - 🔄 **Bayesian Transfer Learning** — Learn from long time series and transfer knowledge to short time series, enabling accurate long-horizon forecasts from limited data
 - ↔️ **Bidirectional Changepoints** — Interpret trend changepoints from right-to-left (in addition to left-to-right), essential for hierarchical modeling of time series with different lengths
 - 🎯 **Component-Level Flexibility** — Independently configure pooling strategies and transfer learning methods for each model component (trend, seasonalities, etc.)
-
-## Inspirations
-
-* [Facebook Prophet](https://facebook.github.io/prophet/docs/quick_start.html)
-* [Facebook Prophet implementation in PyMC3](https://www.ritchievink.com/blog/2018/10/09/build-facebooks-prophet-in-pymc3-bayesian-time-series-analyis-with-generalized-additive-models/)
-* [TimeSeers](https://github.com/MBrouns/timeseers)
-* [Modeling short time series with prior knowledge](https://minimizeregret.com/short-time-series-prior-knowledge)
-* [Modeling short time series with prior knowledge - PyMC](https://juanitorduz.github.io/short_time_series_pymc/)
 
 # Installation
 
