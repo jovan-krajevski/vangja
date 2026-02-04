@@ -7,6 +7,8 @@ Functions
 ---------
 get_group_definition
     Assign group codes to different time series based on pooling type.
+filter_predictions_by_series
+    Filter predictions to dates relevant to a specific series.
 metrics
     Calculate evaluation metrics for time series predictions.
 """
@@ -80,6 +82,62 @@ def get_group_definition(
     return group, n_groups, group_mapping
 
 
+def filter_predictions_by_series(
+    future: pd.DataFrame,
+    series_data: pd.DataFrame,
+    yhat_col: str = "yhat_0",
+    horizon: int = 0,
+) -> pd.DataFrame:
+    """Filter predictions to only include dates relevant to a specific series.
+
+    When fitting multiple series simultaneously with different date ranges,
+    the predict() method generates predictions for the entire combined time
+    range. This function filters predictions to only include dates within a
+    specific series' range, which is essential for correct metric calculation
+    and plotting.
+
+    Parameters
+    ----------
+    future : pd.DataFrame
+        Predictions dataframe from model.predict() containing 'ds' and yhat columns.
+    series_data : pd.DataFrame
+        The original data for a specific series (train + test combined, or just
+        the portion you want to filter to). Must have 'ds' column.
+    yhat_col : str, default "yhat_0"
+        The name of the prediction column to include in the output.
+    horizon : int, default 0
+        Additional days beyond the series' max date to include (for forecast period).
+
+    Returns
+    -------
+    pd.DataFrame
+        Filtered predictions with columns ['ds', 'yhat_0'] containing only dates
+        within the series' range plus the specified horizon.
+
+    Examples
+    --------
+    >>> # After fitting a multi-series model
+    >>> future_combined = model.predict(horizon=365)
+    >>> # Filter to only Air Passengers' relevant dates
+    >>> future_passengers = filter_predictions_by_series(
+    ...     future_combined,
+    ...     air_passengers,  # full dataset (train + test)
+    ...     yhat_col=f"yhat_{passengers_group}",
+    ...     horizon=365
+    ... )
+    """
+    date_min = series_data["ds"].min()
+    date_max = series_data["ds"].max()
+
+    filtered = future[["ds", yhat_col]].copy()
+    filtered.columns = ["ds", "yhat_0"]
+    filtered = filtered[
+        (filtered["ds"] >= date_min)
+        & (filtered["ds"] <= date_max + pd.Timedelta(days=horizon))
+    ]
+    return filtered.reset_index(drop=True)
+
+
 def metrics(
     y_true: pd.DataFrame, future: pd.DataFrame, pool_type: PoolType
 ) -> pd.DataFrame:
@@ -97,7 +155,8 @@ def metrics(
         (name of time series).
     future : pd.DataFrame
         Pandas dataframe containing the timestamps and predictions. Must have
-        columns named 'yhat_{group_code}' for each group.
+        columns named 'yhat_{group_code}' for each group. The 'ds' column is
+        used to match predictions to test data by date.
     pool_type : PoolType
         Type of pooling performed when sampling. Used to determine group
         assignments in y_true.
@@ -122,21 +181,41 @@ def metrics(
 
     Notes
     -----
-    The predictions in `future` are matched to the last `len(y_true)` rows
-    for each group's prediction column. This assumes the prediction horizon
-    covers the test period.
+    Predictions are matched to test data by merging on the 'ds' column. This
+    correctly handles cases where predictions are at a different frequency
+    than the test data (e.g., daily predictions vs monthly test data).
     """
     # Copy y_true and add a 'series' column if not present
     processed_y_true = y_true.copy()
     if "series" not in processed_y_true.columns:
         processed_y_true["series"] = "series"
 
+    # Ensure ds columns are datetime for proper merging
+    processed_y_true["ds"] = pd.to_datetime(processed_y_true["ds"])
+    future = future.copy()
+    future["ds"] = pd.to_datetime(future["ds"])
+
     metrics_dict = {"mse": {}, "rmse": {}, "mae": {}, "mape": {}}
     test_group, _, test_groups_ = get_group_definition(processed_y_true, pool_type)
     for group_code, group_name in test_groups_.items():
         group_idx = test_group == group_code
-        y = processed_y_true["y"][group_idx]
-        yhat = future[f"yhat_{group_code}"][-len(y) :]
+        y_true_group = processed_y_true[group_idx][["ds", "y"]]
+
+        # Merge predictions with test data on ds to correctly align dates
+        merged = y_true_group.merge(
+            future[["ds", f"yhat_{group_code}"]],
+            on="ds",
+            how="inner",
+        )
+
+        if len(merged) == 0:
+            raise ValueError(
+                f"No matching dates found between test data and predictions for "
+                f"series '{group_name}'. Ensure predictions cover the test period."
+            )
+
+        y = merged["y"]
+        yhat = merged[f"yhat_{group_code}"]
         metrics_dict["mse"][group_name] = mean_squared_error(y, yhat)
         metrics_dict["rmse"][group_name] = root_mean_squared_error(y, yhat)
         metrics_dict["mae"][group_name] = mean_absolute_error(y, yhat)
