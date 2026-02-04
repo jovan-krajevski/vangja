@@ -36,6 +36,28 @@ Data must have columns: `ds` (datetime), `y` (float), optionally `series` (str f
 - `"partial"` — Hierarchical pooling with shared hyperpriors
 - `"individual"` — Each series has independent parameters
 
+**Simultaneous vs Sequential Fitting:**
+
+Vangja can fit multiple series simultaneously using vectorized computations, which is significantly faster than fitting each series separately. Use `pool_type="individual"` with `scale_mode="individual"` to fit multiple series at once while keeping parameters independent.
+
+- **Same time range**: Sequential and simultaneous fitting produce equivalent results. See [03_multi_series_fitting.ipynb](docs/03_multi_series_fitting.ipynb).
+- **Different time ranges**: Results will differ due to changepoint distribution across the combined time range. See [04_multi_series_caveats.ipynb](docs/04_multi_series_caveats.ipynb).
+
+**Changepoint Distribution Caveat:**
+
+When fitting series with different date ranges simultaneously, changepoints (`n_changepoints`) are distributed across the **entire combined time range**. For example, if fitting series from 1949-1960 and 2007-2016 together:
+
+- The combined range spans ~67 years
+- Each series only occupies a small portion of normalized time `t = [0, 1]`
+- Each series gets far fewer changepoints than if fit separately
+
+For series with non-overlapping date ranges, consider fitting them separately or increasing `n_changepoints`.
+
+**Utilities for multi-series:**
+
+- `filter_predictions_by_series(future, series_data, yhat_col, horizon)` — Filter predictions to a specific series' date range. **Always use this** when series have different date ranges.
+- `metrics(y_true, future, pool_type)` — Calculates metrics by merging on `ds` column (handles different data frequencies)
+
 ### Transfer Learning
 
 Set `tune_method="parametric"` or `"prior_from_idata"` on components, then pass `idata` (ArviZ InferenceData) to `fit()` to transfer knowledge from pre-trained models.
