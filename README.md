@@ -1,10 +1,11 @@
 # vangja
 
-<img src="https://raw.githubusercontent.com/jovan-krajevski/vangja/refs/heads/main/images/logo.webp" width="35%" height="35%" align="right" />
+<img src="https://raw.githubusercontent.com/jovan-krajevski/vangja/refs/heads/main/images/logo.webp" style="display: inline;" width="35%" align="right" />
 
 A **Bayesian time series forecasting package** that extends Facebook Prophet with hierarchical modeling and transfer learning capabilities. Vangja enables practitioners to model short time series using prior knowledge derived from similar long time series and is particularly good at forecasting horizons longer than the available data.
 
 The package has been inspired by:
+
 * [Facebook Prophet](https://facebook.github.io/prophet/docs/quick_start.html)
 * [Facebook Prophet implementation in PyMC3](https://www.ritchievink.com/blog/2018/10/09/build-facebooks-prophet-in-pymc3-bayesian-time-series-analyis-with-generalized-additive-models/)
 * [TimeSeers](https://github.com/MBrouns/timeseers)
@@ -13,11 +14,11 @@ The package has been inspired by:
 
 ## Key Features
 
-- 🚀 **Vectorized Multi-Series Fitting** — Fit multiple time series simultaneously with vectorized computations, significantly faster than fitting sequentially with Facebook Prophet
-- 📊 **Hierarchical Bayesian Modeling** — Model multiple related time series with flexible pooling strategies (complete, partial, or individual) for each component
-- 🔄 **Bayesian Transfer Learning** — Learn from long time series and transfer knowledge to short time series, enabling accurate long-horizon forecasts from limited data
-- ↔️ **Bidirectional Changepoints** — Interpret trend changepoints from right-to-left (in addition to left-to-right), essential for hierarchical modeling of time series with different lengths
-- 🎯 **Component-Level Flexibility** — Independently configure pooling strategies and transfer learning methods for each model component (trend, seasonalities, etc.)
+* 🚀 **Vectorized Multi-Series Fitting** — Fit multiple time series simultaneously with vectorized computations, significantly faster than fitting sequentially with Facebook Prophet
+* 📊 **Hierarchical Bayesian Modeling** — Model multiple related time series with flexible pooling strategies (complete, partial, or individual) for each component
+* 🔄 **Bayesian Transfer Learning** — Learn from long time series and transfer knowledge to short time series, enabling accurate long-horizon forecasts from limited data
+* ↔️ **Bidirectional Changepoints** — Interpret trend changepoints from right-to-left (in addition to left-to-right), essential for hierarchical modeling of time series with different lengths
+* 🎯 **Component-Level Flexibility** — Independently configure pooling strategies and transfer learning methods for each model component (trend, seasonalities, etc.)
 
 # Installation
 
@@ -110,8 +111,8 @@ By default (`delta_side="left"`), the `slope` parameter controls the trend slope
 
 Setting `delta_side="right"` reverses this: the `slope` parameter controls the trend slope at the **latest timestamp**, and changepoints modify the slope going backward in time. This is **essential for hierarchical modeling** when you have:
 
-- A long time series spanning many years
-- Multiple short time series that only cover the recent period
+* A long time series spanning many years
+* Multiple short time series that only cover the recent period
 
 With `delta_side="right"`, the slope parameter is informed by both the long and short time series (since they overlap at the end), rather than only the long time series (which alone covers the beginning).
 
@@ -175,9 +176,9 @@ BetaConstant(
 
 When modeling multiple time series together, you can control how parameters are shared using **hierarchical Bayesian modeling**. This is inspired by TimeSeers but with **greater flexibility** — vangja allows different pooling strategies for each component and even for different parameters within the same component.
 
-- **`"complete"`**: All series share the same parameters. Best when series are very similar.
-- **`"partial"`**: Hierarchical pooling with shared hyperpriors — parameters are drawn from a common distribution but can differ between series. This balances information sharing with individual variation.
-- **`"individual"`**: Each series has completely independent parameters. Equivalent to fitting each series separately, but vectorized for speed.
+* **`"complete"`**: All series share the same parameters. Best when series are very similar.
+* **`"partial"`**: Hierarchical pooling with shared hyperpriors — parameters are drawn from a common distribution but can differ between series. This balances information sharing with individual variation.
+* **`"individual"`**: Each series has completely independent parameters. Equivalent to fitting each series separately, but vectorized for speed.
 
 Note: The pandas dataframe must have a `series` column that identifies which rows belong to which time series.
 
@@ -200,20 +201,21 @@ model.fit(multi_series_data)
 
 Unlike TimeSeers which applies the same pooling to all components, vangja lets you choose based on domain knowledge:
 
-- **Yearly seasonality**: Often similar across related series → use `"complete"`
-- **Weekly seasonality**: May vary by series (e.g., different stores have different weekly patterns) → use `"partial"`
-- **Trend slope**: Usually similar for related series → use `"partial"`
-- **Changepoints**: When dealing with a long context series and short target series, changepoints are only observable in the long series → use `"complete"`
+* **Yearly seasonality**: Often similar across related series → use `"complete"`
+* **Weekly seasonality**: May vary by series (e.g., different stores have different weekly patterns) → use `"partial"`
+* **Trend slope**: Usually similar for related series → use `"partial"`
+* **Changepoints**: When dealing with a long context series and short target series, changepoints are only observable in the long series → use `"complete"`
 
 ## Model Tuning (Bayesian Transfer Learning)
 
 A **core feature** of vangja is the ability to transfer knowledge from a long time series to multiple short time series. This is particularly useful when:
 
-- You have only a few months of data but need to model yearly seasonality
-- You want to forecast a horizon longer than your available short time series
-- You have a "context" time series (e.g., market index) and want to use it to inform forecasts for related series (e.g., individual stocks)
+* You have only a few months of data but need to model yearly seasonality
+* You want to forecast a horizon longer than your available short time series
+* You have a "context" time series (e.g., market index) and want to use it to inform forecasts for related series (e.g., individual stocks)
 
 Forecasting short time series is challenging because:
+
 1. Long-period seasonalities (e.g., yearly) cannot be estimated from short data
 2. Overfitting is likely when the forecast horizon exceeds the data length
 3. Standard methods like Facebook Prophet will produce unreliable forecasts
