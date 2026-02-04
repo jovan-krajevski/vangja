@@ -638,6 +638,13 @@ class LinearTrend(TimeSeriesModel):
             slopes.append(initvals.get(f"slope_{key}", None))
             intercepts.append(initvals.get(f"intercept_{key}", None))
 
+        # For complete pooling or single series, return scalar values
+        if self.pool_type == "complete" or self.n_groups == 1:
+            return {
+                model.named_vars[f"lt_{self.model_idx} - slope"]: slopes[0],
+                model.named_vars[f"lt_{self.model_idx} - intercept"]: intercepts[0],
+            }
+
         return {
             model.named_vars[f"lt_{self.model_idx} - slope"]: np.array(slopes),
             model.named_vars[f"lt_{self.model_idx} - intercept"]: np.array(intercepts),
@@ -682,37 +689,61 @@ class LinearTrend(TimeSeriesModel):
         return np.vstack(forecasts)
 
     def _predict_mcmc(self, future, trace):
-        slope = (
-            trace["posterior"][f"lt_{self.model_idx} - slope"].to_numpy()[:, :].mean(0)
-        )
-        intercept = (
-            trace["posterior"][f"lt_{self.model_idx} - intercept"]
-            .to_numpy()[:, :]
-            .mean(0)
-        )
-
-        if f"lt_{self.model_idx} - delta" not in trace["posterior"]:
-            future[f"lt_{self.model_idx}"] = (
-                slope.mean() * future["t"].to_numpy() + intercept.mean()
+        forecasts = []
+        for group_code in self.groups_.keys():
+            # Get slope and intercept, averaging over chains and draws
+            slope = (
+                trace["posterior"][f"lt_{self.model_idx} - slope"]
+                .to_numpy()
+                .mean(axis=(0, 1))
             )
-        else:
-            if self.delta_side == "left":
-                new_A = (np.array(future["t"])[:, None] > self.s) * 1
-            else:
-                new_A = (np.array(future["t"])[:, None] <= self.s) * 1
-
-            delta = (
-                trace["posterior"][f"lt_{self.model_idx} - delta"]
-                .to_numpy()[:, :]
-                .mean(0)
+            intercept = (
+                trace["posterior"][f"lt_{self.model_idx} - intercept"]
+                .to_numpy()
+                .mean(axis=(0, 1))
             )
 
-            future[f"lt_{self.model_idx}"] = (
-                (slope + np.dot(new_A, delta.T)).T * future["t"].to_numpy()
-                + (intercept + np.dot(new_A, (-self.s * delta).T)).T
-            ).mean(0)
+            # Handle per-group parameters
+            if self.pool_type != "complete" and self.n_groups > 1:
+                slope = slope[group_code] if slope.ndim > 0 else slope
+                intercept = intercept[group_code] if intercept.ndim > 0 else intercept
 
-        return future[f"lt_{self.model_idx}"]
+            slope_correction = 0
+            intercept_correction = 0
+
+            if f"lt_{self.model_idx} - delta" in trace["posterior"]:
+                if self.delta_side == "left":
+                    new_A = (np.array(future["t"])[:, None] > self.s) * 1
+                else:
+                    new_A = (np.array(future["t"])[:, None] <= self.s) * 1
+
+                delta = (
+                    trace["posterior"][f"lt_{self.model_idx} - delta"]
+                    .to_numpy()
+                    .mean(axis=(0, 1))
+                )
+
+                # Handle per-group delta parameters
+                if (
+                    self.pool_type == "individual"
+                    or (
+                        self.pool_type == "partial"
+                        and self.delta_pool_type in ["partial", "individual"]
+                    )
+                ) and self.n_groups > 1:
+                    delta = delta[group_code]
+
+                slope_correction = new_A @ delta
+                intercept_correction = new_A @ (-self.s * delta)
+
+            total_slope = slope + slope_correction
+            total_intercept = intercept + intercept_correction
+
+            forecast = total_slope * future["t"].to_numpy() + total_intercept
+            forecasts.append(forecast)
+            future[f"lt_{self.model_idx}_{group_code}"] = forecast
+
+        return np.vstack(forecasts)
 
     def _plot(self, plot_params, future, data, scale_params, y_true=None, series=""):
         plot_params["idx"] += 1

@@ -474,21 +474,33 @@ class FourierSeasonality(TimeSeriesModel):
 
         return np.vstack(forecasts)
 
-    def _predict_mcmc(self, future, trace, other_components):
+    def _predict_mcmc(self, future, trace):
         shift = trace["posterior"].get(f"fs_{self.model_idx} - shift", None)
         if shift is not None:
             shift = shift.mean()
 
-        future[f"fs_{self.model_idx}"] = self._det_seasonality_posterior(
-            trace["posterior"][
-                f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"
-            ]
-            .to_numpy()[:, :]
-            .mean(0),
-            self._fourier_series(future, shift),
-        ).T.mean(0)
+        forecasts = []
+        for group_code in self.groups_.keys():
+            # Get beta, averaging over chains and draws
+            beta = (
+                trace["posterior"][
+                    f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"
+                ]
+                .to_numpy()
+                .mean(axis=(0, 1))
+            )
 
-        return future[f"fs_{self.model_idx}"]
+            # Handle per-group parameters
+            if self.pool_type != "complete" and self.n_groups > 1:
+                beta = beta[group_code]
+
+            forecast = self._det_seasonality_posterior(
+                beta, self._fourier_series(future, shift)
+            )
+            forecasts.append(forecast)
+            future[f"fs_{self.model_idx}_{group_code}"] = forecast
+
+        return np.vstack(forecasts)
 
     def _plot(self, plot_params, future, data, scale_params, y_true=None, series=""):
         date = future["ds"] if self.period > 7 else future["ds"].dt.day_name()
