@@ -33,8 +33,24 @@ Data must have columns: `ds` (datetime), `y` (float), optionally `series` (str f
 **PoolType controls parameter sharing:**
 
 - `"complete"` — All series share same parameters
-- `"partial"` — Hierarchical pooling with shared hyperpriors
+- `"partial"` — Hierarchical pooling with shared hyperpriors (inspired by [timeseers](https://github.com/MBrouns/timeseers))
 - `"individual"` — Each series has independent parameters
+
+**Hierarchical Modeling (Partial Pooling):**
+
+Partial pooling allows series to "borrow strength" from each other while respecting individual differences. The model structure is:
+
+```
+slope_shared ~ Normal(0, σ_slope)
+slope[i] ~ Normal(slope_shared, σ_individual)
+```
+
+Key parameters:
+
+- `shrinkage_strength` — Controls how much series are pulled toward the shared mean. Higher values = more pooling. Start with 10 as default.
+- Use partial pooling when series belong to natural groups (products, stores, regions) or have limited data.
+
+See [05_hierarchical_modeling.ipynb](docs/05_hierarchical_modeling.ipynb) for a complete example.
 
 **Simultaneous vs Sequential Fitting:**
 
