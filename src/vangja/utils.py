@@ -126,11 +126,16 @@ def metrics(
     for each group's prediction column. This assumes the prediction horizon
     covers the test period.
     """
+    # Copy y_true and add a 'series' column if not present
+    processed_y_true = y_true.copy()
+    if "series" not in processed_y_true.columns:
+        processed_y_true["series"] = "series"
+
     metrics_dict = {"mse": {}, "rmse": {}, "mae": {}, "mape": {}}
-    test_group, _, test_groups_ = get_group_definition(y_true, pool_type)
+    test_group, _, test_groups_ = get_group_definition(processed_y_true, pool_type)
     for group_code, group_name in test_groups_.items():
         group_idx = test_group == group_code
-        y = y_true["y"][group_idx]
+        y = processed_y_true["y"][group_idx]
         yhat = future[f"yhat_{group_code}"][-len(y) :]
         metrics_dict["mse"][group_name] = mean_squared_error(y, yhat)
         metrics_dict["rmse"][group_name] = root_mean_squared_error(y, yhat)

@@ -655,10 +655,13 @@ class LinearTrend(TimeSeriesModel):
                     new_A = (np.array(future["t"])[:, None] <= self.s) * 1
 
                 delta = map_approx[f"lt_{self.model_idx} - delta"]
-                if self.pool_type == "individual" or (
-                    self.pool_type == "partial"
-                    and self.delta_pool_type in ["partial", "individual"]
-                ):
+                if (
+                    self.pool_type == "individual"
+                    or (
+                        self.pool_type == "partial"
+                        and self.delta_pool_type in ["partial", "individual"]
+                    )
+                ) and self.n_groups > 1:
                     delta = delta[group_code]
 
                 slope_correction = new_A @ delta
@@ -666,7 +669,7 @@ class LinearTrend(TimeSeriesModel):
 
             slope = map_approx[f"lt_{self.model_idx} - slope"]
             intercept = map_approx[f"lt_{self.model_idx} - intercept"]
-            if self.pool_type != "complete":
+            if self.pool_type != "complete" and self.n_groups > 1:
                 slope = slope[group_code]
                 intercept = intercept[group_code]
 

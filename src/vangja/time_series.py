@@ -128,9 +128,9 @@ class TimeSeriesModel:
             {
                 "scaler": scaler,
                 "y_min": 0 if scaler == "maxabs" else series["y"].min(),
-                "y_max": series["y"].abs().max()
-                if scaler == "maxabs"
-                else series["y"].max(),
+                "y_max": (
+                    series["y"].abs().max() if scaler == "maxabs" else series["y"].max()
+                ),
             },
         )
 
@@ -158,6 +158,10 @@ class TimeSeriesModel:
         self.data = data.reset_index(drop=True)
         self.data["ds"] = pd.to_datetime(self.data["ds"])
         self.data["t"] = 0.0
+        self.data["y"] = self.data["y"].astype(float)
+        if "series" not in self.data.columns:
+            self.data["series"] = "series"
+
         self.data.sort_values("ds", inplace=True)
 
         self.group, self.n_groups, self.groups_ = get_group_definition(
@@ -231,7 +235,7 @@ class TimeSeriesModel:
         self,
         data: pd.DataFrame,
         scaler: Scaler = "maxabs",
-        scale_mode: ScaleMode = "individual",
+        scale_mode: ScaleMode = "complete",
         t_scale_params: TScaleParams | None = None,
         sigma_sd: float = 0.5,
         sigma_pool_type: PoolType = "complete",
@@ -487,7 +491,10 @@ class TimeSeriesModel:
         return self._predict_mcmc(future, trace)
 
     def plot(
-        self, future: pd.DataFrame, series: str, y_true: pd.DataFrame | None = None
+        self,
+        future: pd.DataFrame,
+        series: str = "series",
+        y_true: pd.DataFrame | None = None,
     ):
         """
         Plot the inference results for a given series.
@@ -532,16 +539,22 @@ class TimeSeriesModel:
         plt.scatter(
             series_data["ds"],
             series_data["y"] * y_max,
-            s=0.5,
+            s=3,
             color="C0",
             label="train y",
         )
 
+        processed_y_true = None
         if y_true is not None:
+            processed_y_true = y_true.copy()
+            if "series" not in processed_y_true.columns:
+                processed_y_true["series"] = "series"
+
+        if processed_y_true is not None:
             plt.scatter(
-                y_true["ds"],
-                y_true[y_true["series"] == series]["y"],
-                s=0.5,
+                processed_y_true["ds"],
+                processed_y_true[processed_y_true["series"] == series]["y"],
+                s=3,
                 color="C1",
                 label="y_true",
             )
@@ -553,7 +566,12 @@ class TimeSeriesModel:
         plt.legend()
         plot_params = {"idx": 1}
         self._plot(
-            plot_params, future, self.data, self.y_scale_params, y_true, group_code
+            plot_params,
+            future,
+            self.data,
+            self.y_scale_params,
+            processed_y_true,
+            group_code,
         )
 
     def needs_priors(self, *args, **kwargs):

@@ -464,7 +464,7 @@ class FourierSeasonality(TimeSeriesModel):
             beta = map_approx[
                 f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"
             ]
-            if self.pool_type != "complete":
+            if self.pool_type != "complete" and self.n_groups > 1:
                 beta = beta[group_code]
             forecasts.append(
                 self._det_seasonality_posterior(beta, self._fourier_series(future))
