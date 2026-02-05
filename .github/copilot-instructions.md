@@ -78,6 +78,31 @@ For series with non-overlapping date ranges, consider fitting them separately or
 
 Set `tune_method="parametric"` or `"prior_from_idata"` on components, then pass `idata` (ArviZ InferenceData) to `fit()` to transfer knowledge from pre-trained models.
 
+### Datasets Module (`src/vangja/datasets/`)
+
+The `datasets` module provides functions for loading real-world datasets and generating synthetic data. **All notebooks should use these functions instead of inline data generation/loading.**
+
+**Available functions:**
+
+- `load_air_passengers()` — Classic monthly airline passengers (1949-1960)
+- `load_peyton_manning()` — Daily Wikipedia page views (2007-2016)
+- `generate_multi_store_data()` — 5 synthetic store series with same time range
+- `generate_hierarchical_products(include_all_year=True)` — 5-6 synthetic product series with opposite seasonality (summer/winter groups)
+
+**Adding new datasets:** Create functions in `datasets/loaders.py` (real data) or `datasets/synthetic.py` (generated data), then export in `datasets/__init__.py`.
+
+**Timeseers modeling pattern:** For series with opposite seasonality (like summer vs winter products), use `UniformConstant(-1, 1)` as a scaling factor:
+
+```python
+model = (
+    LinearTrend()
+    + UniformConstant(-1, 1) * FourierSeasonality(365.25, 5)
+    + FourierSeasonality(7, 2)
+)
+```
+
+This allows the model to learn +1 (peak in summer), -1 (peak in winter), or 0 (no seasonality) for each series.
+
 ## Development Workflow
 
 ### Environment Setup

@@ -165,22 +165,28 @@ def generate_hierarchical_products(
     freq: str = "D",
     n_changepoints: int = 8,
     seed: int | None = 42,
+    include_all_year: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, dict[str, Any]]]:
     """Generate synthetic hierarchical product time series data.
 
-    Creates 5 synthetic time series representing products that belong to
-    two groups with opposing seasonal patterns:
+    Creates synthetic time series representing products that belong to
+    groups with different seasonal patterns:
+
     - **Summer products** (3 series): Peak sales in summer months
-    - **Winter products** (2 series): Peak sales in winter months
+    - **Winter products** (2 series): Peak sales in winter months (opposite)
+    - **All-year products** (1 series, optional): Minimal seasonality
 
     Each series has:
+
     - Piecewise linear trend with changepoints (Prophet-style)
     - Yearly seasonality from Fourier series (group-specific pattern)
     - Weekly seasonality from Fourier series
     - Random noise
 
     This dataset is ideal for demonstrating:
+
     - Hierarchical Bayesian modeling with partial pooling
+    - Using UniformConstant(-1, 1) to handle opposite seasonality directions
     - Group-level parameter sharing
     - Shrinkage effects
 
@@ -196,23 +202,29 @@ def generate_hierarchical_products(
         Number of potential changepoints in the trend
     seed : int or None, default 42
         Random seed for reproducibility. Set to None for random data.
+    include_all_year : bool, default False
+        If True, include an "all_year" product with minimal seasonality.
+        This creates 6 series total instead of 5.
 
     Returns
     -------
     df : pd.DataFrame
         Combined DataFrame with columns:
+
         - `ds`: datetime timestamps
         - `y`: target values (sales)
-        - `series`: product name (e.g., "summer_1", "winter_2")
+        - `series`: product name (e.g., "summer_1", "winter_2", "all_year")
+
     params : dict
         Dictionary mapping product names to their parameters:
+
         - `k`: initial slope
         - `m`: initial intercept (base level)
         - `delta`: slope changes at changepoints
         - `yearly_beta`: Fourier coefficients for yearly seasonality
         - `weekly_beta`: Fourier coefficients for weekly seasonality
         - `noise_std`: noise standard deviation
-        - `group`: "summer" or "winter"
+        - `group`: "summer", "winter", or "all_year"
 
     Examples
     --------
@@ -223,13 +235,27 @@ def generate_hierarchical_products(
     >>> print(f"Summer products: {[k for k, v in params.items() if v['group'] == 'summer']}")
     >>> print(f"Winter products: {[k for k, v in params.items() if v['group'] == 'winter']}")
 
+    Including the all-year product:
+
+    >>> df, params = generate_hierarchical_products(seed=42, include_all_year=True)
+    >>> print(f"All-year products: {[k for k, v in params.items() if v['group'] == 'all_year']}")
+
     Notes
     -----
     The data generation follows the Prophet/timeseers formulation:
+
     y = g(t) + s_yearly(t) + s_weekly(t) + noise
 
-    where g(t) is a piecewise linear trend with changepoints,
-    and s(t) are Fourier series seasonality components.
+    where:
+
+    - g(t) is a piecewise linear trend with changepoints
+    - s(t) are Fourier series seasonality components
+    - Summer products have positive yearly seasonality (peak in summer)
+    - Winter products have negative yearly seasonality (peak in winter)
+    - All-year products have minimal seasonality (nearly flat)
+
+    To model products with opposite seasonality directions, use
+    UniformConstant(-1, 1) as a scaling factor in the model composition.
     """
     if seed is not None:
         np.random.seed(seed)
@@ -305,6 +331,18 @@ def generate_hierarchical_products(
         },
     }
 
+    # Optionally add all-year product with minimal seasonality
+    if include_all_year:
+        product_params["all_year"] = {
+            "k": 0.5,
+            "m": 4500,
+            "delta": np.random.laplace(0, 0.3, n_changepoints) * 1.5,
+            "yearly_beta": yearly_summer_beta * 0.1,  # Minimal yearly seasonality
+            "weekly_beta": weekly_base_beta * 1.0,
+            "noise_std": 100,
+            "group": "all_year",
+        }
+
     def _generate_single_series(
         name: str,
         dates: pd.DatetimeIndex,
@@ -347,10 +385,53 @@ def generate_hierarchical_products(
 
         return pd.DataFrame({"ds": dates, "y": y, "series": name})
 
+    def _remove_random_gaps(
+        df: pd.DataFrame, n_gaps: int = 3, gap_fraction: float = 0.15
+    ) -> pd.DataFrame:
+        """Remove n_gaps non-overlapping continuous intervals from the data.
+
+        Each gap removes gap_fraction of the total data points.
+        """
+        n = len(df)
+        gap_size = int(n * gap_fraction)
+        total_gap_size = n_gaps * gap_size
+
+        if total_gap_size >= n:
+            raise ValueError(
+                f"Cannot remove {n_gaps} gaps of {gap_fraction*100}% each from data"
+            )
+
+        # Generate non-overlapping gap start positions
+        # Divide the data into n_gaps+1 segments and place gaps within segments
+        available_indices = list(range(n - gap_size))
+        gap_starts = []
+
+        for i in range(n_gaps):
+            if not available_indices:
+                break
+            start = np.random.choice(available_indices)
+            gap_starts.append(start)
+            # Remove indices that would overlap with this gap
+            available_indices = [
+                idx
+                for idx in available_indices
+                if idx >= start + gap_size or idx + gap_size <= start
+            ]
+
+        # Create mask for rows to keep
+        keep_mask = np.ones(n, dtype=bool)
+        for start in gap_starts:
+            keep_mask[start : start + gap_size] = False
+
+        return df[keep_mask].reset_index(drop=True)
+
     # Generate all series
     all_series = []
     for name, params in product_params.items():
         series = _generate_single_series(name=name, dates=dates, **params)
+        # Remove random gaps for all products except all_year
+        if params["group"] != "all_year":
+            series = _remove_random_gaps(series, n_gaps=3, gap_fraction=0.15)
         all_series.append(series)
 
     df = pd.concat(all_series, ignore_index=True)
