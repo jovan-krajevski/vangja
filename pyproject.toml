@@ -27,6 +27,17 @@ test = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
 ]
+docs = [
+    "sphinx>=7.0",
+    "sphinx-book-theme>=1.0",
+    "myst-parser>=2.0",
+    "nbsphinx>=0.9",
+    "pandoc>=2.3",
+    "ipykernel>=6.0",
+]
+dev = [
+    "vangja[test,docs]",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

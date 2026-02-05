@@ -600,6 +600,35 @@ class TimeSeriesModel:
 
 
 class CombinedTimeSeries(TimeSeriesModel):
+    """Base class for combined time series models.
+
+    This class serves as the foundation for composing multiple time series
+    components together. It provides common functionality for combining
+    two components (left and right) and propagating method calls to both.
+
+    Parameters
+    ----------
+    left : TimeSeriesModel | int | float
+        The left operand of the combination. Can be a model component
+        or a numeric constant.
+    right : TimeSeriesModel | int | float
+        The right operand of the combination. Can be a model component
+        or a numeric constant.
+
+    Attributes
+    ----------
+    left : TimeSeriesModel | int | float
+        The left component of the combination.
+    right : TimeSeriesModel | int | float
+        The right component of the combination.
+
+    See Also
+    --------
+    AdditiveTimeSeries : Combines components using addition.
+    MultiplicativeTimeSeries : Combines using y = left * (1 + right).
+    SimpleMultiplicativeTimeSeries : Combines using y = left * right.
+    """
+
     def __init__(self, left, right):
         self.left = left
         self.right = right
@@ -646,6 +675,28 @@ class CombinedTimeSeries(TimeSeriesModel):
 
 
 class AdditiveTimeSeries(CombinedTimeSeries):
+    """Combines two components using addition: y = left + right.
+
+    This class is created when using the ``+`` operator between time series
+    components. The resulting model sums the contributions from both
+    components.
+
+    Parameters
+    ----------
+    left : TimeSeriesModel | int | float
+        The left operand of the addition.
+    right : TimeSeriesModel | int | float
+        The right operand of the addition.
+
+    Examples
+    --------
+    >>> from vangja import LinearTrend, FourierSeasonality
+    >>> # Create an additive model with trend + seasonality
+    >>> model = LinearTrend() + FourierSeasonality(period=365.25, series_order=10)
+    >>> print(model)
+    LT(n=25,r=0.8,tm=None) + FS(p=365.25,n=10,tm=None)
+    """
+
     def definition(self, *args, **kwargs):
         left = self.left
         if not (type(self.left) is int or type(self.left) is float):
@@ -673,6 +724,36 @@ class AdditiveTimeSeries(CombinedTimeSeries):
 
 
 class MultiplicativeTimeSeries(CombinedTimeSeries):
+    """Combines two components using y = left * (1 + right).
+
+    This class is created when using the ``**`` operator between time series
+    components. This follows the Prophet-style multiplicative seasonality
+    where the right component modulates the left component around its value.
+
+    This formulation is useful when the amplitude of seasonality scales
+    with the trend level (heteroscedastic seasonal patterns).
+
+    Parameters
+    ----------
+    left : TimeSeriesModel | int | float
+        The base component (typically a trend).
+    right : TimeSeriesModel | int | float
+        The multiplicative modifier (typically seasonality).
+
+    Examples
+    --------
+    >>> from vangja import LinearTrend, FourierSeasonality
+    >>> # Create a model with multiplicative seasonality
+    >>> model = LinearTrend() ** FourierSeasonality(period=365.25, series_order=10)
+    >>> print(model)
+    LT(n=25,r=0.8,tm=None) * (1 + FS(p=365.25,n=10,tm=None))
+
+    Notes
+    -----
+    The ``**`` operator was chosen because ``*`` is used for simple
+    multiplication of components.
+    """
+
     def definition(self, *args, **kwargs):
         left = self.left
         if not (type(self.left) is int or type(self.left) is float):
@@ -704,6 +785,31 @@ class MultiplicativeTimeSeries(CombinedTimeSeries):
 
 
 class SimpleMultiplicativeTimeSeries(CombinedTimeSeries):
+    """Combines two components using simple multiplication: y = left * right.
+
+    This class is created when using the ``*`` operator between time series
+    components. The resulting model multiplies the contributions from both
+    components directly.
+
+    This is useful for applying scaling factors or when components should
+    truly multiply (not modulate around 1).
+
+    Parameters
+    ----------
+    left : TimeSeriesModel | int | float
+        The left operand of the multiplication.
+    right : TimeSeriesModel | int | float
+        The right operand of the multiplication.
+
+    Examples
+    --------
+    >>> from vangja import LinearTrend, UniformConstant
+    >>> # Create a model with a scaling factor
+    >>> model = LinearTrend() * UniformConstant(lower=0.8, upper=1.2)
+    >>> print(model)
+    LT(n=25,r=0.8,tm=None) * UC(l=0.8,u=1.2,tm=None)
+    """
+
     def definition(self, *args, **kwargs):
         left = self.left
         if not (type(self.left) is int or type(self.left) is float):

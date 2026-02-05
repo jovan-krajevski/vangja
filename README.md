@@ -20,7 +20,7 @@ The package has been inspired by:
 * ↔️ **Bidirectional Changepoints** — Interpret trend changepoints from right-to-left (in addition to left-to-right), essential for hierarchical modeling of time series with different lengths
 * 🎯 **Component-Level Flexibility** — Independently configure pooling strategies and transfer learning methods for each model component (trend, seasonalities, etc.)
 
-# Installation
+## Installation
 
 You need to create a conda PyMC environment before installing `vangja`. The recommended way of installing PyMC is by running:
 
@@ -34,7 +34,7 @@ Install `vangja` with pip:
 pip install vangja
 ```
 
-# Usage
+## Usage
 
 The data used for fitting the models is expected to be in the same format as the data used for fitting the Facebook Prophet model i.e. it should be a `pandas` dataframe, where the timestamp is stored in column `ds` and the value is stored in column `y`.
 
@@ -48,7 +48,7 @@ model.fit(data)
 model.predict(365)
 ```
 
-## Vectorized Multi-Series Fitting
+### Vectorized Multi-Series Fitting
 
 Unlike Facebook Prophet, which fits time series one at a time, vangja can fit multiple time series **simultaneously** using vectorized computations. This is significantly faster when you have many related time series:
 
@@ -66,7 +66,7 @@ model = LinearTrend(pool_type="individual") + FourierSeasonality(365.25, 10, poo
 model.fit(multi_series_data)
 ```
 
-## Multiplicative operators
+### Multiplicative operators
 
 There are two types of multiplicative operators that `vangja` supports. The first one supports creating models from components $g(t)$ and $s(t)$ in the form $y(t)=g(t) * (1 + s(t))$. Using `vangja`, this can be written by using the `__pow__` operator:
 
@@ -80,11 +80,11 @@ The second multiplicative operator supports creating models from components $g(t
 model = LinearTrend() * FourierSeasonality(365.25, 10)
 ```
 
-## Components
+### Components
 
 Currently, `vangja` supports the following components:
 
-### LinearTrend
+#### LinearTrend
 
 A piecewise linear trend with changepoints. Vangja extends Prophet's trend component with **bidirectional changepoint interpretation**.
 
@@ -105,7 +105,7 @@ LinearTrend(
 )
 ```
 
-#### Bidirectional Changepoints (`delta_side`)
+##### Bidirectional Changepoints (`delta_side`)
 
 By default (`delta_side="left"`), the `slope` parameter controls the trend slope at the earliest timestamp, and changepoints modify the slope going forward in time.
 
@@ -116,7 +116,7 @@ Setting `delta_side="right"` reverses this: the `slope` parameter controls the t
 
 With `delta_side="right"`, the slope parameter is informed by both the long and short time series (since they overlap at the end), rather than only the long time series (which alone covers the beginning).
 
-### FourierSeasonality
+#### FourierSeasonality
 
 Seasonal patterns modeled using Fourier series.
 
@@ -131,7 +131,7 @@ FourierSeasonality(
 )
 ```
 
-### NormalConstant
+#### NormalConstant
 
 A constant term with a Normal prior, useful for baseline offsets.
 
@@ -144,7 +144,7 @@ NormalConstant(
 )
 ```
 
-### UniformConstant
+#### UniformConstant
 
 A constant term with a Uniform prior.
 
@@ -157,7 +157,7 @@ UniformConstant(
 )
 ```
 
-### BetaConstant
+#### BetaConstant
 
 A constant term with a scaled Beta prior, bounded between [lower, upper].
 
@@ -172,7 +172,7 @@ BetaConstant(
 )
 ```
 
-## Pooling Types (Hierarchical Modeling)
+### Pooling Types (Hierarchical Modeling)
 
 When modeling multiple time series together, you can control how parameters are shared using **hierarchical Bayesian modeling**. This is inspired by TimeSeers but with **greater flexibility** — vangja allows different pooling strategies for each component and even for different parameters within the same component.
 
@@ -197,7 +197,7 @@ model = (
 model.fit(multi_series_data)
 ```
 
-### Why Different Pooling Strategies?
+#### Why Different Pooling Strategies?
 
 Unlike TimeSeers which applies the same pooling to all components, vangja lets you choose based on domain knowledge:
 
@@ -206,7 +206,7 @@ Unlike TimeSeers which applies the same pooling to all components, vangja lets y
 * **Trend slope**: Usually similar for related series → use `"partial"`
 * **Changepoints**: When dealing with a long context series and short target series, changepoints are only observable in the long series → use `"complete"`
 
-## Model Tuning (Bayesian Transfer Learning)
+### Model Tuning (Bayesian Transfer Learning)
 
 A **core feature** of vangja is the ability to transfer knowledge from a long time series to multiple short time series. This is particularly useful when:
 
@@ -222,11 +222,11 @@ Forecasting short time series is challenging because:
 
 Vangja implements **Bayesian transfer learning**: fit a model on a long time series, extract the posterior distributions of parameters, and use them as informed priors when fitting short time series.
 
-### Transfer Learning Methods
+#### Transfer Learning Methods
 
 There are two tuning methods available:
 
-#### 1. Parametric Transfer (`"parametric"`)
+##### 1. Parametric Transfer (`"parametric"`)
 
 Uses the posterior mean (you can also set the mode, or any other value that you need) and standard deviation from the fitted model to set new priors while keeping the same distribution form:
 
@@ -246,7 +246,7 @@ model.tune(short_time_series)
 predictions = model.predict(365)  # Can forecast beyond the short series length!
 ```
 
-#### 2. Prior from InferenceData (`"prior_from_idata"`)
+##### 2. Prior from InferenceData (`"prior_from_idata"`)
 
 Uses the full posterior samples via **multivariate normal approximation**, preserving correlations between parameters:
 
@@ -261,7 +261,7 @@ model.tune(short_time_series)
 
 This method captures parameter dependencies (e.g., correlation between trend slope and seasonality amplitude) that the parametric method ignores.
 
-### Combining Hierarchical Modeling with Transfer Learning
+#### Combining Hierarchical Modeling with Transfer Learning
 
 Vangja uniquely allows you to combine both approaches:
 
@@ -288,7 +288,7 @@ model.fit(all_data)
 predictions = model.predict(365)
 ```
 
-### Regularization for Transfer Learning
+#### Regularization for Transfer Learning
 
 To prevent overfitting when transferring knowledge, vangja supports regularization via the `loss_factor_for_tune` parameter. This adds a penalty term that constrains parameters to stay close to the values learned from the long time series:
 
@@ -300,7 +300,7 @@ FourierSeasonality(
 )
 ```
 
-## Plotting
+### Plotting
 
 After fitting, you can visualize the model components:
 
@@ -312,7 +312,7 @@ model.plot()
 predictions = model.predict(periods=365)
 ```
 
-## Metrics
+### Metrics
 
 Evaluate forecast accuracy using built-in metrics:
 
@@ -324,7 +324,7 @@ results = metrics(actual_df, predicted_df, group_col="group")
 # Returns MAE, MSE, RMSE, MAPE per group
 ```
 
-## Vangja vs Facebook Prophet vs TimeSeers
+### Vangja vs Facebook Prophet vs TimeSeers
 
 | Feature | Facebook Prophet | TimeSeers | Vangja |
 |---------|------------------|-----------|--------|
@@ -339,7 +339,7 @@ results = metrics(actual_df, predicted_df, group_col="group")
 | Regularization for transfer | ❌ | ❌ | ✅ |
 | Modern PyMC (5.x) | ❌ | ❌ | ✅ |
 
-## Inference Methods
+### Inference Methods
 
 Vangja supports multiple inference methods:
 
@@ -354,6 +354,6 @@ model.fit(data, method="nuts", samples=1000, chains=4)
 model.fit(data, method="advi", samples=1000)
 ```
 
-# Contributing
+## Contributing
 
 Pull requests and suggestions are always welcome. Please open an issue on the issue list before submitting in order to avoid doing unnecessary work.

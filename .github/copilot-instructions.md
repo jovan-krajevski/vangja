@@ -134,3 +134,112 @@ pytest tests/test_components.py  # Test specific module
 ### Test Structure
 
 Tests are organized by: `test_components.py` (unit), `test_integration.py` (composition), `test_time_series.py` (base class), `test_plotting.py`, `test_types.py`, `test_utils.py`.
+
+## Documentation
+
+### Documentation Structure
+
+The documentation is built with Sphinx and hosted on GitHub Pages. Structure:
+
+- **README** — Package overview and quick start
+- **User Guide** — Jupyter notebooks in `notebooks/` demonstrating features
+- **API Reference** — Auto-generated from docstrings
+
+### Documentation Files
+
+- `docs/source/conf.py` — Sphinx configuration
+- `docs/source/index.rst` — Main documentation index
+- `docs/source/api.rst` — API reference structure
+- `docs/source/readme.md` — Symlink to `../../README.md`
+- `docs/source/notebooks/` — Symlink to `../../notebooks/`
+
+### Docstring Style
+
+Use NumPy-style docstrings. Key sections:
+
+```python
+def function(param1: str, param2: int = 10) -> bool:
+    """Short description.
+
+    Longer description if needed.
+
+    Parameters
+    ----------
+    param1 : str
+        Description of param1.
+    param2 : int, default=10
+        Description of param2.
+
+    Returns
+    -------
+    bool
+        Description of return value.
+
+    Examples
+    --------
+    >>> function("test", 5)
+    True
+
+    See Also
+    --------
+    other_function : Related function.
+
+    Notes
+    -----
+    Additional implementation notes.
+    """
+```
+
+For classes, put detailed parameter docs in the class docstring, not `__init__`:
+
+```python
+class MyClass:
+    """Short description.
+
+    Parameters
+    ----------
+    param1 : str
+        Description of param1.
+
+    Attributes
+    ----------
+    attr1 : str
+        Description of attr1.
+
+    Examples
+    --------
+    >>> obj = MyClass("test")
+    """
+
+    def __init__(self, param1: str):
+        """Create MyClass.
+
+        See the class docstring for full parameter descriptions.
+        """
+        self.attr1 = param1
+```
+
+### Building Documentation Locally
+
+```bash
+# Install docs dependencies
+pip install -e ".[docs]"
+
+# Build HTML docs
+cd docs
+make html
+
+# View in browser
+open build/html/index.html  # macOS
+xdg-open build/html/index.html  # Linux
+```
+
+### Documentation Deployment
+
+Documentation is automatically deployed to GitHub Pages via the `.github/workflows/docs.yml` workflow:
+
+- **On push to main**: Build and deploy automatically
+- **On PRs**: Build only (no deployment) to catch errors
+- **Manual trigger**: Use "Run workflow" in GitHub Actions
+
+Enable GitHub Pages in repository settings → Pages → Source: "GitHub Actions".

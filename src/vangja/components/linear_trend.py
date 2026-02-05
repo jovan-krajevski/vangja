@@ -13,6 +13,132 @@ from vangja.utils import get_group_definition
 
 
 class LinearTrend(TimeSeriesModel):
+    """A piecewise linear trend component with optional changepoints.
+
+    This component models the trend of a time series as a piecewise linear
+    function, following the Prophet approach. The trend can have multiple
+    changepoints where the slope is allowed to change.
+
+    The trend is defined as::
+
+        trend(t) = (k + a(t)^T * delta) * t + (m + a(t)^T * gamma)
+
+    where:
+
+    - ``k`` is the base slope
+    - ``m`` is the intercept
+    - ``delta`` is a vector of slope changes at changepoints
+    - ``a(t)`` is an indicator vector for changepoints before time ``t``
+    - ``gamma`` is computed to make the trend continuous
+
+    Parameters
+    ----------
+    n_changepoints : int, default=25
+        The number of potential changepoints. Changepoints are placed
+        uniformly in the first ``changepoint_range`` fraction of data.
+    changepoint_range : float, default=0.8
+        The proportion of the time range where changepoints are allowed.
+        For example, 0.8 means changepoints only in the first 80% of data.
+    slope_mean : float, default=0
+        The mean of the Normal prior for the slope parameter.
+    slope_sd : float, default=5
+        The standard deviation of the Normal prior for the slope parameter.
+    intercept_mean : float, default=0
+        The mean of the Normal prior for the intercept parameter.
+    intercept_sd : float, default=5
+        The standard deviation of the Normal prior for the intercept parameter.
+    delta_mean : float, default=0
+        The mean of the Laplace prior for the slope changes at changepoints.
+    delta_sd : float | None, default=0.05
+        The scale of the Laplace prior for slope changes. If None, the scale
+        is learned as a random variable with an Exponential(1.5) prior.
+    delta_side : {"left", "right"}, default="left"
+        If "left", the slope parameter controls the slope at the earliest
+        time point. If "right", it controls the slope at the latest time.
+    pool_type : PoolType, default="complete"
+        Type of pooling for multi-series data. One of:
+
+        - "complete": All series share the same trend parameters
+        - "partial": Hierarchical pooling with shared hyperpriors
+        - "individual": Each series has independent parameters
+    delta_pool_type : PoolType, default="complete"
+        Pooling type specifically for changepoint deltas. Only used when
+        ``pool_type="partial"``.
+    tune_method : TuneMethod | None, default=None
+        Transfer learning method. One of:
+
+        - "parametric": Use posterior mean/std as new priors
+        - "prior_from_idata": Use posterior samples directly
+        - None: No transfer learning
+    delta_tune_method : TuneMethod | None, default=None
+        Transfer learning method for changepoint deltas.
+    override_slope_mean_for_tune : np.ndarray | None, default=None
+        Override the slope mean during transfer learning.
+    override_slope_sd_for_tune : np.ndarray | None, default=None
+        Override the slope standard deviation during transfer learning.
+    override_delta_loc_for_tune : np.ndarray | None, default=None
+        Override the delta location during transfer learning.
+    override_delta_scale_for_tune : np.ndarray | None, default=None
+        Override the delta scale during transfer learning.
+    shrinkage_strength : float, default=100
+        Controls hierarchical shrinkage. Higher values pull individual
+        series parameters more strongly toward the shared mean.
+    loss_factor_for_tune : float, default=0
+        Regularization factor for transfer learning. Adds a penalty to
+        keep transferred parameters close to original values.
+
+    Attributes
+    ----------
+    model_idx : int
+        Index of this component in the model (set during fitting).
+    s : np.ndarray
+        Normalized time locations of changepoints.
+    group : np.ndarray
+        Array of group codes for each data point.
+    n_groups : int
+        Number of unique groups/series.
+    groups_ : dict[int, str]
+        Mapping from group codes to series names.
+
+    Examples
+    --------
+    >>> from vangja import LinearTrend, FourierSeasonality
+    >>> from vangja.datasets import load_peyton_manning
+    >>>
+    >>> # Basic usage
+    >>> model = LinearTrend() + FourierSeasonality(period=365.25, series_order=10)
+    >>> model.fit(data, method="mapx")
+    >>> predictions = model.predict(horizon=365)
+
+    >>> # With hierarchical pooling for multiple series
+    >>> model = LinearTrend(
+    ...     pool_type="partial",
+    ...     shrinkage_strength=50,
+    ...     n_changepoints=10
+    ... )
+
+    >>> # Transfer learning from a pre-trained model
+    >>> target_model = LinearTrend(tune_method="parametric")
+    >>> target_model.fit(short_series, idata=source_trace)
+
+    See Also
+    --------
+    FourierSeasonality : Seasonal component using Fourier series.
+
+    Notes
+    -----
+    The changepoint formulation follows the Facebook Prophet paper [1]_.
+    The ``delta_side="right"`` option is an extension that allows the
+    slope parameter to represent the end slope rather than the start slope.
+
+    References
+    ----------
+    .. [1] Taylor, S.J. and Letham, B., 2018. Forecasting at scale.
+       The American Statistician, 72(1), pp.37-45.
+    """
+
+    model_idx: int | None = None
+
     def __init__(
         self,
         n_changepoints: int = 25,
@@ -35,65 +161,9 @@ class LinearTrend(TimeSeriesModel):
         shrinkage_strength: float = 100,
         loss_factor_for_tune: float = 0,
     ):
-        """
-        Crate a Linear Trend model component.
+        """Creeate a Linear Trend model component.
 
-        Parameters
-        ----------
-        n_changepoints: int
-            The number of points at which the linear trend changes its slope.
-        changepoint_range: float
-            The portion of the time axis at which the potential changes in the slope
-            are allowed.
-        slope_mean: float
-            The mean of the Normal prior for the slope parameter.
-        slope_sd: float
-            The standard deviation of the Normal prior for the slope parameter.
-        intercept_mean: float
-            The mean of the Normal prior for the intercept parameter.
-        intercept_sd: float
-            The standard devation of the Normal prior for the intercept parameter.
-        delta_mean: float
-            The mean of the Laplace prior for the slope change in the potential
-            changepoints.
-        delta_sd: float | None
-            The standard deviation of the Laplace prior for the slope change in the
-            potential changepoints. If delta_sd is None, the standard deviation becomes
-            a random variable with a Exponential(lam=1.5) prior.
-        delta_side: Literal["left", "right"]
-            If set to "left", the slope parameter controls the slope of the trend at the
-            earliest ds. Otherwise, the slope parameter controls the slope of the trend
-            at the latest ds.
-        pool_type: PoolType
-            Type of pooling performed when sampling.
-        delta_pool_type: PoolType
-            Type of pooling performed on the change points when sampling. Only
-            considered when pool_type == "partial".
-        tune_method: TuneMethod | None
-            How the transfer learning is to be performed. One of "parametric" or
-            "prior_from_idata". If set to None, this component will not be tuned even if
-            idata is provided.
-        delta_tune_method: TuneMethod | None
-            How the transfer learning for the change points is to be performed. One of
-            "parametric" or "prior_from_idata". If set to None, change points will not
-            be tuned even if idata is provided. Only considered when tune_method is not
-            None.
-        override_slope_mean_for_tune: np.ndarray | None
-            Override the mean of the Normal prior for the slope parameter with this
-            value.
-        override_slope_sd_for_tune: np.ndarray | None
-            Override the standard deviation of the Normal prior for the slope parameter
-            with this value.
-        override_delta_loc_for_tune: np.ndarray | None
-            Override the loc of the Laplace prior for the change points parameter with
-            this value.
-        override_delta_scale_for_tune: np.ndarray | None
-            Override the scale of the Laplace prior for the change points parameter with
-            this value.
-        shrinkage_strength: float
-            Shrinkage between groups for the hierarchical modeling.
-        loss_factor_for_tune: float
-            Regularization factor for transfer learning.
+        See the class docstring for full parameter descriptions.
         """
         self.n_changepoints = n_changepoints
         self.changepoint_range = changepoint_range

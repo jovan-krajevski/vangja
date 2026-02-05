@@ -13,6 +13,112 @@ from vangja.utils import get_group_definition
 
 
 class FourierSeasonality(TimeSeriesModel):
+    """A seasonal component using Fourier series representation.
+
+    This component models periodic patterns in time series using a Fourier
+    series, following the Prophet approach. It allows flexible representation
+    of seasonal effects with controllable complexity via the number of terms.
+
+    The seasonality is defined as::
+
+        seasonality(t) = sum_{n=1}^{N} [a_n * cos(2*pi*n*t/P) + b_n * sin(2*pi*n*t/P)]
+
+    where:
+
+    - ``P`` is the period (e.g., 365.25 for yearly, 7 for weekly)
+    - ``N`` is the series order (number of Fourier terms)
+    - ``a_n``, ``b_n`` are the Fourier coefficients (collectively called beta)
+
+    Parameters
+    ----------
+    period : float
+        The period of the seasonal pattern in days. Common values:
+
+        - 365.25: Yearly seasonality
+        - 7: Weekly seasonality
+        - 30.4375: Monthly seasonality (average month length)
+    series_order : int
+        Number of Fourier terms. Higher values capture more complex patterns
+        but may overfit. Guidelines:
+
+        - Yearly: 10-20 terms
+        - Weekly: 3-5 terms
+        - Monthly: 3-5 terms
+    beta_mean : float, default=0
+        The mean of the Normal prior for the Fourier coefficients.
+    beta_sd : float, default=10
+        The standard deviation of the Normal prior for the Fourier coefficients.
+    pool_type : PoolType, default="complete"
+        Type of pooling for multi-series data. One of:
+
+        - "complete": All series share the same seasonal pattern
+        - "partial": Hierarchical pooling with shared seasonal shape
+        - "individual": Each series has independent seasonal patterns
+    tune_method : TuneMethod | None, default=None
+        Transfer learning method. One of:
+
+        - "parametric": Use posterior mean/std as new priors
+        - "prior_from_idata": Use posterior samples directly
+        - None: No transfer learning
+    override_beta_mean_for_tune : np.ndarray | None, default=None
+        Override the beta mean during transfer learning.
+    override_beta_sd_for_tune : np.ndarray | None, default=None
+        Override the beta standard deviation during transfer learning.
+    shrinkage_strength : float, default=1
+        Controls hierarchical shrinkage. Higher values pull individual
+        series parameters more strongly toward the shared pattern.
+    shift_for_tune : bool, default=False
+        If True, learn a time shift parameter during transfer learning
+        to align seasonal patterns across time series.
+    loss_factor_for_tune : float, default=1
+        Regularization factor for transfer learning. Adds a penalty to
+        preserve the original seasonal amplitude.
+
+    Attributes
+    ----------
+    model_idx : int | None
+        Index of this component in the model (set during fitting).
+    group : np.ndarray
+        Array of group codes for each data point.
+    n_groups : int
+        Number of unique groups/series.
+    groups_ : dict[int, str]
+        Mapping from group codes to series names.
+
+    Examples
+    --------
+    >>> from vangja import LinearTrend, FourierSeasonality
+    >>> from vangja.datasets import load_air_passengers
+    >>>
+    >>> # Basic additive seasonality
+    >>> model = LinearTrend() + FourierSeasonality(period=365.25, series_order=10)
+    >>> model.fit(data)
+    >>>
+    >>> # Multiplicative seasonality (Prophet-style)
+    >>> model = LinearTrend() ** FourierSeasonality(period=365.25, series_order=10)
+    >>>
+    >>> # Multiple seasonal components
+    >>> model = LinearTrend() ** (
+    ...     FourierSeasonality(period=365.25, series_order=10) +
+    ...     FourierSeasonality(period=7, series_order=3)
+    ... )
+
+    See Also
+    --------
+    LinearTrend : Piecewise linear trend component.
+
+    Notes
+    -----
+    The Fourier series representation is based on the Prophet paper [2]_.
+    Using more Fourier terms allows fitting more complex seasonal patterns
+    but increases the risk of overfitting.
+
+    References
+    ----------
+    .. [2] Taylor, S.J. and Letham, B., 2018. Forecasting at scale.
+       The American Statistician, 72(1), pp.37-45.
+    """
+
     model_idx: int | None = None
 
     def __init__(
@@ -29,39 +135,9 @@ class FourierSeasonality(TimeSeriesModel):
         shift_for_tune: bool = False,
         loss_factor_for_tune: float = 1,
     ):
-        """
-        Crate a Fourier Seasonality model component.
+        """Create a Fourier Seasonality model component.
 
-        Parameters
-        ----------
-        period: float
-            The period of the seasonal effects.
-        series_order: int
-            Number of terms in the Fourier series.
-        beta_mean: float
-            The mean of the Normal prior for the Fourier series coefficients parameter.
-        beta_sd: float
-            The standard deviation of the Normal prior for the Fourier series
-            coefficients parameter.
-        pool_type: PoolType
-            Type of pooling performed when sampling.
-        tune_method: TuneMethod | None
-            How the transfer learning is to be performed. One of "parametric" or
-            "prior_from_idata". If set to None, this component will not be tuned even if
-            idata is provided.
-        override_beta_mean_for_tune: np.ndarray | None
-            Override the mean of the Normal prior for the Fourier series coefficients
-            parameter with this value.
-        override_beta_sd_for_tune: np.ndarray | None
-            Override the standard deviation of the Normal prior for the Fourier series
-            coefficients parameter with this value.
-        shrinkage_strength: float
-            Shrinkage between groups for the hierarchical modeling.
-        shift_for_tune: bool
-            If true, a parameter determines how much the transfered posterior needs to
-            be shifted along the time axis when using it as a prior.
-        loss_factor_for_tune: float
-            Regularization factor for transfer learning.
+        See the class docstring for full parameter descriptions.
         """
         self.period = period
         self.series_order = series_order
