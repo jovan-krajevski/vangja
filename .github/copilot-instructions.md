@@ -77,7 +77,7 @@ For series with non-overlapping date ranges, consider fitting them separately or
 
 ### Transfer Learning
 
-Set `tune_method="parametric"` or `"prior_from_idata"` on components, then pass `idata` (ArviZ InferenceData) to `fit()` to transfer knowledge from pre-trained models.
+Set `tune_method="parametric"` or `"prior_from_idata"` on components, then pass `idata` (ArviZ InferenceData) to `fit()` to transfer knowledge from pre-trained models. See [07_transfer_learning.ipynb](docs/07_transfer_learning.ipynb) for a complete example using NYC temperature data to forecast short bike sales time series.
 
 ### Datasets Module (`src/vangja/datasets/`)
 
@@ -87,6 +87,8 @@ The `datasets` module provides functions for loading real-world datasets and gen
 
 - `load_air_passengers()` — Classic monthly airline passengers (1949-1960)
 - `load_peyton_manning()` — Daily Wikipedia page views (2007-2016)
+- `load_citi_bike_sales()` — Daily bike rides from NYC Citi Bike station 360 (2013-2014). Requires `pyreadr` (install with `pip install vangja[datasets]`)
+- `load_nyc_temperature()` — Daily max temperature for NYC (2012-2017)
 - `generate_multi_store_data()` — 5 synthetic store series with same time range
 - `generate_hierarchical_products(include_all_year=True)` — 5-6 synthetic product series with opposite seasonality (summer/winter groups). Default time range is 2 years (2018–2019). **Does not introduce gaps** — use `remove_random_gaps()` per-series in notebooks to simulate missing data.
 

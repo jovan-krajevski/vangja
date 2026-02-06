@@ -7,6 +7,8 @@ Real-world Datasets
 -------------------
 - `load_air_passengers()` — Classic monthly airline passenger data (1949-1960)
 - `load_peyton_manning()` — Daily Wikipedia page views (2007-2016)
+- `load_citi_bike_sales()` — Daily bike rides from NYC station (2013-2014)
+- `load_nyc_temperature()` — Daily max temperature for NYC (2012-2017)
 
 Synthetic Datasets
 ------------------
@@ -24,7 +26,12 @@ Examples
 >>> stores_df, store_params = generate_multi_store_data(seed=42)
 """
 
-from vangja.datasets.loaders import load_air_passengers, load_peyton_manning
+from vangja.datasets.loaders import (
+    load_air_passengers,
+    load_citi_bike_sales,
+    load_nyc_temperature,
+    load_peyton_manning,
+)
 from vangja.datasets.synthetic import (
     generate_hierarchical_products,
     generate_multi_store_data,
@@ -33,6 +40,8 @@ from vangja.datasets.synthetic import (
 __all__ = [
     "load_air_passengers",
     "load_peyton_manning",
+    "load_citi_bike_sales",
+    "load_nyc_temperature",
     "generate_multi_store_data",
     "generate_hierarchical_products",
 ]
