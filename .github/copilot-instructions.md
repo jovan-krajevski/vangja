@@ -102,7 +102,9 @@ model = (
 )
 ```
 
-This allows the model to learn +1 (peak in summer), -1 (peak in winter), or 0 (no seasonality) for each series.
+This allows the model to learn +1 (peak in summer), -1 (peak in winter), or 0 (no seasonality) for each series. Note: the `UniformConstant` trick is most valuable with **high shrinkage** on the Fourier coefficients. With low/moderate shrinkage, partial pooling on the Fourier coefficients alone can handle opposite seasonality (the shared mean drifts to ~0 and individual deviations compensate). See [06_hierarchical_caveats.ipynb](notebooks/06_hierarchical_caveats.ipynb) for a detailed analysis.
+
+**Shrinkage strength caveat:** `shrinkage_strength` is a hyperparameter that must be tuned per problem. Higher values pull series toward the shared mean more strongly. With opposite seasonality and high shrinkage, the shared Fourier mean is pulled to ~0, weakening seasonal patterns — this is where `UniformConstant` helps by separating seasonal shape from direction.
 
 ## Development Workflow
 
