@@ -5,6 +5,8 @@ of time series models.
 
 Functions
 ---------
+remove_random_gaps
+    Remove random contiguous intervals from a time series to simulate missing data.
 get_group_definition
     Assign group codes to different time series based on pooling type.
 filter_predictions_by_series
@@ -23,6 +25,80 @@ from sklearn.metrics import (
 )
 
 from vangja.types import PoolType
+
+
+def remove_random_gaps(
+    df: pd.DataFrame, n_gaps: int = 4, gap_fraction: float = 0.2
+) -> pd.DataFrame:
+    """Remove random continuous intervals (gaps) from a time series DataFrame.
+
+    Creates realistic missing-data scenarios by removing ``n_gaps``
+    non-overlapping contiguous blocks from the data. Each block removes
+    approximately ``gap_fraction`` of the total data points.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        A time series DataFrame. Must have at least a ``ds`` column.
+    n_gaps : int, default 4
+        Number of contiguous intervals to remove.
+    gap_fraction : float, default 0.2
+        Fraction of total data points removed per gap.
+
+    Returns
+    -------
+    pd.DataFrame
+        A copy of the input DataFrame with the specified gaps removed,
+        index reset.
+
+    Raises
+    ------
+    ValueError
+        If the total number of points to remove exceeds the length of the
+        DataFrame.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> df = pd.DataFrame({
+    ...     'ds': pd.date_range('2020-01-01', periods=100),
+    ...     'y': range(100),
+    ... })
+    >>> df_with_gaps = remove_random_gaps(df, n_gaps=2, gap_fraction=0.1)
+    >>> len(df_with_gaps) < len(df)
+    True
+    """
+    n = len(df)
+    gap_size = int(n * gap_fraction)
+    total_gap_size = n_gaps * gap_size
+
+    if total_gap_size >= n:
+        raise ValueError(
+            f"Cannot remove {n_gaps} gaps of {gap_fraction*100}% each from data"
+        )
+
+    # Generate non-overlapping gap start positions
+    available_indices = list(range(n - gap_size))
+    gap_starts = []
+
+    for i in range(n_gaps):
+        if not available_indices:
+            break
+        start = np.random.choice(available_indices)
+        gap_starts.append(start)
+        # Remove indices that would overlap with this gap
+        available_indices = [
+            idx
+            for idx in available_indices
+            if idx >= start + gap_size or idx + gap_size <= start
+        ]
+
+    # Create mask for rows to keep
+    keep_mask = np.ones(n, dtype=bool)
+    for start in gap_starts:
+        keep_mask[start : start + gap_size] = False
+
+    return df[keep_mask].reset_index(drop=True)
 
 
 def get_group_definition(

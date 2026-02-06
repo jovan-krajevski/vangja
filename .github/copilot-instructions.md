@@ -11,7 +11,7 @@ Vangja is a Bayesian time series forecasting package built on PyMC. It extends F
 - **`time_series.py`** — Base `TimeSeriesModel` class that all components inherit from. Handles data preprocessing, scaling, model fitting (PyMC), and prediction. Models compose via operator overloading (`+`, `*`, `**`).
 - **`components/`** — Model building blocks: `LinearTrend`, `FourierSeasonality`, `NormalConstant`, `BetaConstant`, `UniformConstant`. Each implements `definition()`, `_predict_map()`, `_predict_mcmc()`, and `_plot()`.
 - **`types.py`** — Type definitions (`PoolType`, `Method`, `Scaler`, `TuneMethod`) with docstrings explaining each literal value.
-- **`utils.py`** — Helper functions for group assignment and metrics.
+- **`utils.py`** — Helper functions for group assignment, metrics, and data manipulation (e.g., `remove_random_gaps`).
 
 ### Model Composition Pattern
 
@@ -71,6 +71,7 @@ For series with non-overlapping date ranges, consider fitting them separately or
 
 **Utilities for multi-series:**
 
+- `remove_random_gaps(df, n_gaps=4, gap_fraction=0.2)` — Remove random contiguous intervals from a time series to simulate missing data. Call this **per-series in notebooks**, not inside data generation functions. The default removes 4 gaps of 20% each.
 - `filter_predictions_by_series(future, series_data, yhat_col, horizon)` — Filter predictions to a specific series' date range. **Always use this** when series have different date ranges.
 - `metrics(y_true, future, pool_type)` — Calculates metrics by merging on `ds` column (handles different data frequencies)
 
@@ -87,7 +88,7 @@ The `datasets` module provides functions for loading real-world datasets and gen
 - `load_air_passengers()` — Classic monthly airline passengers (1949-1960)
 - `load_peyton_manning()` — Daily Wikipedia page views (2007-2016)
 - `generate_multi_store_data()` — 5 synthetic store series with same time range
-- `generate_hierarchical_products(include_all_year=True)` — 5-6 synthetic product series with opposite seasonality (summer/winter groups)
+- `generate_hierarchical_products(include_all_year=True)` — 5-6 synthetic product series with opposite seasonality (summer/winter groups). Default time range is 2 years (2018–2019). **Does not introduce gaps** — use `remove_random_gaps()` per-series in notebooks to simulate missing data.
 
 **Adding new datasets:** Create functions in `datasets/loaders.py` (real data) or `datasets/synthetic.py` (generated data), then export in `datasets/__init__.py`.
 
@@ -268,3 +269,13 @@ Documentation is automatically deployed to GitHub Pages via the `.github/workflo
 - **Manual trigger**: Use "Run workflow" in GitHub Actions
 
 Enable GitHub Pages in repository settings → Pages → Source: "GitHub Actions".
+
+## Self-Updating Instructions
+
+Whenever an LLM is used to generate code for this project, it should consider whether it learned something new during the task that would be useful for future work. If so, it should update this `copilot-instructions.md` file with the new knowledge. Examples of useful updates include:
+
+- New patterns or conventions discovered in the codebase
+- Gotchas or non-obvious behaviors of APIs
+- Preferred approaches that emerged from discussion with the user
+- New utility functions, datasets, or components that were added
+- Changes to default parameters or function signatures

@@ -161,7 +161,7 @@ def generate_multi_store_data(
 
 def generate_hierarchical_products(
     start_date: str = "2018-01-01",
-    end_date: str = "2020-12-31",
+    end_date: str = "2019-12-31",
     freq: str = "D",
     n_changepoints: int = 8,
     seed: int | None = 42,
@@ -194,7 +194,7 @@ def generate_hierarchical_products(
     ----------
     start_date : str, default "2018-01-01"
         Start date for the time series
-    end_date : str, default "2020-12-31"
+    end_date : str, default "2019-12-31"
         End date for the time series
     freq : str, default "D"
         Frequency of the time series (e.g., "D" for daily)
@@ -385,53 +385,10 @@ def generate_hierarchical_products(
 
         return pd.DataFrame({"ds": dates, "y": y, "series": name})
 
-    def _remove_random_gaps(
-        df: pd.DataFrame, n_gaps: int = 3, gap_fraction: float = 0.15
-    ) -> pd.DataFrame:
-        """Remove n_gaps non-overlapping continuous intervals from the data.
-
-        Each gap removes gap_fraction of the total data points.
-        """
-        n = len(df)
-        gap_size = int(n * gap_fraction)
-        total_gap_size = n_gaps * gap_size
-
-        if total_gap_size >= n:
-            raise ValueError(
-                f"Cannot remove {n_gaps} gaps of {gap_fraction*100}% each from data"
-            )
-
-        # Generate non-overlapping gap start positions
-        # Divide the data into n_gaps+1 segments and place gaps within segments
-        available_indices = list(range(n - gap_size))
-        gap_starts = []
-
-        for i in range(n_gaps):
-            if not available_indices:
-                break
-            start = np.random.choice(available_indices)
-            gap_starts.append(start)
-            # Remove indices that would overlap with this gap
-            available_indices = [
-                idx
-                for idx in available_indices
-                if idx >= start + gap_size or idx + gap_size <= start
-            ]
-
-        # Create mask for rows to keep
-        keep_mask = np.ones(n, dtype=bool)
-        for start in gap_starts:
-            keep_mask[start : start + gap_size] = False
-
-        return df[keep_mask].reset_index(drop=True)
-
     # Generate all series
     all_series = []
     for name, params in product_params.items():
         series = _generate_single_series(name=name, dates=dates, **params)
-        # Remove random gaps for all products except all_year
-        if params["group"] != "all_year":
-            series = _remove_random_gaps(series, n_gaps=3, gap_fraction=0.15)
         all_series.append(series)
 
     df = pd.concat(all_series, ignore_index=True)
