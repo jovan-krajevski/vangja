@@ -109,6 +109,40 @@ Markov Chain Monte Carlo:
 - "demetropolisz": Differential Evolution Metropolis-Z.
 """
 
+OptimizationMethod = Literal[
+    "nelder-mead",
+    "powell",
+    "CG",
+    "BFGS",
+    "Newton-CG",
+    "L-BFGS-B",
+    "TNC",
+    "COBYLA",
+    "SLSQP",
+    "trust-constr",
+    "dogleg",
+    "trust-ncg",
+    "trust-exact",
+    "trust-krylov",
+]
+"""Optimization methods for MAP inference.
+
+- "nelder-mead": Simplex algorithm, does not use gradients.
+- "powell": Conjugate direction method, does not use gradients.
+- "CG": Conjugate Gradient, uses gradients.
+- "BFGS": Broyden-Fletcher-Goldfarb-Shanno, uses gradients.
+- "Newton-CG": Newton-Conjugate Gradient, uses gradients and Hessian-vector products.
+- "L-BFGS-B": Limited-memory BFGS with bounds, uses gradients.
+- "TNC": Truncated Newton Conjugate-Gradient, uses gradients and supports bounds.
+- "COBYLA": Constrained Optimization BY Linear Approximation, does not use gradients.
+- "SLSQP": Sequential Least Squares Programming, uses gradients and supports constraints.
+- "trust-constr": Trust-region Constrained Algorithm, uses gradients and supports constraints.
+- "dogleg": Trust-region Dogleg method, uses gradients and Hessian.
+- "trust-ncg": Trust-region Newton Conjugate Gradient, uses gradients and Hessian-vector products.
+- "trust-exact": Trust-region Exact method, uses gradients and Hessian.
+- "trust-krylov": Trust-region Krylov method, uses gradients and Hessian-vector products.
+"""
+
 NutsSampler = Literal["pymc", "nutpie", "numpyro", "blackjax"]
 """Backend samplers for NUTS inference.
 

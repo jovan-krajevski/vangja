@@ -154,12 +154,7 @@ class FourierSeasonality(TimeSeriesModel):
 
     def _fourier_series(self, data: pd.DataFrame, shift=None):
         # convert to days since epoch
-        MICROSECONDS_TO_SECONDS = 1000 * 1000
-        t = (
-            data["ds"].to_numpy(dtype=np.int64)
-            // MICROSECONDS_TO_SECONDS
-            / (3600 * 24.0)
-        )
+        t = (data["ds"] - pd.Timestamp("1970-01-01")).dt.days.values.astype(float)
         if shift is not None:
             t += shift
 
@@ -245,6 +240,7 @@ class FourierSeasonality(TimeSeriesModel):
                     beta_key, beta_mean, beta_sd, shape=2 * self.series_order
                 )
             elif priors is not None and self.tune_method == "prior_from_idata":
+                beta_mean, beta_sd = self._get_beta_params_from_idata(idata)
                 beta = pm.Deterministic(beta_key, priors[f"prior_{beta_key}"])
             else:
                 beta = pm.Normal(

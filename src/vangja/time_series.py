@@ -28,6 +28,7 @@ from vangja.types import (
     FreqStr,
     Method,
     NutsSampler,
+    OptimizationMethod,
     PoolType,
     ScaleMode,
     Scaler,
@@ -146,8 +147,8 @@ class TimeSeriesModel:
         Parameters
         ----------
         data : pd.DataFrame
-            A pandas dataframe that must at least have columns ds (predictor), y
-            (target) and series (name of time series).
+            A pandas dataframe that must at least have columns ds (predictor) and
+            y (target). Column series (name of time series) is optional.
         scaler: Scaler
             Whether to use maxabs or minmax scaling of the y (target).
         scale_mode: ScaleMode
@@ -155,7 +156,7 @@ class TimeSeriesModel:
         t_scale_params: TScaleParams | None
             Whether to override scale parameters for ds (predictor).
         """
-        self.data = data.reset_index(drop=True)
+        self.data = data.reset_index(drop=True).dropna()
         self.data["ds"] = pd.to_datetime(self.data["ds"])
         self.data["t"] = 0.0
         self.data["y"] = self.data["y"].astype(float)
@@ -241,7 +242,10 @@ class TimeSeriesModel:
         sigma_pool_type: PoolType = "complete",
         sigma_shrinkage_strength: float = 1,
         method: Method = "mapx",
-        samples: int = 0,
+        optimization_method: OptimizationMethod = "L-BFGS-B",
+        maxiter: int = 10000,
+        n: int = 10000,
+        samples: int = 1000,
         chains: int = 4,
         cores: int = 4,
         nuts_sampler: NutsSampler = "pymc",
@@ -271,6 +275,14 @@ class TimeSeriesModel:
         method: Method
             The Bayesian inference method to be used. Either a point estimate MAP), a
             VI method (advi etc.) or full Bayesian sampling (MCMC).
+        optimization_method: OptimizationMethod
+            The optimization method to be used for MAP inference. See
+            scipy.optimize.minimize documentation for details.
+        maxiter: int
+            The maximum number of iterations for the L-BFGS-B optimization algorithm
+            when using MAP inference.
+        n: int
+            The number of iterations to be used for the VI methods.
         samples: int
             Denotes the number of samples to be drawn from the posterior for MCMC and
             VI methods.
@@ -334,13 +346,13 @@ class TimeSeriesModel:
         with self.model:
             if self.method == "mapx":
                 map_result = pmx.find_MAP(
-                    method="L-BFGS-B",
+                    method=optimization_method,
                     use_grad=True,
                     initvals=initval_dict,
                     progressbar=progressbar,
                     gradient_backend="jax",
                     compile_kwargs={"mode": "JAX"},
-                    options={"maxiter": 1e4},
+                    options={"maxiter": maxiter},
                 )
                 # Convert InferenceData to dict format for consistent access
                 self.map_approx = {
@@ -350,13 +362,13 @@ class TimeSeriesModel:
             elif self.method == "map":
                 self.map_approx = pm.find_MAP(
                     start=initval_dict,
-                    method="L-BFGS-B",
+                    method=optimization_method,
                     progressbar=progressbar,
-                    maxeval=1e4,
+                    maxeval=maxiter,
                 )
             elif self.method in ["fullrank_advi", "advi", "svgd", "asvgd"]:
                 approx = pm.fit(
-                    50000,
+                    n,
                     method=self.method,
                     start=initval_dict if self.method != "asvgd" else None,
                     progressbar=progressbar,
