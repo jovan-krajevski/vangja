@@ -18,6 +18,7 @@ Welcome to Vangja's documentation!
    notebooks/05_hierarchical_modeling
    notebooks/06_hierarchical_caveats
    notebooks/07_transfer_learning
+   notebooks/08_prior_from_idata
 
 .. toctree::
    :maxdepth: 2

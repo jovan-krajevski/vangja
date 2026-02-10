@@ -533,15 +533,19 @@ class FourierSeasonality(TimeSeriesModel):
     def _predict_map(self, future, map_approx):
         forecasts = []
         for group_code in self.groups_.keys():
-            beta = map_approx[
+            beta_key = (
                 f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"
-            ]
+            )
+            if beta_key in map_approx:
+                beta = map_approx[beta_key]
+            else:
+                beta = map_approx[f"prior_{beta_key}"]
+
             if self.pool_type != "complete" and self.n_groups > 1:
                 beta = beta[group_code]
             forecasts.append(
                 self._det_seasonality_posterior(beta, self._fourier_series(future))
             )
-            # breakpoint()
             future[f"fs_{self.model_idx}_{group_code}"] = forecasts[-1]
 
         return np.vstack(forecasts)
@@ -551,16 +555,17 @@ class FourierSeasonality(TimeSeriesModel):
         if shift is not None:
             shift = shift.mean()
 
+        beta_key = f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"
+
         forecasts = []
         for group_code in self.groups_.keys():
             # Get beta, averaging over chains and draws
-            beta = (
-                trace["posterior"][
-                    f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"
-                ]
-                .to_numpy()
-                .mean(axis=(0, 1))
-            )
+            if beta_key in trace["posterior"]:
+                beta = trace["posterior"][beta_key].to_numpy().mean(axis=(0, 1))
+            else:
+                beta = (
+                    trace["posterior"][f"prior_{beta_key}"].to_numpy().mean(axis=(0, 1))
+                )
 
             # Handle per-group parameters
             if self.pool_type != "complete" and self.n_groups > 1:

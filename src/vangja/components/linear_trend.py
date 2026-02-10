@@ -722,6 +722,9 @@ class LinearTrend(TimeSeriesModel):
 
     def _predict_map(self, future, map_approx):
         forecasts = []
+        slope_key = f"lt_{self.model_idx} - slope"
+        intercept_key = f"lt_{self.model_idx} - intercept"
+        delta_key = f"lt_{self.model_idx} - delta"
         for group_code in self.groups_.keys():
             slope_correction = 0
             intercept_correction = 0
@@ -731,7 +734,11 @@ class LinearTrend(TimeSeriesModel):
                 else:
                     new_A = (np.array(future["t"])[:, None] <= self.s) * 1
 
-                delta = map_approx[f"lt_{self.model_idx} - delta"]
+                if delta_key in map_approx:
+                    delta = map_approx[delta_key]
+                else:
+                    delta = map_approx[f"prior_{delta_key}"]
+
                 if (
                     self.pool_type == "individual"
                     or (
@@ -744,8 +751,16 @@ class LinearTrend(TimeSeriesModel):
                 slope_correction = new_A @ delta
                 intercept_correction = new_A @ (-self.s * delta)
 
-            slope = map_approx[f"lt_{self.model_idx} - slope"]
-            intercept = map_approx[f"lt_{self.model_idx} - intercept"]
+            if slope_key in map_approx:
+                slope = map_approx[slope_key]
+            else:
+                slope = map_approx[f"prior_{slope_key}"]
+
+            if intercept_key in map_approx:
+                intercept = map_approx[intercept_key]
+            else:
+                intercept = map_approx[f"prior_{intercept_key}"]
+
             if self.pool_type != "complete" and self.n_groups > 1:
                 slope = slope[group_code]
                 intercept = intercept[group_code]
@@ -759,19 +774,30 @@ class LinearTrend(TimeSeriesModel):
         return np.vstack(forecasts)
 
     def _predict_mcmc(self, future, trace):
+        slope_key = f"lt_{self.model_idx} - slope"
+        intercept_key = f"lt_{self.model_idx} - intercept"
+        delta_key = f"lt_{self.model_idx} - delta"
         forecasts = []
         for group_code in self.groups_.keys():
             # Get slope and intercept, averaging over chains and draws
-            slope = (
-                trace["posterior"][f"lt_{self.model_idx} - slope"]
-                .to_numpy()
-                .mean(axis=(0, 1))
-            )
-            intercept = (
-                trace["posterior"][f"lt_{self.model_idx} - intercept"]
-                .to_numpy()
-                .mean(axis=(0, 1))
-            )
+            if slope_key in trace["posterior"]:
+                slope = trace["posterior"][slope_key].to_numpy().mean(axis=(0, 1))
+            else:
+                slope = (
+                    trace["posterior"][f"prior_{slope_key}"]
+                    .to_numpy()
+                    .mean(axis=(0, 1))
+                )
+            if intercept_key in trace["posterior"]:
+                intercept = (
+                    trace["posterior"][intercept_key].to_numpy().mean(axis=(0, 1))
+                )
+            else:
+                intercept = (
+                    trace["posterior"][f"prior_{intercept_key}"]
+                    .to_numpy()
+                    .mean(axis=(0, 1))
+                )
 
             # Handle per-group parameters
             if self.pool_type != "complete" and self.n_groups > 1:
@@ -781,17 +807,16 @@ class LinearTrend(TimeSeriesModel):
             slope_correction = 0
             intercept_correction = 0
 
-            if f"lt_{self.model_idx} - delta" in trace["posterior"]:
+            if f"prior_{delta_key}" in trace["posterior"]:
+                delta_key = f"prior_{delta_key}"
+
+            if delta_key in trace["posterior"]:
                 if self.delta_side == "left":
                     new_A = (np.array(future["t"])[:, None] > self.s) * 1
                 else:
                     new_A = (np.array(future["t"])[:, None] <= self.s) * 1
 
-                delta = (
-                    trace["posterior"][f"lt_{self.model_idx} - delta"]
-                    .to_numpy()
-                    .mean(axis=(0, 1))
-                )
+                delta = trace["posterior"][delta_key].to_numpy().mean(axis=(0, 1))
 
                 # Handle per-group delta parameters
                 if (
