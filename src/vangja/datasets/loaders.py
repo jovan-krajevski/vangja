@@ -157,7 +157,7 @@ def load_citi_bike_sales() -> pd.DataFrame:
     return df[["ds", "y"]]
 
 
-def load_nyc_temperature() -> pd.DataFrame:
+def load_nyc_temperature(return_daily_average: bool = True) -> pd.DataFrame:
     """Load New York City historical daily temperature data.
 
     This dataset contains daily maximum temperatures (Fahrenheit) for
@@ -168,6 +168,11 @@ def load_nyc_temperature() -> pd.DataFrame:
 
     - Strong yearly seasonality (summer highs, winter lows)
     - Consistent periodic pattern across years
+
+    Parameters
+    ----------
+    return_daily_average : bool, default True
+        If True, return daily average temperatures. If False, return raw hourly data.
 
     Returns
     -------
@@ -201,4 +206,7 @@ def load_nyc_temperature() -> pd.DataFrame:
     df = pd.read_csv(url)
     df = df.rename(columns={"datetime": "ds", "New York": "y"})
     df["ds"] = pd.to_datetime(df["ds"])
+    if return_daily_average:
+        df = df.resample("D", on="ds").mean().reset_index()
+
     return df[["ds", "y"]]

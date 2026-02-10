@@ -452,11 +452,18 @@ class TimeSeriesModel:
         for group_code in range(forecasts.shape[0]):
             if is_individual:
                 future[f"yhat_{group_code}"] = (
-                    forecasts[group_code] * self.y_scale_params[group_code]["y_max"]
+                    forecasts[group_code]
+                    * (
+                        self.y_scale_params[group_code]["y_max"]
+                        - self.y_scale_params[group_code]["y_min"]
+                    )
+                    + self.y_scale_params[group_code]["y_min"]
                 )
             else:
                 future[f"yhat_{group_code}"] = (
-                    forecasts[group_code] * self.y_scale_params["y_max"]
+                    forecasts[group_code]
+                    * (self.y_scale_params["y_max"] - self.y_scale_params["y_min"])
+                    + self.y_scale_params["y_min"]
                 )
 
             for model_type, model_cnt in self.model_idxs.items():
@@ -466,11 +473,23 @@ class TimeSeriesModel:
                     component = f"{model_type}_{model_idx}_{group_code}"
                     if component in future.columns:
                         if is_individual:
-                            future[component] *= self.y_scale_params[group_code][
-                                "y_max"
-                            ]
+                            future[component] = (
+                                future[component]
+                                * (
+                                    self.y_scale_params[group_code]["y_max"]
+                                    - self.y_scale_params[group_code]["y_min"]
+                                )
+                                + self.y_scale_params[group_code]["y_min"]
+                            )
                         else:
-                            future[component] *= self.y_scale_params["y_max"]
+                            future[component] = (
+                                future[component]
+                                * (
+                                    self.y_scale_params["y_max"]
+                                    - self.y_scale_params["y_min"]
+                                )
+                                + self.y_scale_params["y_min"]
+                            )
 
         return future
 
@@ -539,10 +558,12 @@ class TimeSeriesModel:
         plt.title("Predictions")
         plt.grid()
 
-        # Get the correct y_max for this series
+        # Get the correct y_max and y_min for this series
         if is_individual:
+            y_min = self.y_scale_params[group_code]["y_min"]
             y_max = self.y_scale_params[group_code]["y_max"]
         else:
+            y_min = self.y_scale_params["y_min"]
             y_max = self.y_scale_params["y_max"]
 
         # Filter data to only show the specific series
@@ -550,7 +571,7 @@ class TimeSeriesModel:
 
         plt.scatter(
             series_data["ds"],
-            series_data["y"] * y_max,
+            series_data["y"] * (y_max - y_min) + y_min,
             s=3,
             color="C0",
             label="train y",

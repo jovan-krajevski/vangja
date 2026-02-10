@@ -1,12 +1,10 @@
 """Tests for vangja.components module."""
 
-import numpy as np
-import pandas as pd
-import pymc as pm
 import pytest
 
 from vangja.components import (
     BetaConstant,
+    FlatTrend,
     FourierSeasonality,
     LinearTrend,
     NormalConstant,
@@ -308,3 +306,83 @@ class TestComponentPoolType:
         """Test FourierSeasonality with partial pooling (default)."""
         fs = FourierSeasonality(period=7, series_order=3, pool_type="partial")
         assert fs.pool_type == "partial"
+
+
+class TestFlatTrendInit:
+    """Tests for FlatTrend initialization."""
+
+    def test_default_initialization(self):
+        """Test FlatTrend with default parameters."""
+        ft = FlatTrend()
+
+        assert ft.intercept_mean == 0
+        assert ft.intercept_sd == 5
+        assert ft.pool_type == "complete"
+        assert ft.tune_method is None
+        assert ft.shrinkage_strength == 100
+
+    def test_custom_initialization(self):
+        """Test FlatTrend with custom parameters."""
+        ft = FlatTrend(
+            intercept_mean=10,
+            intercept_sd=2,
+            pool_type="partial",
+            tune_method="parametric",
+            shrinkage_strength=50,
+        )
+
+        assert ft.intercept_mean == 10
+        assert ft.intercept_sd == 2
+        assert ft.pool_type == "partial"
+        assert ft.tune_method == "parametric"
+        assert ft.shrinkage_strength == 50
+
+    def test_individual_pooling(self):
+        """Test FlatTrend with individual pooling."""
+        ft = FlatTrend(pool_type="individual")
+        assert ft.pool_type == "individual"
+        assert ft.is_individual() is True
+
+    def test_complete_pooling_is_individual_false(self):
+        """Test that complete pooling returns is_individual=False."""
+        ft = FlatTrend(pool_type="complete")
+        assert ft.is_individual() is False
+
+    def test_needs_priors_false_by_default(self):
+        """Test that FlatTrend does not need priors by default."""
+        ft = FlatTrend()
+        assert ft.needs_priors() is False
+
+    def test_needs_priors_true_with_prior_from_idata(self):
+        """Test that FlatTrend needs priors with prior_from_idata."""
+        ft = FlatTrend(tune_method="prior_from_idata")
+        assert ft.needs_priors() is True
+
+    def test_str_representation(self):
+        """Test string representation of FlatTrend."""
+        ft = FlatTrend()
+        result = str(ft)
+        assert "FT" in result
+
+    def test_combined_with_seasonality(self):
+        """Test FlatTrend combined with FourierSeasonality."""
+        ft = FlatTrend()
+        fs = FourierSeasonality(period=365.25, series_order=10)
+
+        combined = ft + fs
+
+        assert hasattr(combined, "left")
+        assert hasattr(combined, "right")
+        assert combined.left is ft
+        assert combined.right is fs
+        assert "+" in str(combined)
+
+    def test_multiplicative_with_seasonality(self):
+        """Test FlatTrend with multiplicative seasonality."""
+        ft = FlatTrend()
+        fs = FourierSeasonality(period=7, series_order=3)
+
+        combined = ft**fs
+
+        assert hasattr(combined, "left")
+        assert hasattr(combined, "right")

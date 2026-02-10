@@ -36,6 +36,8 @@ Components
 ----------
 LinearTrend
     Piecewise linear trend with changepoints.
+FlatTrend
+    Constant-level trend (no slope, no changepoints).
 FourierSeasonality
     Seasonal patterns using Fourier series.
 NormalConstant
@@ -62,6 +64,7 @@ vangja.datasets : Dataset loading and generation.
 from vangja import datasets, utils
 from vangja.components import (
     BetaConstant,
+    FlatTrend,
     FourierSeasonality,
     LinearTrend,
     NormalConstant,
@@ -70,6 +73,7 @@ from vangja.components import (
 
 __all__ = [
     "LinearTrend",
+    "FlatTrend",
     "FourierSeasonality",
     "UniformConstant",
     "BetaConstant",

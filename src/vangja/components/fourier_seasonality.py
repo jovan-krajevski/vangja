@@ -133,7 +133,7 @@ class FourierSeasonality(TimeSeriesModel):
         override_beta_sd_for_tune: np.ndarray | None = None,
         shrinkage_strength: float = 1,
         shift_for_tune: bool = False,
-        loss_factor_for_tune: float = 1,
+        loss_factor_for_tune: float = 0,
     ):
         """Create a Fourier Seasonality model component.
 

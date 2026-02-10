@@ -215,7 +215,7 @@ def filter_predictions_by_series(
 
 
 def metrics(
-    y_true: pd.DataFrame, future: pd.DataFrame, pool_type: PoolType
+    y_true: pd.DataFrame, future: pd.DataFrame, pool_type: PoolType = "complete"
 ) -> pd.DataFrame:
     """Calculate evaluation metrics for time series predictions.
 

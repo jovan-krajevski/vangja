@@ -7,6 +7,8 @@ Trend Components
 ----------------
 LinearTrend
     Piecewise linear trend with optional changepoints.
+FlatTrend
+    Constant-level trend (intercept only, no slope).
 
 Seasonal Components
 -------------------
@@ -40,6 +42,7 @@ Examples
 """
 
 from vangja.components.beta_constant import BetaConstant
+from vangja.components.flat_trend import FlatTrend
 from vangja.components.fourier_seasonality import FourierSeasonality
 from vangja.components.linear_trend import LinearTrend
 from vangja.components.normal_constant import NormalConstant
@@ -47,6 +50,7 @@ from vangja.components.uniform_constant import UniformConstant
 
 __all__ = [
     "LinearTrend",
+    "FlatTrend",
     "FourierSeasonality",
     "UniformConstant",
     "BetaConstant",

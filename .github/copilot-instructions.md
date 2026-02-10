@@ -9,7 +9,7 @@ Vangja is a Bayesian time series forecasting package built on PyMC. It extends F
 ### Core Components (`src/vangja/`)
 
 - **`time_series.py`** — Base `TimeSeriesModel` class that all components inherit from. Handles data preprocessing, scaling, model fitting (PyMC), and prediction. Models compose via operator overloading (`+`, `*`, `**`).
-- **`components/`** — Model building blocks: `LinearTrend`, `FourierSeasonality`, `NormalConstant`, `BetaConstant`, `UniformConstant`. Each implements `definition()`, `_predict_map()`, `_predict_mcmc()`, and `_plot()`.
+- **`components/`** — Model building blocks: `LinearTrend`, `FlatTrend`, `FourierSeasonality`, `NormalConstant`, `BetaConstant`, `UniformConstant`. Each implements `definition()`, `_predict_map()`, `_predict_mcmc()`, and `_plot()`.
 - **`types.py`** — Type definitions (`PoolType`, `Method`, `Scaler`, `TuneMethod`) with docstrings explaining each literal value.
 - **`utils.py`** — Helper functions for group assignment, metrics, and data manipulation (e.g., `remove_random_gaps`).
 
@@ -24,7 +24,27 @@ model = LinearTrend() ** FourierSeasonality(7, 3)
 
 # Simple multiplicative: y = left * right
 model = LinearTrend() * FourierSeasonality(7, 3)
+
+# FlatTrend (constant-level baseline, no slope or changepoints):
+model = FlatTrend() + FourierSeasonality(365.25, 10)
 ```
+
+### FlatTrend Component
+
+`FlatTrend` is the simplest possible trend component: a single intercept parameter with no slope and no changepoints. The model is:
+
+```
+trend(t) = intercept
+```
+
+Useful when the time series has no discernible upward or downward trend, or when the series is too short to reliably estimate a slope. Equivalent to `LinearTrend(n_changepoints=0)` with slope fixed to 0, but more explicit and with fewer parameters.
+
+Key parameters:
+
+- `intercept_mean` (float, default=0): Mean of the Normal prior for the intercept.
+- `intercept_sd` (float, default=5): Std dev of the Normal prior for the intercept.
+
+Supports `pool_type="complete"`, `pool_type="partial"`, and `pool_type="individual"`. Transfer learning via `tune_method="parametric"` and `"prior_from_idata"` is supported.
 
 ### Multi-Series & Pooling
 
