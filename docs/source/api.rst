@@ -62,6 +62,14 @@ LinearTrend
    :undoc-members:
    :show-inheritance:
 
+FlatTrend
+~~~~~~~~~~~
+
+.. autoclass:: vangja.components.LinearTrend
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 FourierSeasonality
 ~~~~~~~~~~~~~~~~~~
 
@@ -114,6 +122,11 @@ metrics
 
 .. autofunction:: vangja.utils.metrics
 
+remove_random_gaps
+~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: vangja.utils.remove_random_gaps
+
 Datasets
 --------
 
@@ -131,6 +144,16 @@ load_peyton_manning
 ^^^^^^^^^^^^^^^^^^^
 
 .. autofunction:: vangja.datasets.load_peyton_manning
+
+load_citi_bike_sales
+^^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: vangja.datasets.load_citi_bike_sales
+
+load_nyc_temperature
+^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: vangja.datasets.load_nyc_temperature
 
 Synthetic Data Generation
 ~~~~~~~~~~~~~~~~~~~~~~~~~

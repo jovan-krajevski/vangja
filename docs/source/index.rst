@@ -19,9 +19,10 @@ Welcome to Vangja's documentation!
    notebooks/06_hierarchical_caveats
    notebooks/07_transfer_learning
    notebooks/08_prior_from_idata
+   notebooks/09_advanced_transfer_learning
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
    :caption: API Reference
 
    api
