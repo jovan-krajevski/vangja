@@ -607,6 +607,262 @@ class TimeSeriesModel:
             group_code,
         )
 
+    def sample_prior_predictive(self, samples: int = 500) -> az.InferenceData:
+        """Sample from the prior predictive distribution.
+
+        Generates simulated observations from the model's priors *before*
+        conditioning on data, enabling visual and quantitative verification
+        that the chosen priors are scientifically plausible.
+
+        Parameters
+        ----------
+        samples : int, default 500
+            Number of samples to draw from the prior predictive.
+
+        Returns
+        -------
+        az.InferenceData
+            ArviZ InferenceData with ``prior`` and ``prior_predictive`` groups.
+
+        Raises
+        ------
+        RuntimeError
+            If the model has not been fit yet (``self.model`` does not exist).
+
+        Notes
+        -----
+        The model must be fit first so that the PyMC model graph exists.
+        Calling this method does **not** alter the fitted posterior.
+
+        Examples
+        --------
+        >>> model = LinearTrend() + FourierSeasonality(365.25, 10)
+        >>> model.fit(data, method="mapx")
+        >>> prior_pred = model.sample_prior_predictive(samples=200)
+        """
+        if not hasattr(self, "model"):
+            raise RuntimeError("Model must be fit before sampling prior predictive.")
+        with self.model:
+            return pm.sample_prior_predictive(samples=samples)
+
+    def sample_posterior_predictive(self) -> az.InferenceData:
+        """Sample from the posterior predictive distribution.
+
+        Generates replicated datasets from the posterior to assess goodness of
+        fit.  Requires the model to have been fitted with an MCMC or VI
+        method so that ``self.trace`` is available.
+
+        Returns
+        -------
+        az.InferenceData
+            ArviZ InferenceData with a ``posterior_predictive`` group added.
+
+        Raises
+        ------
+        RuntimeError
+            If the model has not been fit yet.
+        ValueError
+            If the model was fit with a MAP method (no posterior trace).
+
+        Examples
+        --------
+        >>> model.fit(data, method="nuts")
+        >>> ppc = model.sample_posterior_predictive()
+        """
+        if not hasattr(self, "model"):
+            raise RuntimeError(
+                "Model must be fit before sampling posterior predictive."
+            )
+        if self.trace is None:
+            raise ValueError(
+                "Posterior predictive checks require posterior samples. "
+                "Fit the model with an MCMC or VI method (e.g., method='nuts')."
+            )
+        with self.model:
+            return pm.sample_posterior_predictive(self.trace)
+
+    def convergence_summary(self, var_names: list[str] | None = None) -> pd.DataFrame:
+        """Return an ArviZ convergence summary table.
+
+        Reports posterior mean, sd, HDI, R-hat, and ESS for every (or
+        selected) model parameter.
+
+        Parameters
+        ----------
+        var_names : list[str] or None, default None
+            Subset of variable names to include.  ``None`` includes all.
+
+        Returns
+        -------
+        pd.DataFrame
+            Summary table produced by ``az.summary``.
+
+        Raises
+        ------
+        ValueError
+            If the model was fit with MAP (no trace).
+
+        Examples
+        --------
+        >>> model.fit(data, method="nuts")
+        >>> model.convergence_summary()
+        """
+        if self.trace is None:
+            raise ValueError(
+                "Convergence diagnostics require posterior samples. "
+                "Fit with an MCMC or VI method."
+            )
+        return az.summary(self.trace, var_names=var_names)
+
+    def plot_trace(self, var_names: list[str] | None = None, **kwargs):
+        """Plot trace and posterior density for model parameters.
+
+        A thin wrapper around ``az.plot_trace``.
+
+        Parameters
+        ----------
+        var_names : list[str] or None, default None
+            Variables to include.  ``None`` plots all.
+        **kwargs
+            Additional keyword arguments forwarded to ``az.plot_trace``.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The plot axes.
+
+        Raises
+        ------
+        ValueError
+            If no trace is available.
+        """
+        if self.trace is None:
+            raise ValueError("Trace plots require posterior samples.")
+        return az.plot_trace(self.trace, var_names=var_names, **kwargs)
+
+    def plot_energy(self, **kwargs):
+        """Plot energy diagnostics for HMC/NUTS samplers.
+
+        Wraps ``az.plot_energy`` and reports the Bayesian Fraction of Missing
+        Information (BFMI).
+
+        Parameters
+        ----------
+        **kwargs
+            Additional keyword arguments forwarded to ``az.plot_energy``.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The plot axes.
+        """
+        if self.trace is None:
+            raise ValueError("Energy plots require posterior samples.")
+        return az.plot_energy(self.trace, **kwargs)
+
+    def plot_posterior(self, var_names: list[str] | None = None, **kwargs):
+        """Plot posterior density for model parameters.
+
+        Parameters
+        ----------
+        var_names : list[str] or None, default None
+            Variables to include.
+        **kwargs
+            Forwarded to ``az.plot_posterior``.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+        """
+        if self.trace is None:
+            raise ValueError("Posterior plots require posterior samples.")
+        return az.plot_posterior(self.trace, var_names=var_names, **kwargs)
+
+    def summary(self, var_names: list[str] | None = None) -> pd.DataFrame:
+        """Return a formatted posterior summary table.
+
+        For MCMC/VI models returns mean, sd, hdi_3%, hdi_97%, R-hat, and ESS.
+        For MAP models returns the point estimates.
+
+        Parameters
+        ----------
+        var_names : list[str] or None
+            Parameter names to include.
+
+        Returns
+        -------
+        pd.DataFrame
+        """
+        if self.trace is not None:
+            return az.summary(self.trace, var_names=var_names)
+        if self.map_approx is not None:
+            rows = {}
+            for k, v in self.map_approx.items():
+                val = np.atleast_1d(v)
+                if val.ndim == 0:
+                    rows[k] = {"map_estimate": float(val)}
+                else:
+                    for i, vi in enumerate(val.flat):
+                        rows[f"{k}[{i}]"] = {"map_estimate": float(vi)}
+            return pd.DataFrame(rows).T
+        raise ValueError("Model has not been fit yet.")
+
+    def compute_log_likelihood(self) -> None:
+        """Compute log-likelihood for each observation and add to trace.
+
+        This is required for WAIC and LOO-CV calculations. If the trace already
+        contains log-likelihood, this method does nothing.
+
+        Raises
+        ------
+        ValueError
+            If no trace is available or the model has not been fit yet.
+        """
+        if self.trace is None:
+            raise ValueError("Log-likelihood computation requires posterior samples.")
+
+        if not hasattr(self.trace, "log_likelihood"):
+            with self.model:
+                pm.compute_log_likelihood(self.trace)
+
+    def waic(self) -> az.ELPDData:
+        """Compute the Widely Applicable Information Criterion.
+
+        Returns
+        -------
+        az.ELPDData
+            WAIC result object.
+
+        Raises
+        ------
+        ValueError
+            If no trace is available or the trace lacks log-likelihood.
+        """
+        if self.trace is None:
+            raise ValueError("WAIC requires posterior samples.")
+
+        self.compute_log_likelihood()
+        return az.waic(self.trace)
+
+    def loo(self) -> az.ELPDData:
+        """Compute LOO-CV via Pareto-Smoothed Importance Sampling.
+
+        Returns
+        -------
+        az.ELPDData
+            LOO result object.
+
+        Raises
+        ------
+        ValueError
+            If no trace is available.
+        """
+        if self.trace is None:
+            raise ValueError("LOO requires posterior samples.")
+
+        self.compute_log_likelihood()
+        return az.loo(self.trace)
+
     def needs_priors(self, *args, **kwargs):
         return False
 

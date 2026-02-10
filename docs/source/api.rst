@@ -127,6 +127,32 @@ remove_random_gaps
 
 .. autofunction:: vangja.utils.remove_random_gaps
 
+compare_models
+~~~~~~~~~~~~~~~~~
+
+.. autofunction:: vangja.utils.compare_models
+
+prior_sensitivity_analysis
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: vangja.utils.prior_sensitivity_analysis
+
+plot_prior_posterior
+~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: vangja.utils.plot_prior_posterior
+
+plot_posterior_predictive
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: vangja.utils.plot_posterior_predictive
+
+plot_prior_predictive
+~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: vangja.utils.plot_prior_predictive
+
+
 Datasets
 --------
 

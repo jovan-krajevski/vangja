@@ -13,10 +13,25 @@ filter_predictions_by_series
     Filter predictions to dates relevant to a specific series.
 metrics
     Calculate evaluation metrics for time series predictions.
+compare_models
+    Bayesian model comparison using WAIC or LOO-CV.
+prior_sensitivity_analysis
+    Evaluate how sensitive posteriors are to changes in prior specifications.
+plot_prior_posterior
+    Visualise prior-to-posterior updating for selected parameters.
+plot_posterior_predictive
+    Plot posterior predictive samples against observed data.
+plot_prior_predictive
+    Plot prior predictive samples against observed data.
 """
 
+import itertools
+
+import arviz as az
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy import stats
 from sklearn.metrics import (
     mean_absolute_error,
     mean_absolute_percentage_error,
@@ -298,3 +313,312 @@ def metrics(
         metrics_dict["mape"][group_name] = mean_absolute_percentage_error(y, yhat)
 
     return pd.DataFrame(metrics_dict)
+
+
+def compare_models(
+    model_dict: dict,
+    ic: str = "loo",
+) -> pd.DataFrame:
+    """Compare multiple fitted models using information criteria.
+
+    Wraps ``arviz.compare`` to produce a ranked table of models scored by
+    WAIC or LOO-CV (PSIS).
+
+    Parameters
+    ----------
+    model_dict : dict[str, az.InferenceData | object]
+        Mapping of model names to either ``arviz.InferenceData`` objects or
+        fitted vangja model objects that expose a ``.trace`` attribute.
+    ic : {"loo", "waic"}, default "loo"
+        Information criterion to use.
+
+    Returns
+    -------
+    pd.DataFrame
+        Comparison table sorted by the chosen criterion (best model first).
+
+    Examples
+    --------
+    >>> from vangja.utils import compare_models
+    >>> comparison = compare_models(
+    ...     {"baseline": baseline_model, "transfer": transfer_model},
+    ...     ic="loo",
+    ... )
+    """
+    resolved: dict[str, az.InferenceData] = {}
+    for name, obj in model_dict.items():
+        if isinstance(obj, az.InferenceData):
+            resolved[name] = obj
+        elif hasattr(obj, "trace") and obj.trace is not None:
+            resolved[name] = obj.trace
+        else:
+            raise ValueError(
+                f"Model '{name}' does not have posterior samples. "
+                "Fit with an MCMC or VI method."
+            )
+    return az.compare(resolved, ic=ic)  # type: ignore[arg-type]
+
+
+def plot_prior_predictive(
+    prior_predictive,
+    data: pd.DataFrame | None = None,
+    n_samples: int = 50,
+    ax=None,
+    title: str = "Prior Predictive Check",
+):
+    """Plot prior predictive samples, optionally overlaid on observed data.
+
+    Parameters
+    ----------
+    prior_predictive : az.InferenceData
+        Result of ``model.sample_prior_predictive()``.
+    data : pd.DataFrame or None
+        Observed data with columns ``ds`` and ``y``.
+    n_samples : int, default 50
+        Number of prior predictive traces to draw.
+    ax : matplotlib axes or None
+        Axes to plot on.  Created if ``None``.
+    title : str
+        Plot title.
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+    """
+    if ax is None:
+        _, ax = plt.subplots(figsize=(14, 5))
+
+    obs = prior_predictive.prior_predictive["obs"].values
+    # shape: (chains, draws, n_obs)
+    obs_flat = obs.reshape(-1, obs.shape[-1])
+    idx = np.random.choice(
+        obs_flat.shape[0], size=min(n_samples, obs_flat.shape[0]), replace=False
+    )
+
+    for i in idx:
+        ax.plot(obs_flat[i], color="C0", alpha=0.1, lw=0.5)
+
+    if data is not None:
+        ax.plot(data["y"].values, color="C1", lw=2, label="Observed data")
+        ax.legend()
+
+    ax.set_title(title)
+    ax.set_xlabel("Observation index")
+    ax.set_ylabel("y")
+    return ax
+
+
+def plot_posterior_predictive(
+    posterior_predictive,
+    data: pd.DataFrame | None = None,
+    n_samples: int = 50,
+    ax=None,
+    title: str = "Posterior Predictive Check",
+):
+    """Plot posterior predictive samples, overlaid on observed data.
+
+    Parameters
+    ----------
+    posterior_predictive : az.InferenceData
+        Result of ``model.sample_posterior_predictive()``.
+    data : pd.DataFrame or None
+        Observed data with columns ``ds`` and ``y``.
+    n_samples : int, default 50
+        Number of posterior predictive traces to draw.
+    ax : matplotlib axes or None
+        Axes to plot on.
+    title : str
+        Plot title.
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+    """
+    if ax is None:
+        _, ax = plt.subplots(figsize=(14, 5))
+
+    obs = posterior_predictive.posterior_predictive["obs"].values
+    obs_flat = obs.reshape(-1, obs.shape[-1])
+    idx = np.random.choice(
+        obs_flat.shape[0], size=min(n_samples, obs_flat.shape[0]), replace=False
+    )
+
+    for i in idx:
+        ax.plot(obs_flat[i], color="C0", alpha=0.1, lw=0.5)
+
+    if data is not None:
+        ax.plot(data["y"].values, color="C1", lw=2, label="Observed data")
+        ax.legend()
+
+    ax.set_title(title)
+    ax.set_xlabel("Observation index")
+    ax.set_ylabel("y")
+    return ax
+
+
+def plot_prior_posterior(
+    trace,
+    prior_params: dict[str, dict[str, float]],
+    var_names: list[str] | None = None,
+    figsize: tuple[float, float] | None = None,
+):
+    """Plot prior and posterior densities on the same axes.
+
+    Generates a grid of subplots, one per parameter, showing the prior
+    density (from the analytic specification) and the posterior density
+    (from MCMC/VI samples).
+
+    Parameters
+    ----------
+    trace : az.InferenceData
+        Posterior samples from a fitted model.
+    prior_params : dict[str, dict[str, float]]
+        Mapping of variable names to dicts describing the prior.  Each dict
+        must contain ``"dist"`` (one of ``"normal"``, ``"halfnormal"``,
+        ``"laplace"``) and the relevant parameters (``"mu"``/``"sigma"`` for
+        Normal, ``"sigma"`` for HalfNormal, ``"mu"``/``"b"`` for Laplace).
+    var_names : list[str] or None
+        Subset of variables to include.  Defaults to all keys in
+        ``prior_params``.
+    figsize : tuple or None
+        Figure size.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+
+    Examples
+    --------
+    >>> plot_prior_posterior(
+    ...     model.trace,
+    ...     {
+    ...         "fs_0 - beta(p=365.25,n=6)": {"dist": "normal", "mu": 0, "sigma": 10},
+    ...     },
+    ... )
+    """
+    if var_names is None:
+        var_names = list(prior_params.keys())
+
+    n = len(var_names)
+    ncols = min(3, n)
+    nrows = int(np.ceil(n / ncols))
+    if figsize is None:
+        figsize = (5 * ncols, 4 * nrows)
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
+
+    for i, var in enumerate(var_names):
+        ax = axes.flat[i]
+        # Posterior
+        post_samples = trace.posterior[var].values.flatten()
+        ax.hist(
+            post_samples,
+            bins=50,
+            density=True,
+            alpha=0.5,
+            color="C0",
+            label="Posterior",
+        )
+
+        # Prior
+        p = prior_params[var]
+        x = np.linspace(post_samples.min() - 1, post_samples.max() + 1, 300)
+        dist_name = str(p["dist"]).lower()
+        if dist_name == "normal":
+            pdf = stats.norm.pdf(x, loc=p.get("mu", 0), scale=p.get("sigma", 1))
+        elif dist_name == "halfnormal":
+            pdf = stats.halfnorm.pdf(x, scale=p.get("sigma", 1))
+        elif dist_name == "laplace":
+            pdf = stats.laplace.pdf(x, loc=p.get("mu", 0), scale=p.get("b", 1))
+        else:
+            pdf = np.zeros_like(x)
+
+        ax.plot(x, pdf, "C3-", lw=2, label="Prior")
+        ax.set_title(var, fontsize=9)
+        ax.legend(fontsize=8)
+
+    # Hide unused axes
+    for j in range(n, nrows * ncols):
+        axes.flat[j].set_visible(False)
+
+    fig.suptitle("Prior → Posterior Updating", fontsize=13)
+    fig.tight_layout()
+    return fig
+
+
+def prior_sensitivity_analysis(
+    model_factory,
+    data: pd.DataFrame,
+    param_grid: dict[str, list],
+    fit_kwargs: dict | None = None,
+    metric_data: pd.DataFrame | None = None,
+    horizon: int = 0,
+) -> pd.DataFrame:
+    """Run prior sensitivity analysis by fitting a model under varied priors.
+
+    Parameters
+    ----------
+    model_factory : callable
+        A function that accepts keyword arguments from ``param_grid`` and
+        returns an unfitted vangja model.  For example::
+
+            def make_model(beta_sd=10):
+                return FlatTrend() + FourierSeasonality(365.25, 6, beta_sd=beta_sd)
+
+    data : pd.DataFrame
+        Training data (columns ``ds``, ``y``).
+    param_grid : dict[str, list]
+        Dictionary mapping parameter names to lists of values to test.  A
+        full Cartesian product is evaluated.
+    fit_kwargs : dict or None
+        Additional keyword arguments forwarded to ``model.fit()``.
+    metric_data : pd.DataFrame or None
+        If provided, compute forecast metrics against this test set for each
+        configuration.
+    horizon : int, default 0
+        Forecast horizon used when computing metrics.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per configuration with the varied parameter values and, if
+        ``metric_data`` is provided, the resulting forecast metrics.
+
+    Examples
+    --------
+    >>> from vangja.utils import prior_sensitivity_analysis
+    >>> results = prior_sensitivity_analysis(
+    ...     model_factory=lambda beta_sd: (
+    ...         FlatTrend() + FourierSeasonality(365.25, 6, beta_sd=beta_sd)
+    ...     ),
+    ...     data=train,
+    ...     param_grid={"beta_sd": [1, 5, 10, 20]},
+    ...     fit_kwargs={"method": "mapx", "scaler": "minmax"},
+    ...     metric_data=test,
+    ...     horizon=365,
+    ... )
+    """
+    fit_kwargs = fit_kwargs or {}
+    keys = list(param_grid.keys())
+    combos = list(itertools.product(*[param_grid[k] for k in keys]))
+
+    rows: list[dict] = []
+    for combo in combos:
+        kw = dict(zip(keys, combo))
+        model = model_factory(**kw)
+        model.fit(data, **fit_kwargs)
+        row = dict(kw)
+
+        if metric_data is not None:
+            pred = model.predict(horizon=horizon, freq="D")
+            try:
+                m = metrics(metric_data, pred, pool_type="complete")
+                for col in m.columns:
+                    row[col] = m.iloc[0][col]
+            except Exception:
+                for col in ["mse", "rmse", "mae", "mape"]:
+                    row[col] = np.nan
+
+        rows.append(row)
+
+    return pd.DataFrame(rows)
