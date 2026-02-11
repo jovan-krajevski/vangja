@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath("../../src"))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "vangja"
-author = "Jovan Krajevski"
+author = "Jovan Krajevski, Biljana Tojtovska Ribarski"
 release = "0.2.0"
 
 # -- General configuration ---------------------------------------------------
