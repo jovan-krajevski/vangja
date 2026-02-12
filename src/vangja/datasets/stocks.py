@@ -136,12 +136,13 @@ def _download_stock_data(
 
     # Make end inclusive by adding one day (yfinance end is exclusive)
     end_exclusive = (pd.Timestamp(end) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    start_str = start if isinstance(start, str) else start.strftime("%Y-%m-%d")
 
     # Download all missing tickers at once for speed
     if len(tickers_to_download) == 1:
         raw = yf.download(
             tickers_to_download[0],
-            start=str(start),
+            start=start_str,
             end=end_exclusive,
             auto_adjust=True,
             progress=False,
@@ -149,7 +150,7 @@ def _download_stock_data(
     else:
         raw = yf.download(
             tickers_to_download,
-            start=str(start),
+            start=start_str,
             end=end_exclusive,
             auto_adjust=True,
             progress=False,
@@ -169,7 +170,10 @@ def _download_stock_data(
 
                 # Flatten MultiIndex columns if present (newer yfinance)
                 if isinstance(ticker_df.columns, pd.MultiIndex):
-                    ticker_df.columns = ticker_df.columns.get_level_values(-1)
+                    for idx, level in enumerate(ticker_df.columns.levels):
+                        if "Open" in level:
+                            ticker_df.columns = ticker_df.columns.get_level_values(idx)
+                            break
 
                 ticker_df = ticker_df.dropna(how="all")
                 if ticker_df.empty:
