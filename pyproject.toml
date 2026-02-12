@@ -25,6 +25,8 @@ Repository = "https://github.com/jovan-krajevski/vangja"
 [project.optional-dependencies]
 datasets = [
     "pyreadr>=0.5",
+    "yfinance>=0.2.0",
+    "lxml>=4.9",
 ]
 test = [
     "pytest>=8.0",

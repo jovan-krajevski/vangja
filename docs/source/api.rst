@@ -194,6 +194,19 @@ generate_hierarchical_products
 
 .. autofunction:: vangja.datasets.generate_hierarchical_products
 
+Stock Data
+~~~~~~~~~~
+
+load_stock_data
+^^^^^^^^^^^^^^^
+
+.. autofunction:: vangja.datasets.load_stock_data
+
+get_sp500_tickers_for_range
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: vangja.datasets.get_sp500_tickers_for_range
+
 Types
 -----
 

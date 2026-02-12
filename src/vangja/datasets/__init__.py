@@ -31,7 +31,9 @@ from vangja.datasets.loaders import (
     load_citi_bike_sales,
     load_nyc_temperature,
     load_peyton_manning,
+    load_stock_data,
 )
+from vangja.datasets.stocks import get_sp500_tickers_for_range
 from vangja.datasets.synthetic import (
     generate_hierarchical_products,
     generate_multi_store_data,
@@ -42,6 +44,8 @@ __all__ = [
     "load_peyton_manning",
     "load_citi_bike_sales",
     "load_nyc_temperature",
+    "load_stock_data",
+    "get_sp500_tickers_for_range",
     "generate_multi_store_data",
     "generate_hierarchical_products",
 ]

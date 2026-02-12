@@ -109,10 +109,14 @@ The `datasets` module provides functions for loading real-world datasets and gen
 - `load_peyton_manning()` — Daily Wikipedia page views (2007-2016)
 - `load_citi_bike_sales()` — Daily bike rides from NYC Citi Bike station 360 (2013-2014). Requires `pyreadr` (install with `pip install vangja[datasets]`)
 - `load_nyc_temperature()` — Daily max temperature for NYC (2012-2017)
+- `load_stock_data(tickers, split_date, window_size, horizon_size, cache_path, interpolate)` — Download historical stock OHLCV data, compute typical price `(O+H+L+C)/4`, and split into train/test DataFrames. Requires `yfinance` (install with `pip install vangja[datasets]`)
+- `get_sp500_tickers_for_range(start_date, end_date, cache_path)` — Return tickers consistently in S&P 500 during a date range by scraping Wikipedia's historical changes table. Accurate from ~1997 onwards.
 - `generate_multi_store_data()` — 5 synthetic store series with same time range
 - `generate_hierarchical_products(include_all_year=True)` — 5-6 synthetic product series with opposite seasonality (summer/winter groups). Default time range is 2 years (2018–2019). **Does not introduce gaps** — use `remove_random_gaps()` per-series in notebooks to simulate missing data.
 
-**Adding new datasets:** Create functions in `datasets/loaders.py` (real data) or `datasets/synthetic.py` (generated data), then export in `datasets/__init__.py`.
+**Adding new datasets:** Create functions in `datasets/loaders.py` (real data), `datasets/synthetic.py` (generated data), or `datasets/stocks.py` (stock/financial data), then export in `datasets/__init__.py`.
+
+**Stock data helpers (`datasets/stocks.py`):** Private functions for downloading OHLCV data via yfinance, parsing S&P 500 constituents/changes from Wikipedia, and reconstructing historical S&P 500 membership. All download functions support a `cache_path: Path | None` parameter for filesystem caching (creates parent directories automatically). The only public function is `get_sp500_tickers_for_range()`.
 
 **Timeseers modeling pattern:** For series with opposite seasonality (like summer vs winter products), use `UniformConstant(-1, 1)` as a scaling factor:
 
@@ -161,6 +165,7 @@ pytest tests/test_components.py  # Test specific module
 2. Implement required methods: `definition()`, `_get_initval()`, `_predict_map()`, `_predict_mcmc()`, `_plot()`
 3. Export in `components/__init__.py` and main `__init__.py`
 4. Follow existing parameter patterns: `pool_type`, `tune_method`, `shrinkage_strength`
+5. **Always write tests** for new functions, classes, and components. Tests go in `tests/` and should mock external calls (network, file I/O) where appropriate.
 
 ### Parameter Naming
 
@@ -183,7 +188,9 @@ pytest tests/test_components.py  # Test specific module
 
 ### Test Structure
 
-Tests are organized by: `test_components.py` (unit), `test_integration.py` (composition), `test_time_series.py` (base class), `test_plotting.py`, `test_types.py`, `test_utils.py`.
+Tests are organized by: `test_components.py` (unit), `test_integration.py` (composition), `test_time_series.py` (base class), `test_plotting.py`, `test_types.py`, `test_utils.py`, `test_stocks.py` (stock data & S&P 500).
+
+**Testing guidelines:** Always write tests for new functions added to the codebase. Mock external calls (yfinance, network requests, `pd.read_html`) to keep tests offline and deterministic. Use `tmp_path` for caching tests.
 
 ## Documentation
 

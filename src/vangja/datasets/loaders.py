@@ -4,7 +4,10 @@ This module provides convenience functions for loading commonly used
 time series datasets in the format expected by vangja (columns: ds, y).
 """
 
+from __future__ import annotations
+
 import tempfile
+from pathlib import Path
 from urllib.request import urlopen
 
 import pandas as pd
@@ -210,3 +213,110 @@ def load_nyc_temperature(return_daily_average: bool = True) -> pd.DataFrame:
         df = df.resample("D", on="ds").mean().reset_index()
 
     return df[["ds", "y"]]
+
+
+def load_stock_data(
+    tickers: list[str],
+    split_date: str | pd.Timestamp,
+    window_size: int,
+    horizon_size: int,
+    cache_path: Path | None = None,
+    interpolate: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Load historical stock data split into training and test sets.
+
+    Downloads daily OHLCV data for the specified tickers using Yahoo
+    Finance and computes the typical price as
+    ``(Open + High + Low + Close) / 4``. The data is split into a
+    training window and a test horizon around ``split_date``.
+
+    Parameters
+    ----------
+    tickers : list[str]
+        List of ticker symbols to download (e.g., ``["AAPL", "MSFT"]``).
+    split_date : str or pd.Timestamp
+        The date separating training and test data. Training data
+        covers ``[split_date - window_size, split_date)`` and test
+        data covers ``[split_date, split_date + horizon_size]``.
+    window_size : int
+        Number of calendar days for the training window (before
+        ``split_date``).
+    horizon_size : int
+        Number of calendar days for the test horizon (from
+        ``split_date`` onwards).
+    cache_path : Path or None, default None
+        Directory for caching downloaded data. Each ticker is stored
+        as a CSV file. If None, data is downloaded without caching.
+        If provided, parent directories are created if they do not
+        exist.
+    interpolate : bool, default False
+        If True, missing days (weekends, holidays) within each series
+        are filled using linear interpolation after reindexing to a
+        daily calendar.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, pd.DataFrame]
+        ``(train_df, test_df)`` — DataFrames with columns:
+
+        - ``ds``: datetime
+        - ``y``: float, typical price
+        - ``series``: str, ticker symbol
+
+    Examples
+    --------
+    >>> from vangja.datasets import load_stock_data
+    >>> train, test = load_stock_data(
+    ...     ["AAPL"], "2024-01-01", window_size=365, horizon_size=30
+    ... )  # doctest: +SKIP
+    >>> print(train.columns.tolist())  # doctest: +SKIP
+    ['ds', 'y', 'series']
+
+    Notes
+    -----
+    Requires the ``yfinance`` package (install with
+    ``pip install vangja[datasets]``).
+    """
+    from vangja.datasets.stocks import _download_stock_data
+
+    split = pd.Timestamp(split_date)
+    start = split - pd.Timedelta(days=window_size)
+    end = split + pd.Timedelta(days=horizon_size)
+
+    data = _download_stock_data(
+        tickers,
+        start=start,
+        end=end,
+        cache_path=cache_path,
+    )
+
+    if data.empty:
+        empty: pd.DataFrame = pd.DataFrame(columns=["ds", "y", "series"])
+        return empty, empty.copy()
+
+    # Build output DataFrame
+    result = data[["ds", "ticker", "typical_price"]].rename(
+        columns={"ticker": "series", "typical_price": "y"},
+    )
+
+    if interpolate:
+        interpolated: list[pd.DataFrame] = []
+        for ticker in result["series"].unique():
+            ticker_data = result[result["series"] == ticker].copy()
+            full_range = pd.date_range(start=start, end=end, freq="D")
+            ticker_data = ticker_data.set_index("ds").reindex(full_range)
+            ticker_data["y"] = ticker_data["y"].interpolate(method="linear")
+            ticker_data["series"] = ticker
+            ticker_data = ticker_data.reset_index().rename(
+                columns={"index": "ds"},
+            )
+            # Drop edges where forward/backward fill didn't reach
+            ticker_data = ticker_data.dropna(subset=["y"])
+            interpolated.append(ticker_data)
+        result = pd.concat(interpolated, ignore_index=True)
+
+    # Split into train and test
+    train_df = result[result["ds"] < split].copy().reset_index(drop=True)
+    test_df = result[result["ds"] >= split].copy().reset_index(drop=True)
+
+    return train_df, test_df
