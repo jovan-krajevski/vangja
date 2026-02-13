@@ -50,12 +50,12 @@ jobs:
           channels: conda-forge
           channel-priority: strict
           activate-environment: docs
-          packages: >
-            pymc>=5.27.1
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # Install pymc
+          pip install pymc>=5.27.1
           # Install the package with docs dependencies
           pip install -e ".[docs]"
 
