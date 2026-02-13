@@ -12,15 +12,15 @@ Welcome to Vangja's documentation!
    :caption: User Guide
    
    notebooks/01_getting_started
-   notebooks/02_inference_algorithms
-   notebooks/03_multi_series_fitting
-   notebooks/04_multi_series_caveats
-   notebooks/05_hierarchical_modeling
-   notebooks/06_hierarchical_caveats
-   notebooks/07_transfer_learning
-   notebooks/08_prior_from_idata
-   notebooks/09_advanced_transfer_learning
-   notebooks/10_bayesian_workflow
+   .. notebooks/02_inference_algorithms
+   .. notebooks/03_multi_series_fitting
+   .. notebooks/04_multi_series_caveats
+   .. notebooks/05_hierarchical_modeling
+   .. notebooks/06_hierarchical_caveats
+   .. notebooks/07_transfer_learning
+   .. notebooks/08_prior_from_idata
+   .. notebooks/09_advanced_transfer_learning
+   .. notebooks/10_bayesian_workflow
 
 .. toctree::
    :maxdepth: 3
