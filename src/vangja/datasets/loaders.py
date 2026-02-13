@@ -280,8 +280,11 @@ def load_stock_data(
     from vangja.datasets.stocks import _download_stock_data
 
     split = pd.Timestamp(split_date)
-    start = split - pd.Timedelta(days=window_size)
+    start = split - pd.Timedelta(days=window_size - 1)
     end = split + pd.Timedelta(days=horizon_size)
+
+    extended_start = start - pd.Timedelta(days=5)
+    extended_end = end + pd.Timedelta(days=5)
 
     data = _download_stock_data(tickers, cache_path=cache_path)
 
@@ -295,13 +298,15 @@ def load_stock_data(
     )
 
     # Filter to requested date range
-    result = result[(result["ds"] >= start) & (result["ds"] <= end)].copy()
+    result = result[
+        (result["ds"] >= extended_start) & (result["ds"] <= extended_end)
+    ].copy()
 
     if interpolate:
         interpolated: list[pd.DataFrame] = []
         for ticker in result["series"].unique():
             ticker_data = result[result["series"] == ticker].copy()
-            full_range = pd.date_range(start=start, end=end, freq="D")
+            full_range = pd.date_range(start=extended_start, end=extended_end, freq="D")
             ticker_data = ticker_data.set_index("ds").reindex(full_range)
             ticker_data["y"] = ticker_data["y"].interpolate(method="linear")
             ticker_data["series"] = ticker
@@ -314,7 +319,15 @@ def load_stock_data(
         result = pd.concat(interpolated, ignore_index=True)
 
     # Split into train and test
-    train_df = result[result["ds"] < split].copy().reset_index(drop=True)
-    test_df = result[result["ds"] >= split].copy().reset_index(drop=True)
+    train_df = (
+        result[(result["ds"] >= start) & (result["ds"] <= split)]
+        .copy()
+        .reset_index(drop=True)
+    )
+    test_df = (
+        result[(result["ds"] > split) & (result["ds"] <= end)]
+        .copy()
+        .reset_index(drop=True)
+    )
 
     return train_df, test_df
