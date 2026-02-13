@@ -75,7 +75,7 @@ intersphinx_mapping = {
 }
 
 # -- Options for nbsphinx ----------------------------------------------------
-nbsphinx_execute = "auto"  # Don't execute notebooks during build
+nbsphinx_execute = "never"  # Don't execute notebooks during build
 nbsphinx_allow_errors = True  # Don't fail on notebook errors
 
 nbsphinx_execute_arguments = [

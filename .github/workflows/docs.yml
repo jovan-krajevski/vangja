@@ -39,18 +39,6 @@ jobs:
       - name: Install pandoc
         run: sudo apt-get install -y pandoc
 
-      - name: Install Miniconda
-        uses: conda-incubator/setup-miniconda@v3
-        with:
-          miniforge-variant: Miniforge3
-          miniforge-version: latest
-          use-mamba: true
-          auto-update-conda: true
-          python-version: 3.12
-          channels: conda-forge
-          channel-priority: strict
-          activate-environment: docs
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
