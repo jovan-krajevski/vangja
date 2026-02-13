@@ -40,9 +40,9 @@ jobs:
         run: sudo apt-get install -y pandoc
 
       - name: Install Miniconda
-        uses: conda-incubator/setup-miniconda@v2
+        uses: conda-incubator/setup-miniconda@v3
         with:
-          miniforge-variant: Mambaforge # Uses Mamba (much faster for PyMC)
+          miniforge-variant: Miniforge3
           miniforge-version: latest
           use-mamba: true
           auto-update-conda: true
