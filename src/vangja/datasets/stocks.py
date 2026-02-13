@@ -58,24 +58,18 @@ def _safe_ticker_filename(ticker: str) -> str:
 
 
 def _download_stock_data(
-    tickers: list[str],
-    start: str | datetime,
-    end: str | datetime,
-    cache_path: Path | None = None,
+    tickers: list[str], cache_path: Path | None = None
 ) -> pd.DataFrame:
-    """Download historical daily OHLCV data for one or more tickers.
+    """Download historical daily OHLCV data for one or more tickers from
+    1900-01-01 to 2026-01-01.
 
     Uses ``yfinance`` to batch-download data for efficiency when multiple
-    tickers are requested. The ``end`` date is inclusive.
+    tickers are requested.
 
     Parameters
     ----------
     tickers : list[str]
         List of ticker symbols to download (e.g., ``["AAPL", "^GSPC"]``).
-    start : str or datetime
-        Start date for the data (inclusive).
-    end : str or datetime
-        End date for the data (inclusive).
     cache_path : Path or None, default None
         Directory path for caching downloaded data. If None, data is
         downloaded without caching. If provided, each ticker's data is
@@ -98,21 +92,19 @@ def _download_stock_data(
             "Install with: pip install vangja[datasets]"
         ) from e
 
+    START_DATE = "1900-01-01"
+    END_DATE = "2026-01-01"
     results: list[pd.DataFrame] = []
     tickers_to_download: list[str] = []
 
-    # Check cache for each ticker
+    # Check cache for each ticker and load if available
     if cache_path is not None:
         cache_path.mkdir(parents=True, exist_ok=True)
         for ticker in tickers:
             fname = cache_path / f"{_safe_ticker_filename(ticker)}.csv"
             if fname.exists():
                 logger.info("Loading cached data for %s", ticker)
-                df = pd.read_csv(fname, parse_dates=["ds"])
-                mask = (df["ds"] >= pd.Timestamp(start)) & (
-                    df["ds"] <= pd.Timestamp(end)
-                )
-                results.append(df[mask])
+                results.append(pd.read_csv(fname, parse_dates=["ds"]))
             else:
                 tickers_to_download.append(ticker)
     else:
@@ -134,24 +126,20 @@ def _download_stock_data(
             )
         return pd.concat(results, ignore_index=True)
 
-    # Make end inclusive by adding one day (yfinance end is exclusive)
-    end_exclusive = (pd.Timestamp(end) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-    start_str = start if isinstance(start, str) else start.strftime("%Y-%m-%d")
-
     # Download all missing tickers at once for speed
     if len(tickers_to_download) == 1:
         raw = yf.download(
             tickers_to_download[0],
-            start=start_str,
-            end=end_exclusive,
+            start=START_DATE,
+            end=END_DATE,
             auto_adjust=True,
             progress=False,
         )
     else:
         raw = yf.download(
             tickers_to_download,
-            start=start_str,
-            end=end_exclusive,
+            start=START_DATE,
+            end=END_DATE,
             auto_adjust=True,
             progress=False,
             group_by="ticker",

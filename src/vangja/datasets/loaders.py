@@ -283,12 +283,7 @@ def load_stock_data(
     start = split - pd.Timedelta(days=window_size)
     end = split + pd.Timedelta(days=horizon_size)
 
-    data = _download_stock_data(
-        tickers,
-        start=start,
-        end=end,
-        cache_path=cache_path,
-    )
+    data = _download_stock_data(tickers, cache_path=cache_path)
 
     if data.empty:
         empty: pd.DataFrame = pd.DataFrame(columns=["ds", "y", "series"])
@@ -298,6 +293,9 @@ def load_stock_data(
     result = data[["ds", "ticker", "typical_price"]].rename(
         columns={"ticker": "series", "typical_price": "y"},
     )
+
+    # Filter to requested date range
+    result = result[(result["ds"] >= start) & (result["ds"] <= end)].copy()
 
     if interpolate:
         interpolated: list[pd.DataFrame] = []
