@@ -1,3 +1,6 @@
+import matplotlib
+
+matplotlib.use("Agg")
 import os
 import sys
 
@@ -72,7 +75,12 @@ intersphinx_mapping = {
 }
 
 # -- Options for nbsphinx ----------------------------------------------------
-nbsphinx_execute = "never"  # Don't execute notebooks during build
+nbsphinx_execute = "force"  # Don't execute notebooks during build
+nbsphinx_allow_errors = True  # Don't fail on notebook errors
+
+nbsphinx_execute_arguments = [
+    "--InlineBackend.figure_formats={'svg', 'pdf'}",
+]
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
