@@ -585,7 +585,7 @@ class TimeSeriesModel:
 
         if processed_y_true is not None:
             plt.scatter(
-                processed_y_true["ds"],
+                processed_y_true[processed_y_true["series"] == series]["ds"],
                 processed_y_true[processed_y_true["series"] == series]["y"],
                 s=3,
                 color="C1",
