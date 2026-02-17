@@ -132,6 +132,36 @@ This allows the model to learn +1 (peak in summer), -1 (peak in winter), or 0 (n
 
 **Shrinkage strength caveat:** `shrinkage_strength` is a hyperparameter that must be tuned per problem. Higher values pull series toward the shared mean more strongly. With opposite seasonality and high shrinkage, the shared Fourier mean is pulled to ~0, weakening seasonal patterns — this is where `UniformConstant` helps by separating seasonal shape from direction.
 
+### Prior Predictive Checks (PPC) Workflow
+
+Vangja scales data so that `y ≈ [-1, 1]` and `t ∈ [0, 1]`. This makes prior predictive checks (PPC) especially useful for tuning prior standard deviations. The default Prophet priors (`N(0, 5)` for slope/intercept, `N(0, 10)` for Fourier beta) are intentionally very diffuse — most prior predictive samples will fall far outside the plausible data range.
+
+**Key utility functions:**
+
+- `prior_predictive_coverage(ppc, low=-2, high=2)` — Quantitative check: what fraction of prior predictive samples fall within `[low, high]`. Target 30–60% for a flexible model. Below 5% means priors are too loose; above 95% means too tight.
+- `plot_prior_predictive(ppc, show_hdi=True, show_ref_lines=True, t=model.data["t"].values)` — Visual check: spaghetti plot + HDI envelope + reference lines at scaled data bounds.
+- `plot_posterior_predictive(...)` — Same enhancements available for posterior predictive.
+
+**Typical workflow:**
+
+```python
+model = LinearTrend() + FourierSeasonality(365.25, 10)
+model.fit(data, method="mapx")
+ppc = model.sample_prior_predictive(samples=500)
+
+# Quantitative check
+coverage = prior_predictive_coverage(ppc)
+print(f"{coverage*100:.1f}% coverage")
+
+# Visual check with HDI and reference lines
+plot_prior_predictive(ppc, show_hdi=True, show_ref_lines=True, t=model.data["t"].values)
+```
+
+**Tuning guidelines:**
+- Trend (`slope_sd`, `intercept_sd`): default 5 is very wide. Try 1–2 for stable series.
+- Seasonality (`beta_sd`): default 10 is extremely wide. Try 0.5–1 to regularize and prevent overfitting high-frequency noise.
+- Use `prior_sensitivity_analysis()` to sweep over prior standard deviations and compare forecast metrics.
+
 ## Development Workflow
 
 ### Environment Setup

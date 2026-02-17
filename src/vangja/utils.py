@@ -17,6 +17,8 @@ compare_models
     Bayesian model comparison using WAIC or LOO-CV.
 prior_sensitivity_analysis
     Evaluate how sensitive posteriors are to changes in prior specifications.
+prior_predictive_coverage
+    Calculate the fraction of prior predictive samples within a plausible range.
 plot_prior_posterior
     Visualise prior-to-posterior updating for selected parameters.
 plot_posterior_predictive
@@ -359,14 +361,74 @@ def compare_models(
     return az.compare(resolved, ic=ic)  # type: ignore[arg-type]
 
 
+def prior_predictive_coverage(
+    prior_predictive,
+    low: float = -2.0,
+    high: float = 2.0,
+) -> float:
+    """Calculate the fraction of prior predictive samples within a plausible range.
+
+    This is a quantitative complement to visual prior predictive checks.
+    Because vangja scales the data so that :math:`y \\approx [-1, 1]` and
+    :math:`t \\in [0, 1]`, comparing the prior predictive samples against a
+    fixed plausible window (default ``[-2, 2]``) reveals how informative or
+    diffuse the chosen priors are.
+
+    **How to interpret the result:**
+
+    * **< 5 %** — priors are too loose.  The sampler wastes time in
+      physically impossible regions.  Reduce the prior standard deviations.
+    * **> 95 %** — priors may be too tight.  The model risks being unable to
+      capture sudden spikes or changepoints.  Increase the prior standard
+      deviations.
+    * **30–60 %** — a reasonable sweet spot for flexible models like Prophet.
+      The prior covers the data range without encouraging absurd values.
+
+    Parameters
+    ----------
+    prior_predictive : az.InferenceData
+        Result of ``model.sample_prior_predictive()``.
+    low : float, default -2.0
+        Lower bound of the plausible range (in scaled space).
+    high : float, default 2.0
+        Upper bound of the plausible range (in scaled space).
+
+    Returns
+    -------
+    float
+        Fraction of individual sample values inside ``[low, high]``,
+        between 0 and 1.
+
+    Examples
+    --------
+    >>> model = LinearTrend() + FourierSeasonality(365.25, 10)
+    >>> model.fit(data, method="mapx")
+    >>> ppc = model.sample_prior_predictive(samples=500)
+    >>> coverage = prior_predictive_coverage(ppc)
+    >>> print(f"{coverage * 100:.1f}% of prior samples are within [-2, 2]")
+    """
+    obs = prior_predictive.prior_predictive["obs"].values
+    mask = (obs >= low) & (obs <= high)
+    return float(np.mean(mask))
+
+
 def plot_prior_predictive(
     prior_predictive,
     data: pd.DataFrame | None = None,
     n_samples: int = 50,
     ax=None,
     title: str = "Prior Predictive Check",
+    show_hdi: bool = False,
+    hdi_prob: float = 0.9,
+    show_ref_lines: bool = False,
+    ref_values: tuple[float, float] = (-1.0, 1.0),
+    t: np.ndarray | None = None,
 ):
     """Plot prior predictive samples, optionally overlaid on observed data.
+
+    Draws a "spaghetti plot" of prior predictive traces and, optionally,
+    an HDI envelope and horizontal reference lines to help judge whether
+    the chosen priors are plausible in the scaled data space.
 
     Parameters
     ----------
@@ -380,10 +442,42 @@ def plot_prior_predictive(
         Axes to plot on.  Created if ``None``.
     title : str
         Plot title.
+    show_hdi : bool, default False
+        If True, shade the Highest Density Interval across time.
+    hdi_prob : float, default 0.9
+        Probability mass for the HDI band (ignored when ``show_hdi=False``).
+    show_ref_lines : bool, default False
+        If True, draw horizontal dashed lines at the scaled-data bounds
+        given by ``ref_values``.  Useful for checking whether the prior
+        predictive concentrates within the plausible region of scaled data.
+    ref_values : tuple[float, float], default (-1.0, 1.0)
+        ``(lower, upper)`` values for the reference lines (ignored when
+        ``show_ref_lines=False``).  The defaults correspond to the
+        approximate extent of maxabs-scaled data.
+    t : np.ndarray or None
+        x-axis values.  When ``None`` the observation index is used.  Pass
+        ``model.data["t"].values`` for the normalised time axis, or
+        ``model.data["ds"].values`` for calendar dates.
 
     Returns
     -------
     matplotlib.axes.Axes
+
+    Examples
+    --------
+    >>> model = LinearTrend() + FourierSeasonality(365.25, 10)
+    >>> model.fit(data, method="mapx")
+    >>> ppc = model.sample_prior_predictive(samples=200)
+    >>> # Simple spaghetti plot
+    >>> plot_prior_predictive(ppc)
+    >>> # With HDI, reference lines and scaled time axis
+    >>> plot_prior_predictive(
+    ...     ppc,
+    ...     data=data,
+    ...     show_hdi=True,
+    ...     show_ref_lines=True,
+    ...     t=model.data["t"].values,
+    ... )
     """
     if ax is None:
         _, ax = plt.subplots(figsize=(14, 5))
@@ -391,19 +485,45 @@ def plot_prior_predictive(
     obs = prior_predictive.prior_predictive["obs"].values
     # shape: (chains, draws, n_obs)
     obs_flat = obs.reshape(-1, obs.shape[-1])
+
+    x_axis = np.arange(obs_flat.shape[1]) if t is None else t
+
+    # HDI band
+    if show_hdi:
+        alpha_val = 1 - hdi_prob
+        lo = np.percentile(obs_flat, 100 * alpha_val / 2, axis=0)
+        hi = np.percentile(obs_flat, 100 * (1 - alpha_val / 2), axis=0)
+        ax.fill_between(
+            x_axis, lo, hi, color="C0", alpha=0.2,
+            label=f"{hdi_prob:.0%} HDI",
+        )
+
+    # Spaghetti traces
     idx = np.random.choice(
         obs_flat.shape[0], size=min(n_samples, obs_flat.shape[0]), replace=False
     )
-
     for i in idx:
-        ax.plot(obs_flat[i], color="C0", alpha=0.1, lw=0.5)
+        ax.plot(x_axis, obs_flat[i], color="C0", alpha=0.1, lw=0.5)
 
     if data is not None:
-        ax.plot(data["y"].values, color="C1", lw=2, label="Observed data")
+        ax.plot(x_axis, data["y"].values, color="C1", lw=2, label="Observed data")
+
+    # Reference lines
+    if show_ref_lines:
+        ax.axhline(
+            ref_values[0], color="red", linestyle="--", lw=1,
+            label=f"Ref lower ({ref_values[0]})",
+        )
+        ax.axhline(
+            ref_values[1], color="red", linestyle="--", lw=1,
+            label=f"Ref upper ({ref_values[1]})",
+        )
+
+    if data is not None or show_hdi or show_ref_lines:
         ax.legend()
 
     ax.set_title(title)
-    ax.set_xlabel("Observation index")
+    ax.set_xlabel("t" if t is not None else "Observation index")
     ax.set_ylabel("y")
     return ax
 
@@ -414,6 +534,11 @@ def plot_posterior_predictive(
     n_samples: int = 50,
     ax=None,
     title: str = "Posterior Predictive Check",
+    show_hdi: bool = False,
+    hdi_prob: float = 0.9,
+    show_ref_lines: bool = False,
+    ref_values: tuple[float, float] = (-1.0, 1.0),
+    t: np.ndarray | None = None,
 ):
     """Plot posterior predictive samples, overlaid on observed data.
 
@@ -429,6 +554,19 @@ def plot_posterior_predictive(
         Axes to plot on.
     title : str
         Plot title.
+    show_hdi : bool, default False
+        If True, shade the Highest Density Interval across time.
+    hdi_prob : float, default 0.9
+        Probability mass for the HDI band (ignored when ``show_hdi=False``).
+    show_ref_lines : bool, default False
+        If True, draw horizontal dashed lines at the scaled-data bounds
+        given by ``ref_values``.
+    ref_values : tuple[float, float], default (-1.0, 1.0)
+        ``(lower, upper)`` values for the reference lines.
+    t : np.ndarray or None
+        x-axis values.  When ``None`` the observation index is used.  Pass
+        ``model.data["t"].values`` for the normalised time axis, or
+        ``model.data["ds"].values`` for calendar dates.
 
     Returns
     -------
@@ -439,19 +577,45 @@ def plot_posterior_predictive(
 
     obs = posterior_predictive.posterior_predictive["obs"].values
     obs_flat = obs.reshape(-1, obs.shape[-1])
+
+    x_axis = np.arange(obs_flat.shape[1]) if t is None else t
+
+    # HDI band
+    if show_hdi:
+        alpha_val = 1 - hdi_prob
+        lo = np.percentile(obs_flat, 100 * alpha_val / 2, axis=0)
+        hi = np.percentile(obs_flat, 100 * (1 - alpha_val / 2), axis=0)
+        ax.fill_between(
+            x_axis, lo, hi, color="C0", alpha=0.2,
+            label=f"{hdi_prob:.0%} HDI",
+        )
+
+    # Spaghetti traces
     idx = np.random.choice(
         obs_flat.shape[0], size=min(n_samples, obs_flat.shape[0]), replace=False
     )
-
     for i in idx:
-        ax.plot(obs_flat[i], color="C0", alpha=0.1, lw=0.5)
+        ax.plot(x_axis, obs_flat[i], color="C0", alpha=0.1, lw=0.5)
 
     if data is not None:
-        ax.plot(data["y"].values, color="C1", lw=2, label="Observed data")
+        ax.plot(x_axis, data["y"].values, color="C1", lw=2, label="Observed data")
+
+    # Reference lines
+    if show_ref_lines:
+        ax.axhline(
+            ref_values[0], color="red", linestyle="--", lw=1,
+            label=f"Ref lower ({ref_values[0]})",
+        )
+        ax.axhline(
+            ref_values[1], color="red", linestyle="--", lw=1,
+            label=f"Ref upper ({ref_values[1]})",
+        )
+
+    if data is not None or show_hdi or show_ref_lines:
         ax.legend()
 
     ax.set_title(title)
-    ax.set_xlabel("Observation index")
+    ax.set_xlabel("t" if t is not None else "Observation index")
     ax.set_ylabel("y")
     return ax
 

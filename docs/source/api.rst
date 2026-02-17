@@ -65,7 +65,7 @@ LinearTrend
 FlatTrend
 ~~~~~~~~~~~
 
-.. autoclass:: vangja.components.LinearTrend
+.. autoclass:: vangja.components.FlatTrend
    :members:
    :undoc-members:
    :show-inheritance:
@@ -136,6 +136,11 @@ prior_sensitivity_analysis
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: vangja.utils.prior_sensitivity_analysis
+
+prior_predictive_coverage
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: vangja.utils.prior_predictive_coverage
 
 plot_prior_posterior
 ~~~~~~~~~~~~~~~~~~~~

@@ -23,6 +23,7 @@ from vangja.utils import (
     plot_posterior_predictive,
     plot_prior_posterior,
     plot_prior_predictive,
+    prior_predictive_coverage,
 )
 
 
@@ -130,6 +131,71 @@ class TestPlotPriorPredictive:
         assert isinstance(ax, plt.Axes)
         plt.close("all")
 
+    def test_show_hdi(self, prior_idata):
+        """HDI band should be drawn when show_hdi=True."""
+        ax = plot_prior_predictive(prior_idata, show_hdi=True, hdi_prob=0.9)
+        # fill_between creates a PolyCollection
+        poly_collections = [
+            c for c in ax.collections if isinstance(c, matplotlib.collections.PolyCollection)
+        ]
+        assert len(poly_collections) >= 1
+        plt.close("all")
+
+    def test_show_ref_lines(self, prior_idata):
+        """Reference lines should appear when show_ref_lines=True."""
+        ax = plot_prior_predictive(prior_idata, show_ref_lines=True, ref_values=(-1, 1))
+        # axhline adds Line2D objects; look for dashed red lines
+        ref_lines = [
+            line for line in ax.get_lines()
+            if line.get_linestyle() == "--" and line.get_color() == "red"
+        ]
+        assert len(ref_lines) == 2
+        plt.close("all")
+
+    def test_custom_t_axis(self, prior_idata):
+        """When t is provided, the x-axis label should change to 't'."""
+        t = np.linspace(0, 1, 50)
+        ax = plot_prior_predictive(prior_idata, t=t)
+        assert ax.get_xlabel() == "t"
+        plt.close("all")
+
+    def test_default_x_label(self, prior_idata):
+        """Without t, x-axis label should be 'Observation index'."""
+        ax = plot_prior_predictive(prior_idata)
+        assert ax.get_xlabel() == "Observation index"
+        plt.close("all")
+
+    def test_hdi_and_ref_lines_together(self, prior_idata, sample_data_50):
+        """All features enabled simultaneously should not error."""
+        t = np.linspace(0, 1, 50)
+        ax = plot_prior_predictive(
+            prior_idata,
+            data=sample_data_50,
+            show_hdi=True,
+            hdi_prob=0.8,
+            show_ref_lines=True,
+            ref_values=(-2, 2),
+            t=t,
+        )
+        assert isinstance(ax, plt.Axes)
+        plt.close("all")
+
+    def test_custom_ref_values(self, prior_idata):
+        """Custom ref_values should be used in the reference lines."""
+        ax = plot_prior_predictive(
+            prior_idata, show_ref_lines=True, ref_values=(-3.0, 3.0)
+        )
+        ref_lines = [
+            line for line in ax.get_lines()
+            if line.get_linestyle() == "--" and line.get_color() == "red"
+        ]
+        assert len(ref_lines) == 2
+        # Check the y-data of the reference lines
+        y_vals = sorted([line.get_ydata()[0] for line in ref_lines])
+        assert y_vals[0] == pytest.approx(-3.0)
+        assert y_vals[1] == pytest.approx(3.0)
+        plt.close("all")
+
 
 # ---------------------------------------------------------------------------
 # plot_posterior_predictive
@@ -159,6 +225,92 @@ class TestPlotPosteriorPredictive:
         ax_out = plot_posterior_predictive(posterior_idata, ax=ax_in)
         assert ax_out is ax_in
         plt.close("all")
+
+    def test_show_hdi(self, posterior_idata):
+        ax = plot_posterior_predictive(posterior_idata, show_hdi=True)
+        poly_collections = [
+            c for c in ax.collections if isinstance(c, matplotlib.collections.PolyCollection)
+        ]
+        assert len(poly_collections) >= 1
+        plt.close("all")
+
+    def test_show_ref_lines(self, posterior_idata):
+        ax = plot_posterior_predictive(posterior_idata, show_ref_lines=True)
+        ref_lines = [
+            line for line in ax.get_lines()
+            if line.get_linestyle() == "--" and line.get_color() == "red"
+        ]
+        assert len(ref_lines) == 2
+        plt.close("all")
+
+    def test_custom_t_axis(self, posterior_idata):
+        t = np.linspace(0, 1, 50)
+        ax = plot_posterior_predictive(posterior_idata, t=t)
+        assert ax.get_xlabel() == "t"
+        plt.close("all")
+
+    def test_all_features(self, posterior_idata, sample_data_50):
+        t = np.linspace(0, 1, 50)
+        ax = plot_posterior_predictive(
+            posterior_idata,
+            data=sample_data_50,
+            show_hdi=True,
+            show_ref_lines=True,
+            t=t,
+        )
+        assert isinstance(ax, plt.Axes)
+        plt.close("all")
+
+
+# ---------------------------------------------------------------------------
+# prior_predictive_coverage
+# ---------------------------------------------------------------------------
+
+
+class TestPriorPredictiveCoverage:
+    """Tests for prior_predictive_coverage function."""
+
+    def test_returns_float(self, prior_idata):
+        result = prior_predictive_coverage(prior_idata)
+        assert isinstance(result, float)
+
+    def test_between_zero_and_one(self, prior_idata):
+        result = prior_predictive_coverage(prior_idata)
+        assert 0.0 <= result <= 1.0
+
+    def test_all_within_range(self):
+        """If all samples are in [low, high], coverage should be 1.0."""
+        obs = np.random.uniform(0, 0.5, (1, 100, 30))
+        dataset = xr.Dataset(
+            {"obs": (["chain", "draw", "obs_dim_0"], obs)},
+            coords={
+                "chain": [0],
+                "draw": np.arange(100),
+                "obs_dim_0": np.arange(30),
+            },
+        )
+        idata = az.InferenceData(prior_predictive=dataset)
+        assert prior_predictive_coverage(idata, low=-1, high=1) == 1.0
+
+    def test_none_within_range(self):
+        """If all samples are outside [low, high], coverage should be 0.0."""
+        obs = np.full((1, 100, 30), 10.0)
+        dataset = xr.Dataset(
+            {"obs": (["chain", "draw", "obs_dim_0"], obs)},
+            coords={
+                "chain": [0],
+                "draw": np.arange(100),
+                "obs_dim_0": np.arange(30),
+            },
+        )
+        idata = az.InferenceData(prior_predictive=dataset)
+        assert prior_predictive_coverage(idata, low=-1, high=1) == 0.0
+
+    def test_custom_range(self, prior_idata):
+        """Narrower range should give lower or equal coverage."""
+        wide = prior_predictive_coverage(prior_idata, low=-100, high=100)
+        narrow = prior_predictive_coverage(prior_idata, low=-0.01, high=0.01)
+        assert wide >= narrow
 
 
 # ---------------------------------------------------------------------------
