@@ -414,6 +414,8 @@ def prior_predictive_coverage(
 
 def plot_prior_predictive(
     prior_predictive,
+    series_idx: int | None = None,
+    group: np.ndarray | None = None,
     data: pd.DataFrame | None = None,
     n_samples: int = 50,
     ax=None,
@@ -434,6 +436,14 @@ def plot_prior_predictive(
     ----------
     prior_predictive : az.InferenceData
         Result of ``model.sample_prior_predictive()``.
+    series_idx : int or None
+        If the prior predictive contains multiple series (e.g. from a hierarchical
+        model), specify which one to plot. If None, plots everything.
+        If series_idx is not None you must also pass the corresponding group array
+        to the group parameter.
+    group : np.ndarray or None
+        If the prior predictive contains multiple groups (e.g. from a hierarchical
+        model), specify which element belongs to which group.
     data : pd.DataFrame or None
         Observed data with columns ``ds`` and ``y``.
     n_samples : int, default 50
@@ -482,7 +492,24 @@ def plot_prior_predictive(
     if ax is None:
         _, ax = plt.subplots(figsize=(14, 5))
 
-    obs = prior_predictive.prior_predictive["obs"].values
+    pp = prior_predictive.prior_predictive
+    if series_idx is not None and group is not None:
+        # Find the observation dimension (the one aligned with smart_home_model.group)
+        obs_dim = next(
+            (dim for dim, size in pp.sizes.items() if size == len(group)), None
+        )
+        if obs_dim is None:
+            raise ValueError(
+                "Could not find an observation dimension matching group length."
+            )
+
+        # Indices where group == series_idx
+        idx_group = [i for i, g in enumerate(group) if g == series_idx]
+
+        # Subset prior_predictive to only those positions
+        pp = pp.isel({obs_dim: idx_group})
+
+    obs = pp["obs"].values
     # shape: (chains, draws, n_obs)
     obs_flat = obs.reshape(-1, obs.shape[-1])
 
@@ -494,7 +521,11 @@ def plot_prior_predictive(
         lo = np.percentile(obs_flat, 100 * alpha_val / 2, axis=0)
         hi = np.percentile(obs_flat, 100 * (1 - alpha_val / 2), axis=0)
         ax.fill_between(
-            x_axis, lo, hi, color="C0", alpha=0.2,
+            x_axis,
+            lo,
+            hi,
+            color="C0",
+            alpha=0.2,
             label=f"{hdi_prob:.0%} HDI",
         )
 
@@ -506,16 +537,29 @@ def plot_prior_predictive(
         ax.plot(x_axis, obs_flat[i], color="C0", alpha=0.1, lw=0.5)
 
     if data is not None:
-        ax.plot(x_axis, data["y"].values, color="C1", lw=2, label="Observed data")
+        data_series = data
+        if series_idx is not None and group is not None:
+            # Filter data to the specified series
+            data_series = data[group == series_idx]
+
+        ax.plot(
+            x_axis, data_series["y"].values, color="C1", lw=2, label="Observed data"
+        )
 
     # Reference lines
     if show_ref_lines:
         ax.axhline(
-            ref_values[0], color="red", linestyle="--", lw=1,
+            ref_values[0],
+            color="red",
+            linestyle="--",
+            lw=1,
             label=f"Ref lower ({ref_values[0]})",
         )
         ax.axhline(
-            ref_values[1], color="red", linestyle="--", lw=1,
+            ref_values[1],
+            color="red",
+            linestyle="--",
+            lw=1,
             label=f"Ref upper ({ref_values[1]})",
         )
 
@@ -586,7 +630,11 @@ def plot_posterior_predictive(
         lo = np.percentile(obs_flat, 100 * alpha_val / 2, axis=0)
         hi = np.percentile(obs_flat, 100 * (1 - alpha_val / 2), axis=0)
         ax.fill_between(
-            x_axis, lo, hi, color="C0", alpha=0.2,
+            x_axis,
+            lo,
+            hi,
+            color="C0",
+            alpha=0.2,
             label=f"{hdi_prob:.0%} HDI",
         )
 
@@ -603,11 +651,17 @@ def plot_posterior_predictive(
     # Reference lines
     if show_ref_lines:
         ax.axhline(
-            ref_values[0], color="red", linestyle="--", lw=1,
+            ref_values[0],
+            color="red",
+            linestyle="--",
+            lw=1,
             label=f"Ref lower ({ref_values[0]})",
         )
         ax.axhline(
-            ref_values[1], color="red", linestyle="--", lw=1,
+            ref_values[1],
+            color="red",
+            linestyle="--",
+            lw=1,
             label=f"Ref upper ({ref_values[1]})",
         )
 

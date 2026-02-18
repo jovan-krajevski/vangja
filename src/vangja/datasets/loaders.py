@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import Literal
 from urllib.request import urlopen
 
 import pandas as pd
@@ -344,8 +345,7 @@ def _ensure_kagglehub() -> None:
         ) from e
 
 
-# Valid cities in the Kaggle historical-hourly-weather-data temperature.csv
-KAGGLE_TEMPERATURE_CITIES: list[str] = [
+KaggleTemperatureCity = Literal[
     "Portland",
     "San Francisco",
     "Seattle",
@@ -383,9 +383,9 @@ KAGGLE_TEMPERATURE_CITIES: list[str] = [
     "Nahariyya",
     "Jerusalem",
 ]
+"""Valid city names in the Kaggle historical-hourly-weather-data temperature.csv."""
 
-# Valid appliance / total columns in the Kaggle smart-home HomeC.csv
-SMART_HOME_COLUMNS: list[str] = [
+SmartHomeColumn = Literal[
     "use [kW]",
     "gen [kW]",
     "House overall [kW]",
@@ -405,10 +405,11 @@ SMART_HOME_COLUMNS: list[str] = [
     "Living room [kW]",
     "Solar [kW]",
 ]
+"""Valid appliance / total columns in the Kaggle smart-home HomeC.csv."""
 
 
 def load_kaggle_temperature(
-    city: str = "New York",
+    city: KaggleTemperatureCity = "New York",
     start_date: str | pd.Timestamp | None = None,
     end_date: str | pd.Timestamp | None = None,
     freq: str = "D",
@@ -426,9 +427,9 @@ def load_kaggle_temperature(
 
     Parameters
     ----------
-    city : str, default "New York"
+    city : KaggleTemperatureCity, default "New York"
         City column to extract. Must be one of the 36 cities in the
-        dataset (see ``KAGGLE_TEMPERATURE_CITIES``).
+        dataset (see ``KaggleTemperatureCity``).
     start_date : str, pd.Timestamp, or None, default None
         Start of the date range (inclusive). If None, the earliest
         available date is used (~2012-10-01).
@@ -452,8 +453,6 @@ def load_kaggle_temperature(
     ------
     ImportError
         If ``kagglehub`` is not installed.
-    ValueError
-        If ``city`` is not a valid column in the dataset.
 
     Examples
     --------
@@ -476,12 +475,6 @@ def load_kaggle_temperature(
     .. [1] Historical Hourly Weather Data.
        https://www.kaggle.com/datasets/selfishgene/historical-hourly-weather-data
     """
-    if city not in KAGGLE_TEMPERATURE_CITIES:
-        raise ValueError(
-            f"Unknown city {city!r}. Must be one of: "
-            f"{', '.join(KAGGLE_TEMPERATURE_CITIES)}"
-        )
-
     _ensure_kagglehub()
     import kagglehub
 
@@ -514,7 +507,7 @@ def load_kaggle_temperature(
 
 
 def load_smart_home_readings(
-    column: str = "use [kW]",
+    column: SmartHomeColumn | list[SmartHomeColumn] = "use [kW]",
     start_date: str | pd.Timestamp | None = None,
     end_date: str | pd.Timestamp | None = None,
     freq: str | None = None,
@@ -524,7 +517,7 @@ def load_smart_home_readings(
     Downloads the ``HomeC.csv`` file from the
     `Smart Home Dataset with Weather Information
     <https://www.kaggle.com/datasets/taranvee/smart-home-dataset-with-weather-information>`_
-    dataset. Returns data for the requested appliance or total column,
+    dataset. Returns data for the requested appliance or total column(s),
     filtered to the given date range and aggregated to the specified
     frequency.
 
@@ -533,9 +526,13 @@ def load_smart_home_readings(
 
     Parameters
     ----------
-    column : str, default "use [kW]"
-        The appliance or total column to extract. Must be one of the
-        energy columns in the dataset (see ``SMART_HOME_COLUMNS``).
+    column : SmartHomeColumn or list[SmartHomeColumn], default "use [kW]"
+        The appliance or total column(s) to extract (see
+        ``SmartHomeColumn``). When a single string is passed the
+        returned DataFrame has columns ``ds`` and ``y``. When a list
+        is passed the result is in long format with an additional
+        ``series`` column identifying each appliance.
+
         Common choices:
 
         - ``"use [kW]"`` — total energy use
@@ -549,7 +546,7 @@ def load_smart_home_readings(
     end_date : str, pd.Timestamp, or None, default None
         End of the date range (inclusive). If None, the latest
         available date is used (~2016-12-16).
-    freq : str or None, default "D"
+    freq : str or None, default None
         Pandas offset alias for temporal aggregation (e.g. ``"D"`` for
         daily mean, ``"h"`` for hourly mean, ``"W"`` for weekly mean).
         The aggregation function is ``mean``. If None, no aggregation
@@ -562,13 +559,13 @@ def load_smart_home_readings(
 
         - ``ds``: datetime
         - ``y``: float, energy reading in kW
+        - ``series``: str *(only when ``column`` is a list)* —
+          the original column name from the Kaggle dataset
 
     Raises
     ------
     ImportError
         If ``kagglehub`` is not installed.
-    ValueError
-        If ``column`` is not a valid column in the dataset.
 
     Examples
     --------
@@ -576,6 +573,14 @@ def load_smart_home_readings(
     >>> df = load_smart_home_readings("Fridge [kW]", "2016-03-01", "2016-06-30")  # doctest: +SKIP
     >>> print(df.columns.tolist())  # doctest: +SKIP
     ['ds', 'y']
+
+    Multiple columns return a long-format DataFrame:
+
+    >>> df = load_smart_home_readings(
+    ...     ["Fridge [kW]", "Microwave [kW]"], freq="D"
+    ... )  # doctest: +SKIP
+    >>> print(df.columns.tolist())  # doctest: +SKIP
+    ['ds', 'y', 'series']
 
     Notes
     -----
@@ -594,28 +599,27 @@ def load_smart_home_readings(
     .. [1] Smart Home Dataset with Weather Information.
        https://www.kaggle.com/datasets/taranvee/smart-home-dataset-with-weather-information
     """
-    if column not in SMART_HOME_COLUMNS:
-        raise ValueError(
-            f"Unknown column {column!r}. Must be one of: "
-            f"{', '.join(SMART_HOME_COLUMNS)}"
-        )
-
     _ensure_kagglehub()
     import kagglehub
+
+    columns: list[str] = [column] if isinstance(column, str) else list(column)
 
     path = kagglehub.dataset_download(
         "taranvee/smart-home-dataset-with-weather-information",
     )
     csv_path = Path(path) / "HomeC.csv"
 
-    df = pd.read_csv(csv_path, usecols=[column])
-    df = df.rename(columns={column: "y"})
+    df = pd.read_csv(csv_path, usecols=columns)
 
     # Fix timestamps
     df["ds"] = pd.date_range("2016-01-01 05:00", periods=len(df), freq="min")
 
-    # Coerce y to numeric (some rows may contain header strings)
-    df["y"] = pd.to_numeric(df["y"], errors="coerce")
+    # Coerce all value columns to numeric
+    for col in columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Melt to long format
+    df = df.melt(id_vars="ds", value_vars=columns, var_name="series", value_name="y")
 
     # Filter date range
     if start_date is not None:
@@ -625,8 +629,17 @@ def load_smart_home_readings(
 
     # Aggregate to requested frequency
     if freq is not None:
-        df = df.resample(freq, on="ds").mean(numeric_only=True).reset_index()
+        df = (
+            df.groupby("series")
+            .resample(freq, on="ds")
+            .mean(numeric_only=True)
+            .reset_index()
+        )
 
     df = df.dropna(subset=["ds", "y"])
 
-    return df[["ds", "y"]]
+    # Single column: return simple ds/y DataFrame (no series column)
+    if isinstance(column, str):
+        return df[["ds", "y"]].reset_index(drop=True)
+
+    return df[["ds", "y", "series"]].reset_index(drop=True)

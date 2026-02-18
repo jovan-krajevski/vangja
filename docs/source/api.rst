@@ -187,7 +187,7 @@ load_nyc_temperature
 .. autofunction:: vangja.datasets.load_nyc_temperature
 
 load_kaggle_temperature
-^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autofunction:: vangja.datasets.load_kaggle_temperature
 
@@ -195,6 +195,17 @@ load_smart_home_readings
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autofunction:: vangja.datasets.load_smart_home_readings
+
+Type Aliases
+~~~~~~~~~~~~
+
+.. data:: vangja.datasets.KaggleTemperatureCity
+
+   Literal type of valid city names for :func:`load_kaggle_temperature`.
+
+.. data:: vangja.datasets.SmartHomeColumn
+
+   Literal type of valid column names for :func:`load_smart_home_readings`.
 
 Synthetic Data Generation
 ~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -29,8 +29,8 @@ Examples
 """
 
 from vangja.datasets.loaders import (
-    KAGGLE_TEMPERATURE_CITIES,
-    SMART_HOME_COLUMNS,
+    KaggleTemperatureCity,
+    SmartHomeColumn,
     load_air_passengers,
     load_citi_bike_sales,
     load_kaggle_temperature,
@@ -53,8 +53,8 @@ __all__ = [
     "load_kaggle_temperature",
     "load_smart_home_readings",
     "load_stock_data",
-    "KAGGLE_TEMPERATURE_CITIES",
-    "SMART_HOME_COLUMNS",
+    "KaggleTemperatureCity",
+    "SmartHomeColumn",
     "get_sp500_tickers_for_range",
     "generate_multi_store_data",
     "generate_hierarchical_products",
