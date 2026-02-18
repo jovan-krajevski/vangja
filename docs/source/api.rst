@@ -186,6 +186,16 @@ load_nyc_temperature
 
 .. autofunction:: vangja.datasets.load_nyc_temperature
 
+load_kaggle_temperature
+^^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: vangja.datasets.load_kaggle_temperature
+
+load_smart_home_readings
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: vangja.datasets.load_smart_home_readings
+
 Synthetic Data Generation
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 

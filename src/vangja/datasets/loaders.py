@@ -331,3 +331,302 @@ def load_stock_data(
     )
 
     return train_df, test_df
+
+
+def _ensure_kagglehub() -> None:
+    """Import kagglehub or raise a helpful ImportError."""
+    try:
+        import kagglehub  # noqa: F401
+    except ImportError as e:
+        raise ImportError(
+            "kagglehub is required to download Kaggle datasets. "
+            "Install with: pip install vangja[datasets]"
+        ) from e
+
+
+# Valid cities in the Kaggle historical-hourly-weather-data temperature.csv
+KAGGLE_TEMPERATURE_CITIES: list[str] = [
+    "Portland",
+    "San Francisco",
+    "Seattle",
+    "Los Angeles",
+    "San Diego",
+    "Las Vegas",
+    "Phoenix",
+    "Albuquerque",
+    "Denver",
+    "San Antonio",
+    "Dallas",
+    "Houston",
+    "Kansas City",
+    "Minneapolis",
+    "Saint Louis",
+    "Chicago",
+    "Nashville",
+    "Indianapolis",
+    "Atlanta",
+    "Detroit",
+    "Jacksonville",
+    "Charlotte",
+    "Miami",
+    "Pittsburgh",
+    "Philadelphia",
+    "New York",
+    "Boston",
+    "Vancouver",
+    "Toronto",
+    "Montreal",
+    "Beersheba",
+    "Tel Aviv District",
+    "Eilat",
+    "Haifa",
+    "Nahariyya",
+    "Jerusalem",
+]
+
+# Valid appliance / total columns in the Kaggle smart-home HomeC.csv
+SMART_HOME_COLUMNS: list[str] = [
+    "use [kW]",
+    "gen [kW]",
+    "House overall [kW]",
+    "Dishwasher [kW]",
+    "Furnace 1 [kW]",
+    "Furnace 2 [kW]",
+    "Home office [kW]",
+    "Fridge [kW]",
+    "Wine cellar [kW]",
+    "Garage door [kW]",
+    "Kitchen 12 [kW]",
+    "Kitchen 14 [kW]",
+    "Kitchen 38 [kW]",
+    "Barn [kW]",
+    "Well [kW]",
+    "Microwave [kW]",
+    "Living room [kW]",
+    "Solar [kW]",
+]
+
+
+def load_kaggle_temperature(
+    city: str = "New York",
+    start_date: str | pd.Timestamp | None = None,
+    end_date: str | pd.Timestamp | None = None,
+    freq: str = "D",
+) -> pd.DataFrame:
+    """Load historical hourly temperature data from Kaggle.
+
+    Downloads the ``temperature.csv`` file from the
+    `Historical Hourly Weather Data
+    <https://www.kaggle.com/datasets/selfishgene/historical-hourly-weather-data>`_
+    dataset. Returns data for the requested city, filtered to the given
+    date range and aggregated to the specified frequency.
+
+    The raw data contains hourly observations in **Kelvin**. Values are
+    converted to **Celsius** before returning.
+
+    Parameters
+    ----------
+    city : str, default "New York"
+        City column to extract. Must be one of the 36 cities in the
+        dataset (see ``KAGGLE_TEMPERATURE_CITIES``).
+    start_date : str, pd.Timestamp, or None, default None
+        Start of the date range (inclusive). If None, the earliest
+        available date is used (~2012-10-01).
+    end_date : str, pd.Timestamp, or None, default None
+        End of the date range (inclusive). If None, the latest
+        available date is used (~2017-11-30).
+    freq : str, default "D"
+        Pandas offset alias for temporal aggregation (e.g. ``"D"`` for
+        daily mean, ``"W"`` for weekly mean, ``"h"`` for hourly — no
+        aggregation). The aggregation function is ``mean``.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns:
+
+        - ``ds``: datetime
+        - ``y``: float, temperature in degrees Celsius
+
+    Raises
+    ------
+    ImportError
+        If ``kagglehub`` is not installed.
+    ValueError
+        If ``city`` is not a valid column in the dataset.
+
+    Examples
+    --------
+    >>> from vangja.datasets import load_kaggle_temperature
+    >>> df = load_kaggle_temperature("New York", "2015-01-01", "2015-12-31")  # doctest: +SKIP
+    >>> print(df.columns.tolist())  # doctest: +SKIP
+    ['ds', 'y']
+
+    Notes
+    -----
+    Requires the ``kagglehub`` package (install with
+    ``pip install vangja[datasets]``).
+
+    Data is downloaded and cached locally by ``kagglehub``. A valid
+    Kaggle API token is required (see
+    `Kaggle API docs <https://github.com/Kaggle/kaggle-api#api-credentials>`_).
+
+    References
+    ----------
+    .. [1] Historical Hourly Weather Data.
+       https://www.kaggle.com/datasets/selfishgene/historical-hourly-weather-data
+    """
+    if city not in KAGGLE_TEMPERATURE_CITIES:
+        raise ValueError(
+            f"Unknown city {city!r}. Must be one of: "
+            f"{', '.join(KAGGLE_TEMPERATURE_CITIES)}"
+        )
+
+    _ensure_kagglehub()
+    import kagglehub
+
+    path = kagglehub.dataset_download(
+        "selfishgene/historical-hourly-weather-data",
+    )
+    csv_path = Path(path) / "temperature.csv"
+
+    df = pd.read_csv(csv_path, usecols=["datetime", city])
+    df = df.rename(columns={"datetime": "ds", city: "y"})
+    df["ds"] = pd.to_datetime(df["ds"])
+
+    # Convert Kelvin → Celsius
+    df["y"] = df["y"] - 273.15
+
+    # Drop missing values
+    df = df.dropna(subset=["y"])
+
+    # Filter date range
+    if start_date is not None:
+        df = df[df["ds"] >= pd.Timestamp(start_date)]
+    if end_date is not None:
+        df = df[df["ds"] <= pd.Timestamp(end_date)]
+
+    # Aggregate to requested frequency
+    df = df.resample(freq, on="ds").mean(numeric_only=True).reset_index()
+    df = df.dropna(subset=["y"])
+
+    return df[["ds", "y"]]
+
+
+def load_smart_home_readings(
+    column: str = "use [kW]",
+    start_date: str | pd.Timestamp | None = None,
+    end_date: str | pd.Timestamp | None = None,
+    freq: str | None = None,
+) -> pd.DataFrame:
+    """Load smart home energy readings from Kaggle.
+
+    Downloads the ``HomeC.csv`` file from the
+    `Smart Home Dataset with Weather Information
+    <https://www.kaggle.com/datasets/taranvee/smart-home-dataset-with-weather-information>`_
+    dataset. Returns data for the requested appliance or total column,
+    filtered to the given date range and aggregated to the specified
+    frequency.
+
+    The raw data has 1-minute resolution and covers roughly
+    2016-01-01 to 2016-12-16. Each column is in **kW**.
+
+    Parameters
+    ----------
+    column : str, default "use [kW]"
+        The appliance or total column to extract. Must be one of the
+        energy columns in the dataset (see ``SMART_HOME_COLUMNS``).
+        Common choices:
+
+        - ``"use [kW]"`` — total energy use
+        - ``"gen [kW]"`` — total energy generation
+        - ``"House overall [kW]"`` — house overall consumption
+        - ``"Dishwasher [kW]"``, ``"Fridge [kW]"``, etc. — individual
+          appliances
+    start_date : str, pd.Timestamp, or None, default None
+        Start of the date range (inclusive). If None, the earliest
+        available date is used (~2016-01-01).
+    end_date : str, pd.Timestamp, or None, default None
+        End of the date range (inclusive). If None, the latest
+        available date is used (~2016-12-16).
+    freq : str or None, default "D"
+        Pandas offset alias for temporal aggregation (e.g. ``"D"`` for
+        daily mean, ``"h"`` for hourly mean, ``"W"`` for weekly mean).
+        The aggregation function is ``mean``. If None, no aggregation
+        is performed and the original 1-minute data is returned.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns:
+
+        - ``ds``: datetime
+        - ``y``: float, energy reading in kW
+
+    Raises
+    ------
+    ImportError
+        If ``kagglehub`` is not installed.
+    ValueError
+        If ``column`` is not a valid column in the dataset.
+
+    Examples
+    --------
+    >>> from vangja.datasets import load_smart_home_readings
+    >>> df = load_smart_home_readings("Fridge [kW]", "2016-03-01", "2016-06-30")  # doctest: +SKIP
+    >>> print(df.columns.tolist())  # doctest: +SKIP
+    ['ds', 'y']
+
+    Notes
+    -----
+    Requires the ``kagglehub`` package (install with
+    ``pip install vangja[datasets]``).
+
+    Data is downloaded and cached locally by ``kagglehub``. A valid
+    Kaggle API token is required (see
+    `Kaggle API docs <https://github.com/Kaggle/kaggle-api#api-credentials>`_).
+
+    The raw ``time`` column contains Unix timestamps. The last row of
+    the CSV may contain malformed data and is automatically dropped.
+
+    References
+    ----------
+    .. [1] Smart Home Dataset with Weather Information.
+       https://www.kaggle.com/datasets/taranvee/smart-home-dataset-with-weather-information
+    """
+    if column not in SMART_HOME_COLUMNS:
+        raise ValueError(
+            f"Unknown column {column!r}. Must be one of: "
+            f"{', '.join(SMART_HOME_COLUMNS)}"
+        )
+
+    _ensure_kagglehub()
+    import kagglehub
+
+    path = kagglehub.dataset_download(
+        "taranvee/smart-home-dataset-with-weather-information",
+    )
+    csv_path = Path(path) / "HomeC.csv"
+
+    df = pd.read_csv(csv_path, usecols=[column])
+    df = df.rename(columns={column: "y"})
+
+    # Fix timestamps
+    df["ds"] = pd.date_range("2016-01-01 05:00", periods=len(df), freq="min")
+
+    # Coerce y to numeric (some rows may contain header strings)
+    df["y"] = pd.to_numeric(df["y"], errors="coerce")
+
+    # Filter date range
+    if start_date is not None:
+        df = df[df["ds"] >= pd.Timestamp(start_date)]
+    if end_date is not None:
+        df = df[df["ds"] <= pd.Timestamp(end_date)]
+
+    # Aggregate to requested frequency
+    if freq is not None:
+        df = df.resample(freq, on="ds").mean(numeric_only=True).reset_index()
+
+    df = df.dropna(subset=["ds", "y"])
+
+    return df[["ds", "y"]]
