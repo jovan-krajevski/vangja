@@ -97,7 +97,19 @@ For series with non-overlapping date ranges, consider fitting them separately or
 
 ### Transfer Learning
 
-Set `tune_method="parametric"` or `"prior_from_idata"` on components, then pass `idata` (ArviZ InferenceData) to `fit()` to transfer knowledge from pre-trained models. See [07_transfer_learning.ipynb](docs/07_transfer_learning.ipynb) for a complete example using NYC temperature data to forecast short bike sales time series.
+Set `tune_method="parametric"` or `"prior_from_idata"` on components, then pass `idata` (ArviZ InferenceData) to `fit()` to transfer knowledge from pre-trained models. There is **no `tune()` method** — transfer learning is done by creating a new model and passing `idata=base_model.trace` to `fit()`:
+
+```python
+# Step 1: Fit base model on long series (use MCMC for meaningful posteriors)
+base_model = LinearTrend(tune_method="parametric") + FourierSeasonality(365.25, 10, tune_method="parametric")
+base_model.fit(long_data, method="nuts", samples=1000, chains=4)
+
+# Step 2: Create target model and fit with transferred priors
+target_model = LinearTrend(tune_method="parametric") + FourierSeasonality(365.25, 10, tune_method="parametric")
+target_model.fit(short_data, idata=base_model.trace)
+```
+
+See [07_transfer_learning.ipynb](docs/07_transfer_learning.ipynb) for a complete example using NYC temperature data to forecast short bike sales time series.
 
 ### Datasets Module (`src/vangja/datasets/`)
 
@@ -160,6 +172,7 @@ plot_prior_predictive(ppc, show_hdi=True, show_ref_lines=True, t=model.data["t"]
 ```
 
 **Tuning guidelines:**
+
 - Trend (`slope_sd`, `intercept_sd`): default 5 is very wide. Try 1–2 for stable series.
 - Seasonality (`beta_sd`): default 10 is extremely wide. Try 0.5–1 to regularize and prevent overfitting high-frequency noise.
 - Use `prior_sensitivity_analysis()` to sweep over prior standard deviations and compare forecast metrics.
@@ -332,6 +345,23 @@ Documentation is automatically deployed to GitHub Pages via the `.github/workflo
 - **Manual trigger**: Use "Run workflow" in GitHub Actions
 
 Enable GitHub Pages in repository settings → Pages → Source: "GitHub Actions".
+
+## Case Studies / Ablation Studies
+
+Case studies live in `case_studies/<dataset_name>/`. Each case study directory follows this structure:
+
+- `ablations.md` — Dataset-specific ablation plan
+- `train.py` — Original training script
+- `ablation_fast.py` — Fast validation version (VI, reduced grid)
+- `ablation_full.py` — Full ablation study (NUTS base, comprehensive grid)
+- `classical_baselines.py` — Classical model comparisons (ARIMA, Holt-Winters, Seasonal Naive)
+- `README.md` — How to run scripts and interpret results
+- `results_ablation/` — Output directory (CSV results + plots)
+- `results_classical/` — Classical baseline results
+
+A reusable template is available at `case_studies/smart_home/general_ablations.md`.
+
+**Classical baselines use statsmodels** (not sktime) because sktime requires scikit-learn < 1.6.0, conflicting with vangja's scikit-learn ~= 1.8.0. Install with `pip install vangja[reproducibility]`.
 
 ## Self-Updating Instructions
 

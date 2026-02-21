@@ -44,6 +44,12 @@ docs = [
 dev = [
     "vangja[test,docs]",
 ]
+reproducibility = [
+    "vangja[datasets]",
+    "statsmodels>=0.14",
+    "matplotlib>=3.7",
+    "seaborn>=0.12",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

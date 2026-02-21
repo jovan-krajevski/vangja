@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import pymc as pm
 import pytest
 
 from vangja.components import FourierSeasonality, LinearTrend, NormalConstant
@@ -131,6 +132,70 @@ class TestTimeSeriesModelInitvals:
         assert "slope_1" in initvals
         assert "intercept_0" in initvals
         assert "intercept_1" in initvals
+
+    def test_get_initval_sigma_complete_pooling(self, sample_data):
+        """Test that get_initval returns scalar sigma for complete pooling."""
+        model_comp = LinearTrend(n_changepoints=0)
+        model_comp._process_data(sample_data.copy(), "maxabs", "complete", None)
+
+        pymc_model = pm.Model()
+        with pymc_model:
+            mu = model_comp.definition(pymc_model, model_comp.data, {}, None, None)
+            sigma = pm.HalfNormal("sigma", 0.5)
+            pm.Normal("obs", mu=mu, sigma=sigma, observed=model_comp.data["y"])
+
+        initvals = model_comp._get_model_initvals()
+        result = model_comp.get_initval(initvals, pymc_model)
+        sigma_var = pymc_model.named_vars["sigma"]
+
+        assert sigma_var in result
+        assert np.isscalar(result[sigma_var]) or result[sigma_var].ndim == 0
+
+    def test_get_initval_sigma_individual_pooling(self, multi_series_data):
+        """Test that get_initval returns vector sigma for individual pooling."""
+        model_comp = LinearTrend(n_changepoints=0, pool_type="individual")
+        model_comp._process_data(multi_series_data.copy(), "maxabs", "individual", None)
+
+        pymc_model = pm.Model()
+        with pymc_model:
+            mu = model_comp.definition(pymc_model, model_comp.data, {}, None, None)
+            sigma = pm.HalfNormal("sigma", 0.5, shape=model_comp.n_groups)
+            group, _, _ = __import__(
+                "vangja.utils", fromlist=["get_group_definition"]
+            ).get_group_definition(model_comp.data, "partial")
+            pm.Normal("obs", mu=mu, sigma=sigma[group], observed=model_comp.data["y"])
+
+        initvals = model_comp._get_model_initvals()
+        result = model_comp.get_initval(initvals, pymc_model)
+        sigma_var = pymc_model.named_vars["sigma"]
+
+        assert sigma_var in result
+        assert isinstance(result[sigma_var], np.ndarray)
+        assert result[sigma_var].shape == (model_comp.n_groups,)
+        np.testing.assert_array_equal(result[sigma_var], np.ones(model_comp.n_groups))
+
+    def test_get_initval_sigma_partial_pooling(self, multi_series_data):
+        """Test that get_initval skips Deterministic sigma for partial pooling."""
+        model_comp = LinearTrend(n_changepoints=0, pool_type="individual")
+        model_comp._process_data(multi_series_data.copy(), "maxabs", "individual", None)
+
+        pymc_model = pm.Model()
+        with pymc_model:
+            mu = model_comp.definition(pymc_model, model_comp.data, {}, None, None)
+            sigma_sigma = pm.HalfCauchy("sigma_sigma", 0.5)
+            sigma_offset = pm.HalfNormal("sigma_offset", 1, shape=model_comp.n_groups)
+            sigma = pm.Deterministic("sigma", sigma_offset * sigma_sigma)
+            group, _, _ = __import__(
+                "vangja.utils", fromlist=["get_group_definition"]
+            ).get_group_definition(model_comp.data, "partial")
+            pm.Normal("obs", mu=mu, sigma=sigma[group], observed=model_comp.data["y"])
+
+        initvals = model_comp._get_model_initvals()
+        result = model_comp.get_initval(initvals, pymc_model)
+        sigma_var = pymc_model.named_vars["sigma"]
+
+        # Deterministic sigma should NOT be in initvals
+        assert sigma_var not in result
 
 
 class TestTimeSeriesModelOperators:

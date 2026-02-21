@@ -45,7 +45,7 @@ from vangja import LinearTrend, FourierSeasonality
 
 model = LinearTrend() + FourierSeasonality(365.25, 10) + FourierSeasonality(7, 3)
 model.fit(data)
-model.predict(365)
+predictions = model.predict(horizon=365)
 ```
 
 ### Vectorized Multi-Series Fitting
@@ -157,6 +157,19 @@ UniformConstant(
 )
 ```
 
+#### FlatTrend
+
+A constant-level baseline (intercept only, no slope, no changepoints). Useful when the time series has no discernible trend or is too short to estimate one reliably.
+
+```python
+FlatTrend(
+    intercept_mean=0,        # Prior mean for intercept
+    intercept_sd=5,          # Prior std for intercept
+    pool_type="complete",    # Pooling: "complete", "partial", or "individual"
+    tune_method=None         # Transfer learning: "parametric" or "prior_from_idata"
+)
+```
+
 #### BetaConstant
 
 A constant term with a scaled Beta prior, bounded between [lower, upper].
@@ -232,18 +245,22 @@ Uses the posterior mean (you can also set the mode, or any other value that you 
 
 ```python
 # Step 1: Fit on long time series
-model = (
+base_model = (
     LinearTrend(tune_method="parametric") 
     + FourierSeasonality(365.25, 10, tune_method="parametric")
 )
-model.fit(long_time_series)
+base_model.fit(long_time_series, method="nuts", samples=1000, chains=4)
 
 # Step 2: Transfer to short time series
 # The posterior from step 1 becomes the prior for step 2
-model.tune(short_time_series)
+target_model = (
+    LinearTrend(tune_method="parametric") 
+    + FourierSeasonality(365.25, 10, tune_method="parametric")
+)
+target_model.fit(short_time_series, idata=base_model.trace)
 
 # Step 3: Forecast with confidence
-predictions = model.predict(365)  # Can forecast beyond the short series length!
+predictions = target_model.predict(horizon=365)  # Can forecast beyond the short series length!
 ```
 
 ##### 2. Prior from InferenceData (`"prior_from_idata"`)
@@ -251,12 +268,17 @@ predictions = model.predict(365)  # Can forecast beyond the short series length!
 Uses the full posterior samples via **multivariate normal approximation**, preserving correlations between parameters:
 
 ```python
-model = (
+base_model = (
     LinearTrend(tune_method="prior_from_idata") 
     + FourierSeasonality(365.25, 10, tune_method="prior_from_idata")
 )
-model.fit(long_time_series)
-model.tune(short_time_series)
+base_model.fit(long_time_series, method="nuts", samples=1000, chains=4)
+
+target_model = (
+    LinearTrend(tune_method="prior_from_idata") 
+    + FourierSeasonality(365.25, 10, tune_method="prior_from_idata")
+)
+target_model.fit(short_time_series, idata=base_model.trace)
 ```
 
 This method captures parameter dependencies (e.g., correlation between trend slope and seasonality amplitude) that the parametric method ignores.
@@ -266,15 +288,21 @@ This method captures parameter dependencies (e.g., correlation between trend slo
 Vangja uniquely allows you to combine both approaches:
 
 ```python
-# Long "context" time series + multiple short "target" time series
-all_data = pd.concat([
-    long_context_series.assign(series='context'),
+# Step 1: Fit base model on long "context" time series
+base_model = (
+    LinearTrend(tune_method="parametric") 
+    + FourierSeasonality(365.25, 10, tune_method="parametric")
+)
+base_model.fit(long_context_series, method="nuts", samples=1000, chains=4)
+
+# Step 2: Combine short target time series
+target_data = pd.concat([
     short_series_1.assign(series='target_1'),
     short_series_2.assign(series='target_2'),
 ])
 
-# Hierarchical model with transfer learning
-model = (
+# Step 3: Hierarchical model with transfer learning on targets
+target_model = (
     LinearTrend(
         pool_type="partial",           # Hierarchical pooling
         delta_side="right",            # Slope parameter informed by all series
@@ -283,9 +311,9 @@ model = (
     + FourierSeasonality(365.25, 10, pool_type="complete", tune_method="parametric")
 )
 
-# Fit and predict
-model.fit(all_data)
-predictions = model.predict(365)
+# Fit targets using posterior from context as priors
+target_model.fit(target_data, idata=base_model.trace)
+predictions = target_model.predict(horizon=365)
 ```
 
 #### Regularization for Transfer Learning
@@ -305,11 +333,14 @@ FourierSeasonality(
 After fitting, you can visualize the model components:
 
 ```python
-# Plot the overall model fit
-model.plot()
+# Make predictions
+predictions = model.predict(horizon=365)
 
-# Make predictions and plot
-predictions = model.predict(periods=365)
+# Plot the overall model fit and forecast
+model.plot(predictions)
+
+# Plot with actuals overlaid
+model.plot(predictions, y_true=test_data)
 ```
 
 ### Metrics
@@ -317,11 +348,11 @@ predictions = model.predict(periods=365)
 Evaluate forecast accuracy using built-in metrics:
 
 ```python
-from vangja import metrics
+from vangja.utils import metrics
 
 # Compare actual vs predicted values
-results = metrics(actual_df, predicted_df, group_col="group")
-# Returns MAE, MSE, RMSE, MAPE per group
+results = metrics(test_data, predictions, pool_type="complete")
+# Returns MSE, RMSE, MAE, MAPE per series
 ```
 
 ### Vangja vs Facebook Prophet vs TimeSeers

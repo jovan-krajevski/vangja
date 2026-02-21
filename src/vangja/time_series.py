@@ -227,8 +227,22 @@ class TimeSeriesModel:
         model: pm.Model
             The model for which the initvals will be set.
         """
+        sigma_var = model.named_vars["sigma"]
+        sigma_val = initvals.get("sigma", 1)
+
+        sigma_initvals = {}
+        # Only set initvals for sigma if it's a free RV (skip Deterministic
+        # sigma from partial pooling, which is determined by its parents)
+        if sigma_var in model.free_RVs:
+            # For individual pooling, sigma has shape (n_groups,) — broadcast
+            # scalar initval to match the variable shape
+            if sigma_var.type.ndim > 0:
+                sigma_initvals[sigma_var] = np.ones(self.n_groups) * sigma_val
+            else:
+                sigma_initvals[sigma_var] = sigma_val
+
         return {
-            model.named_vars["sigma"]: initvals.get("sigma", 1),
+            **sigma_initvals,
             **self._get_initval(initvals, model),
         }
 
