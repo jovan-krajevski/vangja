@@ -65,7 +65,7 @@ LinearTrend
 FlatTrend
 ~~~~~~~~~~~
 
-.. autoclass:: vangja.components.LinearTrend
+.. autoclass:: vangja.components.FlatTrend
    :members:
    :undoc-members:
    :show-inheritance:
@@ -137,6 +137,11 @@ prior_sensitivity_analysis
 
 .. autofunction:: vangja.utils.prior_sensitivity_analysis
 
+prior_predictive_coverage
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: vangja.utils.prior_predictive_coverage
+
 plot_prior_posterior
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -180,6 +185,27 @@ load_nyc_temperature
 ^^^^^^^^^^^^^^^^^^^^
 
 .. autofunction:: vangja.datasets.load_nyc_temperature
+
+load_kaggle_temperature
+^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: vangja.datasets.load_kaggle_temperature
+
+load_smart_home_readings
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: vangja.datasets.load_smart_home_readings
+
+Type Aliases
+~~~~~~~~~~~~
+
+.. data:: vangja.datasets.KaggleTemperatureCity
+
+   Literal type of valid city names for :func:`load_kaggle_temperature`.
+
+.. data:: vangja.datasets.SmartHomeColumn
+
+   Literal type of valid column names for :func:`load_smart_home_readings`.
 
 Synthetic Data Generation
 ~~~~~~~~~~~~~~~~~~~~~~~~~

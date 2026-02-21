@@ -61,7 +61,7 @@ def _download_stock_data(
     tickers: list[str], cache_path: Path | None = None
 ) -> pd.DataFrame:
     """Download historical daily OHLCV data for one or more tickers from
-    1900-01-01 to 2026-01-01.
+    1940-01-01 to 2026-01-01.
 
     Uses ``yfinance`` to batch-download data for efficiency when multiple
     tickers are requested.
@@ -92,7 +92,7 @@ def _download_stock_data(
             "Install with: pip install vangja[datasets]"
         ) from e
 
-    START_DATE = "1900-01-01"
+    START_DATE = "1940-01-01"
     END_DATE = "2026-01-01"
     results: list[pd.DataFrame] = []
     tickers_to_download: list[str] = []
@@ -509,4 +509,4 @@ def get_sp500_tickers_for_range(
             removed_during.add(str(removed).strip())
 
     consistent = constituents_at_start - removed_during
-    return sorted(consistent)
+    return sorted([ticker.replace(".", "-") for ticker in consistent])

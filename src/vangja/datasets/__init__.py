@@ -9,6 +9,8 @@ Real-world Datasets
 - `load_peyton_manning()` — Daily Wikipedia page views (2007-2016)
 - `load_citi_bike_sales()` — Daily bike rides from NYC station (2013-2014)
 - `load_nyc_temperature()` — Daily max temperature for NYC (2012-2017)
+- `load_kaggle_temperature()` — Hourly temperature for 36 cities (2012-2017)
+- `load_smart_home_readings()` — Smart home appliance energy readings (2016)
 
 Synthetic Datasets
 ------------------
@@ -27,10 +29,14 @@ Examples
 """
 
 from vangja.datasets.loaders import (
+    KaggleTemperatureCity,
+    SmartHomeColumn,
     load_air_passengers,
     load_citi_bike_sales,
+    load_kaggle_temperature,
     load_nyc_temperature,
     load_peyton_manning,
+    load_smart_home_readings,
     load_stock_data,
 )
 from vangja.datasets.stocks import get_sp500_tickers_for_range
@@ -44,7 +50,11 @@ __all__ = [
     "load_peyton_manning",
     "load_citi_bike_sales",
     "load_nyc_temperature",
+    "load_kaggle_temperature",
+    "load_smart_home_readings",
     "load_stock_data",
+    "KaggleTemperatureCity",
+    "SmartHomeColumn",
     "get_sp500_tickers_for_range",
     "generate_multi_store_data",
     "generate_hierarchical_products",

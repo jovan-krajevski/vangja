@@ -97,7 +97,19 @@ For series with non-overlapping date ranges, consider fitting them separately or
 
 ### Transfer Learning
 
-Set `tune_method="parametric"` or `"prior_from_idata"` on components, then pass `idata` (ArviZ InferenceData) to `fit()` to transfer knowledge from pre-trained models. See [07_transfer_learning.ipynb](docs/07_transfer_learning.ipynb) for a complete example using NYC temperature data to forecast short bike sales time series.
+Set `tune_method="parametric"` or `"prior_from_idata"` on components, then pass `idata` (ArviZ InferenceData) to `fit()` to transfer knowledge from pre-trained models. There is **no `tune()` method** — transfer learning is done by creating a new model and passing `idata=base_model.trace` to `fit()`:
+
+```python
+# Step 1: Fit base model on long series (use MCMC for meaningful posteriors)
+base_model = LinearTrend(tune_method="parametric") + FourierSeasonality(365.25, 10, tune_method="parametric")
+base_model.fit(long_data, method="nuts", samples=1000, chains=4)
+
+# Step 2: Create target model and fit with transferred priors
+target_model = LinearTrend(tune_method="parametric") + FourierSeasonality(365.25, 10, tune_method="parametric")
+target_model.fit(short_data, idata=base_model.trace)
+```
+
+See [07_transfer_learning.ipynb](docs/07_transfer_learning.ipynb) for a complete example using NYC temperature data to forecast short bike sales time series.
 
 ### Datasets Module (`src/vangja/datasets/`)
 
@@ -110,6 +122,8 @@ The `datasets` module provides functions for loading real-world datasets and gen
 - `load_citi_bike_sales()` — Daily bike rides from NYC Citi Bike station 360 (2013-2014). Requires `pyreadr` (install with `pip install vangja[datasets]`)
 - `load_nyc_temperature()` — Daily max temperature for NYC (2012-2017)
 - `load_stock_data(tickers, split_date, window_size, horizon_size, cache_path, interpolate)` — Download historical stock OHLCV data, compute typical price `(O+H+L+C)/4`, and split into train/test DataFrames. Requires `yfinance` (install with `pip install vangja[datasets]`)
+- `load_kaggle_temperature(city, start_date, end_date, freq)` — Hourly temperature data for 36 cities (2012-2017) from Kaggle. Returns Celsius. Supports temporal aggregation via `freq` (e.g. `"D"`, `"W"`, `"h"`). The `city` parameter is typed as `KaggleTemperatureCity` (a `Literal`). Requires `kagglehub` (install with `pip install vangja[datasets]`)
+- `load_smart_home_readings(column, start_date, end_date, freq)` — Smart home appliance energy readings at 1-minute resolution (~2016). Column can be a single `SmartHomeColumn` (returns `ds`/`y`) or a list of them (returns `ds`/`y`/`series` in long format). Supports temporal aggregation via `freq`. Requires `kagglehub` (install with `pip install vangja[datasets]`)
 - `get_sp500_tickers_for_range(start_date, end_date, cache_path)` — Return tickers consistently in S&P 500 during a date range by scraping Wikipedia's historical changes table. Accurate from ~1997 onwards.
 - `generate_multi_store_data()` — 5 synthetic store series with same time range
 - `generate_hierarchical_products(include_all_year=True)` — 5-6 synthetic product series with opposite seasonality (summer/winter groups). Default time range is 2 years (2018–2019). **Does not introduce gaps** — use `remove_random_gaps()` per-series in notebooks to simulate missing data.
@@ -131,6 +145,37 @@ model = (
 This allows the model to learn +1 (peak in summer), -1 (peak in winter), or 0 (no seasonality) for each series. Note: the `UniformConstant` trick is most valuable with **high shrinkage** on the Fourier coefficients. With low/moderate shrinkage, partial pooling on the Fourier coefficients alone can handle opposite seasonality (the shared mean drifts to ~0 and individual deviations compensate). See [06_hierarchical_caveats.ipynb](notebooks/06_hierarchical_caveats.ipynb) for a detailed analysis.
 
 **Shrinkage strength caveat:** `shrinkage_strength` is a hyperparameter that must be tuned per problem. Higher values pull series toward the shared mean more strongly. With opposite seasonality and high shrinkage, the shared Fourier mean is pulled to ~0, weakening seasonal patterns — this is where `UniformConstant` helps by separating seasonal shape from direction.
+
+### Prior Predictive Checks (PPC) Workflow
+
+Vangja scales data so that `y ≈ [-1, 1]` and `t ∈ [0, 1]`. This makes prior predictive checks (PPC) especially useful for tuning prior standard deviations. The default Prophet priors (`N(0, 5)` for slope/intercept, `N(0, 10)` for Fourier beta) are intentionally very diffuse — most prior predictive samples will fall far outside the plausible data range.
+
+**Key utility functions:**
+
+- `prior_predictive_coverage(ppc, low=-2, high=2)` — Quantitative check: what fraction of prior predictive samples fall within `[low, high]`. Target 30–60% for a flexible model. Below 5% means priors are too loose; above 95% means too tight.
+- `plot_prior_predictive(ppc, show_hdi=True, show_ref_lines=True, t=model.data["t"].values)` — Visual check: spaghetti plot + HDI envelope + reference lines at scaled data bounds.
+- `plot_posterior_predictive(...)` — Same enhancements available for posterior predictive.
+
+**Typical workflow:**
+
+```python
+model = LinearTrend() + FourierSeasonality(365.25, 10)
+model.fit(data, method="mapx")
+ppc = model.sample_prior_predictive(samples=500)
+
+# Quantitative check
+coverage = prior_predictive_coverage(ppc)
+print(f"{coverage*100:.1f}% coverage")
+
+# Visual check with HDI and reference lines
+plot_prior_predictive(ppc, show_hdi=True, show_ref_lines=True, t=model.data["t"].values)
+```
+
+**Tuning guidelines:**
+
+- Trend (`slope_sd`, `intercept_sd`): default 5 is very wide. Try 1–2 for stable series.
+- Seasonality (`beta_sd`): default 10 is extremely wide. Try 0.5–1 to regularize and prevent overfitting high-frequency noise.
+- Use `prior_sensitivity_analysis()` to sweep over prior standard deviations and compare forecast metrics.
 
 ## Development Workflow
 
@@ -300,6 +345,23 @@ Documentation is automatically deployed to GitHub Pages via the `.github/workflo
 - **Manual trigger**: Use "Run workflow" in GitHub Actions
 
 Enable GitHub Pages in repository settings → Pages → Source: "GitHub Actions".
+
+## Case Studies / Ablation Studies
+
+Case studies live in `case_studies/<dataset_name>/`. Each case study directory follows this structure:
+
+- `ablations.md` — Dataset-specific ablation plan
+- `train.py` — Original training script
+- `ablation_fast.py` — Fast validation version (VI, reduced grid)
+- `ablation_full.py` — Full ablation study (NUTS base, comprehensive grid)
+- `classical_baselines.py` — Classical model comparisons (ARIMA, Holt-Winters, Seasonal Naive)
+- `README.md` — How to run scripts and interpret results
+- `results_ablation/` — Output directory (CSV results + plots)
+- `results_classical/` — Classical baseline results
+
+A reusable template is available at `case_studies/smart_home/general_ablations.md`.
+
+**Classical baselines use statsmodels** (not sktime) because sktime requires scikit-learn < 1.6.0, conflicting with vangja's scikit-learn ~= 1.8.0. Install with `pip install vangja[reproducibility]`.
 
 ## Self-Updating Instructions
 
