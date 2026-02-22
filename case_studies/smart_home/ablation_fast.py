@@ -21,6 +21,7 @@ from typing import Any
 import matplotlib
 
 matplotlib.use("Agg")  # non-interactive backend for CI
+import arviz as az
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -61,6 +62,83 @@ LOSS_FACTORS = [0, 0.5]
 SHRINKAGE_STRENGTHS = [10]
 CONSTANT_TYPES = [None, "UniformConstant"]
 INCLUDE_SOURCE_IN_TARGET = [False, True]
+
+# Checkpointing
+BASE_MODEL_DIR = OUTPUT_DIR / "base_models"
+BASE_MODEL_DIR.mkdir(exist_ok=True)
+CHECKPOINT_CSV = OUTPUT_DIR / "results_checkpoint.csv"
+
+
+# ---------------------------------------------------------------------------
+# Checkpointing helpers
+# ---------------------------------------------------------------------------
+def _base_model_key_str(series_order: int, beta_sd: float, scaler: str) -> str:
+    """Return a filesystem-safe string key for a base model configuration."""
+    return f"base_so={series_order}_bsd={beta_sd}_sc={scaler}"
+
+
+def save_base_model(model, series_order: int, beta_sd: float, scaler: str) -> None:
+    """Persist a base model's trace and t_scale_params to disk (atomic)."""
+    key = _base_model_key_str(series_order, beta_sd, scaler)
+    nc_path = BASE_MODEL_DIR / f"{key}.nc"
+    json_path = BASE_MODEL_DIR / f"{key}_tscale.json"
+
+    tmp_nc = nc_path.with_suffix(".nc.tmp")
+    model.trace.to_netcdf(str(tmp_nc))
+    tmp_nc.rename(nc_path)
+
+    tsp = {
+        "ds_min": str(model.t_scale_params["ds_min"]),
+        "ds_max": str(model.t_scale_params["ds_max"]),
+    }
+    tmp_json = json_path.with_suffix(".json.tmp")
+    tmp_json.write_text(json.dumps(tsp, indent=2))
+    tmp_json.rename(json_path)
+
+
+def load_base_model_cache(series_order: int, beta_sd: float, scaler: str):
+    """Load a cached base model trace and t_scale_params from disk.
+
+    Returns
+    -------
+    tuple of (az.InferenceData, dict) or None
+    """
+    key = _base_model_key_str(series_order, beta_sd, scaler)
+    nc_path = BASE_MODEL_DIR / f"{key}.nc"
+    json_path = BASE_MODEL_DIR / f"{key}_tscale.json"
+    if not nc_path.exists() or not json_path.exists():
+        return None
+    trace = az.from_netcdf(str(nc_path))
+    tsp_raw = json.loads(json_path.read_text())
+    t_scale_params = {
+        "ds_min": pd.Timestamp(tsp_raw["ds_min"]),
+        "ds_max": pd.Timestamp(tsp_raw["ds_max"]),
+    }
+    return trace, t_scale_params
+
+
+def load_checkpoint() -> set[str]:
+    """Load the set of already-completed experiment names from checkpoint."""
+    if not CHECKPOINT_CSV.exists():
+        return set()
+    try:
+        df = pd.read_csv(CHECKPOINT_CSV)
+        return set(df["name"].tolist())
+    except Exception:
+        return set()
+
+
+def append_checkpoint(row: dict) -> None:
+    """Append one result row to the checkpoint CSV (atomic)."""
+    df_new = pd.DataFrame([row])
+    if CHECKPOINT_CSV.exists():
+        df_old = pd.read_csv(CHECKPOINT_CSV)
+        df_all = pd.concat([df_old, df_new], ignore_index=True)
+    else:
+        df_all = df_new
+    tmp = CHECKPOINT_CSV.with_suffix(".csv.tmp")
+    df_all.to_csv(tmp, index=False)
+    tmp.rename(CHECKPOINT_CSV)
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +200,9 @@ def make_constant(name: str | None, pool_type: str):
 def train_base_model(temp_df, series_order, beta_sd, scaler):
     """Train the base (temperature) model.
 
+    Checks for a cached trace on disk first.  If found, loads it instead
+    of re-running VI.  On a fresh run, persists the trace for crash recovery.
+
     Parameters
     ----------
     temp_df : pd.DataFrame
@@ -133,6 +214,18 @@ def train_base_model(temp_df, series_order, beta_sd, scaler):
     -------
     tuple : (model, elapsed_time)
     """
+    cached = load_base_model_cache(series_order, beta_sd, scaler)
+    if cached is not None:
+        print(f"    [cache hit] base model so={series_order} bsd={beta_sd} sc={scaler}")
+        trace, t_scale_params = cached
+        model = FlatTrend(intercept_sd=1) + FourierSeasonality(
+            period=365.25, series_order=series_order, beta_sd=beta_sd
+        )
+        model.fit(temp_df, scaler=scaler, method="map")
+        model.trace = trace
+        model.t_scale_params = t_scale_params
+        return model, 0.0
+
     model = FlatTrend(intercept_sd=1) + FourierSeasonality(
         period=365.25, series_order=series_order, beta_sd=beta_sd
     )
@@ -141,6 +234,9 @@ def train_base_model(temp_df, series_order, beta_sd, scaler):
         temp_df, scaler=scaler, method=BASE_METHOD, n=BASE_VI_N, samples=BASE_VI_SAMPLES
     )
     elapsed = time.time() - t0
+
+    # Persist to disk for crash recovery
+    save_base_model(model, series_order, beta_sd, scaler)
     return model, elapsed
 
 
@@ -535,16 +631,34 @@ def plot_best_per_series(
 # Main
 # ---------------------------------------------------------------------------
 def main():
-    """Run the fast ablation study."""
+    """Run the fast ablation study.
+
+    Supports crash recovery via checkpointing.  Completed experiments
+    are loaded from ``results_checkpoint.csv`` and skipped on restart.
+    Base model traces are cached in ``results_fast/base_models/``.
+    """
+    np.random.seed(42)
     temp_df, train_df, test_df = load_data()
 
+    # Load checkpoint to skip already-completed experiments
+    completed = load_checkpoint()
+    if completed:
+        print(f"Checkpoint loaded: {len(completed)} experiments already completed.")
+
     all_results = []
+    if CHECKPOINT_CSV.exists():
+        prev_df = pd.read_csv(CHECKPOINT_CSV)
+        all_results = prev_df.to_dict("records")
+
     model_cache: dict[str, Any] = {}  # name -> (model, pool_type)
 
     # ---- Baselines ----
     print("\n=== Baselines ===")
     for include_yearly in [True, False]:
         label = f"baseline_yearly={include_yearly}"
+        if label in completed:
+            print(f"  [skip] {label} (already completed)")
+            continue
         print(f"  Training: {label}")
         try:
             bm, elapsed = train_baseline(
@@ -567,6 +681,7 @@ def main():
                 row[f"mae_{series_name}"] = m.loc[series_name, "mae"]
                 row[f"mape_{series_name}"] = m.loc[series_name, "mape"]
             all_results.append(row)
+            append_checkpoint(row)
             print(f"    RMSE mean: {m['rmse'].mean():.4f}, time: {elapsed:.1f}s")
         except Exception as e:
             print(f"    FAILED: {e}")
@@ -598,6 +713,9 @@ def main():
             f"so={so}_bsd={bsd}_sc={scaler}_tm={tm}_pt={pt}"
             f"_lf={lf}_ss={ss}_ct={ct}_src={inc_src}"
         )
+        if label in completed:
+            print(f"  [{i+1}/{len(grid)}] [skip] {label}")
+            continue
         print(f"  [{i+1}/{len(grid)}] {label}")
 
         try:
@@ -653,6 +771,7 @@ def main():
                 row[f"mae_{series_name}"] = m.loc[series_name, "mae"]
                 row[f"mape_{series_name}"] = m.loc[series_name, "mape"]
             all_results.append(row)
+            append_checkpoint(row)
             print(
                 f"    RMSE mean: {m['rmse'].mean():.4f}, "
                 f"time: {bm_time + tm_time:.1f}s"

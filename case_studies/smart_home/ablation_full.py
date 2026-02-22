@@ -32,6 +32,7 @@ from typing import Any
 import matplotlib
 
 matplotlib.use("Agg")
+import arviz as az
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -82,6 +83,94 @@ INCLUDE_SOURCE_IN_TARGET = [False, True]
 
 # Prediction plot series (subset)
 PLOT_SERIES = ["Furnace 1 [kW]", "Fridge [kW]"]
+
+# Checkpointing
+BASE_MODEL_DIR = OUTPUT_DIR / "base_models"
+BASE_MODEL_DIR.mkdir(exist_ok=True)
+CHECKPOINT_CSV = OUTPUT_DIR / "results_checkpoint.csv"
+
+
+# ---------------------------------------------------------------------------
+# Checkpointing helpers
+# ---------------------------------------------------------------------------
+def _base_model_key_str(series_order: int, beta_sd: float, scaler: str) -> str:
+    """Return a filesystem-safe string key for a base model configuration."""
+    return f"base_so={series_order}_bsd={beta_sd}_sc={scaler}"
+
+
+def save_base_model(model, series_order: int, beta_sd: float, scaler: str) -> None:
+    """Persist a base model's trace and t_scale_params to disk.
+
+    The ArviZ InferenceData is stored as a NetCDF file and the
+    t_scale_params as a JSON sidecar.  Writes are atomic (write to
+    a temporary file, then rename) so a crash mid-write cannot corrupt
+    the cache.
+    """
+    key = _base_model_key_str(series_order, beta_sd, scaler)
+    nc_path = BASE_MODEL_DIR / f"{key}.nc"
+    json_path = BASE_MODEL_DIR / f"{key}_tscale.json"
+
+    # Atomic write for NetCDF
+    tmp_nc = nc_path.with_suffix(".nc.tmp")
+    model.trace.to_netcdf(str(tmp_nc))
+    tmp_nc.rename(nc_path)
+
+    # Atomic write for t_scale_params
+    tsp = {
+        "ds_min": str(model.t_scale_params["ds_min"]),
+        "ds_max": str(model.t_scale_params["ds_max"]),
+    }
+    tmp_json = json_path.with_suffix(".json.tmp")
+    tmp_json.write_text(json.dumps(tsp, indent=2))
+    tmp_json.rename(json_path)
+
+
+def load_base_model_cache(series_order: int, beta_sd: float, scaler: str):
+    """Load a cached base model trace and t_scale_params from disk.
+
+    Returns
+    -------
+    tuple of (az.InferenceData, dict) or None
+        The trace and t_scale_params, or None if no cache exists.
+    """
+    key = _base_model_key_str(series_order, beta_sd, scaler)
+    nc_path = BASE_MODEL_DIR / f"{key}.nc"
+    json_path = BASE_MODEL_DIR / f"{key}_tscale.json"
+
+    if not nc_path.exists() or not json_path.exists():
+        return None
+
+    trace = az.from_netcdf(str(nc_path))
+    tsp_raw = json.loads(json_path.read_text())
+    t_scale_params = {
+        "ds_min": pd.Timestamp(tsp_raw["ds_min"]),
+        "ds_max": pd.Timestamp(tsp_raw["ds_max"]),
+    }
+    return trace, t_scale_params
+
+
+def load_checkpoint() -> set[str]:
+    """Load the set of already-completed experiment names from the checkpoint CSV."""
+    if not CHECKPOINT_CSV.exists():
+        return set()
+    try:
+        df = pd.read_csv(CHECKPOINT_CSV)
+        return set(df["name"].tolist())
+    except Exception:
+        return set()
+
+
+def append_checkpoint(row: dict) -> None:
+    """Append one result row to the checkpoint CSV (atomic)."""
+    df_new = pd.DataFrame([row])
+    if CHECKPOINT_CSV.exists():
+        df_old = pd.read_csv(CHECKPOINT_CSV)
+        df_all = pd.concat([df_old, df_new], ignore_index=True)
+    else:
+        df_all = df_new
+    tmp = CHECKPOINT_CSV.with_suffix(".csv.tmp")
+    df_all.to_csv(tmp, index=False)
+    tmp.rename(CHECKPOINT_CSV)
 
 
 # ---------------------------------------------------------------------------
@@ -173,7 +262,30 @@ def make_extra_seasonalities(spec: str | None, pool_type: str, shrinkage: float)
 # Model training
 # ---------------------------------------------------------------------------
 def train_base_model(temp_df, series_order, beta_sd, scaler):
-    """Train the base (temperature) model using NUTS."""
+    """Train the base (temperature) model using NUTS.
+
+    Checks for a cached trace on disk first.  If found, creates the model,
+    fits it, and replaces its trace with the cached version — avoiding the
+    expensive NUTS sampling.  When training from scratch, persists the trace
+    to disk for future runs.
+    """
+    cached = load_base_model_cache(series_order, beta_sd, scaler)
+    if cached is not None:
+        print(f"    [cache hit] base model so={series_order} bsd={beta_sd} sc={scaler}")
+        trace, t_scale_params = cached
+        # Still need a fitted model object for the target to extract
+        # t_scale_params and trace from.  We do a fast MAP fit and then
+        # overwrite the trace.
+        model = FlatTrend(intercept_sd=1) + FourierSeasonality(
+            period=365.25,
+            series_order=series_order,
+            beta_sd=beta_sd,
+        )
+        model.fit(temp_df, scaler=scaler, method="map")
+        model.trace = trace
+        model.t_scale_params = t_scale_params
+        return model, 0.0  # elapsed = 0 (from cache)
+
     model = FlatTrend(intercept_sd=1) + FourierSeasonality(
         period=365.25,
         series_order=series_order,
@@ -187,7 +299,11 @@ def train_base_model(temp_df, series_order, beta_sd, scaler):
         samples=BASE_NUTS_SAMPLES,
         chains=BASE_NUTS_CHAINS,
     )
-    return model, time.time() - t0
+    elapsed = time.time() - t0
+
+    # Persist to disk for crash recovery
+    save_base_model(model, series_order, beta_sd, scaler)
+    return model, elapsed
 
 
 def train_target_model(
@@ -623,11 +739,16 @@ def plot_best_per_series(
 def main(dry_run=False):
     """Run the full ablation study.
 
+    Supports crash recovery via checkpointing.  Completed experiments
+    are loaded from ``results_checkpoint.csv`` and skipped on restart.
+    Base model traces are cached in ``results/base_models/``.
+
     Parameters
     ----------
     dry_run : bool
         If True, only print the grid size without running anything.
     """
+    np.random.seed(42)
     temp_df, train_df, test_df = load_data()
 
     # Build grid
@@ -655,7 +776,17 @@ def main(dry_run=False):
         print("Dry run — exiting.")
         return
 
+    # Load checkpoint to skip already-completed experiments
+    completed = load_checkpoint()
+    if completed:
+        print(f"Checkpoint loaded: {len(completed)} experiments already completed.")
+
     all_results: list[dict] = []
+    # Reload previous results so final CSV is complete
+    if CHECKPOINT_CSV.exists():
+        prev_df = pd.read_csv(CHECKPOINT_CSV)
+        all_results = prev_df.to_dict("records")
+
     base_cache: dict[tuple, Any] = {}
     model_cache: dict[str, Any] = {}  # name -> (model, pool_type)
 
@@ -665,6 +796,9 @@ def main(dry_run=False):
         for shrinkage in [10] if pt == "partial" else [1]:
             for include_yearly in [True, False]:
                 label = f"baseline_pt={pt}_ss={shrinkage}" f"_yearly={include_yearly}"
+                if label in completed:
+                    print(f"  [skip] {label} (already completed)")
+                    continue
                 print(f"  Training: {label}")
                 try:
                     bm, elapsed = train_baseline(
@@ -689,6 +823,7 @@ def main(dry_run=False):
                         row[f"mae_{sn}"] = m.loc[sn, "mae"]
                         row[f"mape_{sn}"] = m.loc[sn, "mape"]
                     all_results.append(row)
+                    append_checkpoint(row)
                     print(f"    RMSE: {m['rmse'].mean():.4f}, time: {elapsed:.1f}s")
                 except Exception as e:
                     print(f"    FAILED: {e}")
@@ -700,10 +835,13 @@ def main(dry_run=False):
             f"so={so}_bsd={bsd}_sc={scaler}_tm={tm}_pt={pt}"
             f"_lf={lf}_ss={ss}_ct={ct}_es={es}_src={inc_src}"
         )
+        if label in completed:
+            print(f"  [{i+1}/{len(grid)}] [skip] {label}")
+            continue
         print(f"  [{i+1}/{len(grid)}] {label}")
 
         try:
-            # Base model (cached by series_order, beta_sd, scaler)
+            # Base model (cached in-memory and on disk)
             base_key = (so, bsd, scaler)
             if base_key not in base_cache:
                 bm, bm_time = train_base_model(temp_df, so, bsd, scaler)
@@ -760,6 +898,7 @@ def main(dry_run=False):
                 row[f"mae_{sn}"] = m.loc[sn, "mae"]
                 row[f"mape_{sn}"] = m.loc[sn, "mape"]
             all_results.append(row)
+            append_checkpoint(row)
             print(
                 f"    RMSE: {m['rmse'].mean():.4f}, " f"time: {bm_time + tm_time:.1f}s"
             )
