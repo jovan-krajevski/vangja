@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 # Adjust --partition to match your HPC cluster's queue names:
-# #SBATCH --partition=compute
+#SBATCH --partition=openlab-queue
 
 # =========================================================================
 # Vangja Ablation Study — SLURM Submission Script
