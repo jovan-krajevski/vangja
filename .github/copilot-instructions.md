@@ -177,6 +177,35 @@ plot_prior_predictive(ppc, show_hdi=True, show_ref_lines=True, t=model.data["t"]
 - Seasonality (`beta_sd`): default 10 is extremely wide. Try 0.5–1 to regularize and prevent overfitting high-frequency noise.
 - Use `prior_sensitivity_analysis()` to sweep over prior standard deviations and compare forecast metrics.
 
+### Uncertainty Estimation
+
+Vangja supports prediction intervals via `predict_uncertainty()`. Two approaches are used depending on the inference method:
+
+- **MCMC/VI**: Each posterior draw is propagated through the model via `_predict_map` (reusing the existing MAP code path). Percentile-based credible intervals are computed from the resulting trajectory ensemble.
+- **MAP/MAPX**: A hybrid residual-calibrated approach: `ŷ(t) ± z * σ̂ * √(1 + h/n)`, where `σ̂ = max(σ_fitted, σ_residual)`, `h` is forecast distance, `n` is training size, and `z` is a Student-t quantile.
+
+See `uncertainty.md` for the full mathematical description and comparison with Prophet's approach.
+
+**Key API:**
+
+```python
+# predict_uncertainty returns yhat + yhat_lower_X + yhat_upper_X columns
+future = model.predict_uncertainty(horizon=90, interval_width=0.95)
+
+# plot() auto-detects uncertainty columns and shows fill_between bands
+model.plot(future)
+```
+
+**Design principle**: Uncertainty estimation is implemented entirely in `TimeSeriesModel` — no component-level changes are needed. For MCMC, individual posterior draws are extracted as dicts and fed through `_predict_map`, avoiding modifications to `_predict_mcmc` or any composition operators.
+
+### Plot Clipping
+
+The `plot()` method supports `clip_to_data=True` (default) which clips predictions to the training + test date range. This is essential for transfer learning where the base model's time scale may extend far beyond the target series dates. The clipping ensures plots only show the relevant prediction window.
+
+### Include Source in Target (Ablation Option)
+
+When performing transfer learning ablation studies, the source time series can be included as an additional series in the target model's training data via `include_source_in_target=True`. This transforms the problem into hierarchical co-learning. **Only meaningful with `pool_type="partial"`** since individual pooling means series don't share information.
+
 ## Development Workflow
 
 ### Environment Setup

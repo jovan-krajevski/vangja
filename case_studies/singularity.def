@@ -1,0 +1,59 @@
+Bootstrap: docker
+From: continuumio/miniconda3:v25.11.1
+
+%labels
+    Author Jovan Krajevski <jovan.krajevski@gmail.com>
+    Version 1.0.0
+    Description Singularity container for vangja ablation studies on HPC
+
+%post
+    # System dependencies
+    apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        git \
+        && rm -rf /var/lib/apt/lists/*
+
+    # Create and activate conda environment with PyMC
+    conda create -y -c conda-forge -n pymc_env python=3.13 "pymc>=5.27.1"
+    conda clean -afy
+
+    # Activate environment and install vangja with reproducibility deps
+    /bin/bash -c "source activate pymc_env && \
+        pip install --no-cache-dir 'vangja[reproducibility]'"
+
+%environment
+    # Activate the conda environment by default
+    export PATH="/opt/conda/envs/pymc_env/bin:$PATH"
+    export CONDA_DEFAULT_ENV=pymc_env
+    export CONDA_PREFIX="/opt/conda/envs/pymc_env"
+    export LC_ALL=C
+    export PYTHONDONTWRITEBYTECODE=1
+    # Prevent JAX from trying to use GPU (not needed for MAP/MCMC on CPU)
+    export JAX_PLATFORMS=cpu
+
+%runscript
+    exec python "$@"
+
+%test
+    python -c "import vangja; print(f'vangja {vangja.__version__} OK')"
+    python -c "import pymc; print(f'PyMC {pymc.__version__} OK')"
+    python -c "import arviz; print('ArviZ OK')"
+
+%help
+    Singularity container for running vangja ablation studies on HPC clusters.
+
+    This container packages:
+      - Miniconda with Python 3.13
+      - PyMC >= 5.27.1 (from conda-forge)
+      - vangja[reproducibility] (includes statsmodels, matplotlib, seaborn,
+        kagglehub, pyreadr, yfinance)
+
+    Usage:
+      # Run an ablation script
+      singularity run vangja.sif case_studies/smart_home/ablation_full.py
+
+      # Interactive shell
+      singularity shell vangja.sif
+
+      # Execute a command
+      singularity exec vangja.sif python -c "import vangja; print(vangja.__version__)"
