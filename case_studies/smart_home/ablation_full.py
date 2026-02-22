@@ -78,6 +78,7 @@ LOSS_FACTORS = [-1, -0.5, 0, 0.5, 1]
 SHRINKAGE_STRENGTHS = [1, 10, 100, 1000]
 CONSTANT_TYPES = [None, "UniformConstant", "BetaConstant", "NormalConstant"]
 EXTRA_SEASONALITIES = [None, "monthly", "quarterly", "monthly+quarterly"]
+INCLUDE_SOURCE_IN_TARGET = [False, True]
 
 # Prediction plot series (subset)
 PLOT_SERIES = ["Furnace 1 [kW]", "Fridge [kW]"]
@@ -201,8 +202,19 @@ def train_target_model(
     shrinkage,
     constant_type,
     extra_seas,
+    include_source=False,
+    temp_df=None,
 ):
-    """Train the target (smart home) model with transfer learning."""
+    """Train the target (smart home) model with transfer learning.
+
+    Parameters
+    ----------
+    include_source : bool
+        If True, include the source (temperature) series in the target
+        training data for joint hierarchical fitting.
+    temp_df : pd.DataFrame, optional
+        Temperature data. Required when ``include_source=True``.
+    """
     yearly_fs = FourierSeasonality(
         period=365.25,
         series_order=series_order,
@@ -237,6 +249,13 @@ def train_target_model(
         model = model + extra
 
     t0 = time.time()
+    # Optionally include source time series in the target training data
+    fit_df = train_df
+    if include_source and temp_df is not None:
+        source_df = temp_df.copy()
+        source_df["series"] = "temperature_source"
+        fit_df = pd.concat([train_df, source_df], ignore_index=True)
+
     fit_kwargs: dict[str, Any] = dict(
         scaler=scaler,
         method=TARGET_METHOD,
@@ -247,7 +266,7 @@ def train_target_model(
     )
     if pool_type == "partial":
         fit_kwargs["sigma_shrinkage_strength"] = shrinkage
-    model.fit(train_df, **fit_kwargs)
+    model.fit(fit_df, **fit_kwargs)
     return model, time.time() - t0
 
 
@@ -293,10 +312,31 @@ def train_baseline(train_df, pool_type, shrinkage, include_yearly=True):
 # ---------------------------------------------------------------------------
 # Evaluation helpers
 # ---------------------------------------------------------------------------
+def _compute_horizon(model, test_df):
+    """Compute the horizon needed to cover the entire test set.
+
+    When transfer learning shifts ``t_scale_params`` to a base model whose
+    ``ds_max`` is earlier than the target training data, the number of
+    forecast days must span the gap between ``ds_max`` and the last test
+    date — not just the number of test data points.
+
+    Parameters
+    ----------
+    model : TimeSeriesModel
+    test_df : pd.DataFrame
+
+    Returns
+    -------
+    int
+    """
+    last_test_date = pd.Timestamp(test_df["ds"].max())
+    ds_max = pd.Timestamp(model.t_scale_params["ds_max"])
+    return (last_test_date - ds_max).days
+
+
 def evaluate_model(model, test_df, pool_type):
     """Evaluate model on test set."""
-    first_series = test_df["series"].unique()[0]
-    horizon = len(test_df[test_df["series"] == first_series])
+    horizon = _compute_horizon(model, test_df)
     yhat = model.predict(horizon=horizon)
     return metrics(test_df, yhat, pool_type=pool_type)
 
@@ -332,9 +372,8 @@ def extract_model_params(model, is_base=False):
 # Plotting
 # ---------------------------------------------------------------------------
 def plot_predictions(model, test_df, train_df, name, pool_type, save_dir):
-    """Plot predictions for selected series."""
-    first_series = test_df["series"].unique()[0]
-    horizon = len(test_df[test_df["series"] == first_series])
+    """Plot predictions for selected series, clipped to target date range."""
+    horizon = _compute_horizon(model, test_df)
     yhat = model.predict(horizon=horizon)
 
     series_to_plot = [s for s in PLOT_SERIES if s in test_df["series"].unique()]
@@ -356,9 +395,18 @@ def plot_predictions(model, test_df, train_df, name, pool_type, save_dir):
         group_code = group_map.get(series_name, idx)
         yhat_col = f"yhat_{group_code}"
 
-        if yhat_col in yhat.columns:
+        # Clip predictions to target series date range
+        date_min = series_train["ds"].min()
+        date_max = series_test["ds"].max()
+        yhat_clipped = yhat[(yhat["ds"] >= date_min) & (yhat["ds"] <= date_max)]
+
+        if yhat_col in yhat_clipped.columns:
             ax.plot(
-                yhat["ds"], yhat[yhat_col], label="Predicted", alpha=0.8, color="C0"
+                yhat_clipped["ds"],
+                yhat_clipped[yhat_col],
+                label="Predicted",
+                alpha=0.8,
+                color="C0",
             )
         ax.scatter(
             series_train["ds"],
@@ -418,6 +466,7 @@ def plot_hparam_effects(results_df, save_dir):
         "shrinkage",
         "constant",
         "extra_seas",
+        "include_source",
     ]
     hparams = [h for h in hparams if h in transfer_df.columns]
 
@@ -457,6 +506,117 @@ def plot_hparam_effects(results_df, save_dir):
         plt.close(fig)
 
 
+def plot_best_per_series(
+    results_df: pd.DataFrame,
+    model_cache: dict[str, Any],
+    train_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    save_dir: Path,
+):
+    """Plot a dedicated prediction plot for the best model per series.
+
+    Parameters
+    ----------
+    results_df : pd.DataFrame
+        Results with per-series RMSE columns.
+    model_cache : dict
+        Mapping from config name to (model, pool_type).
+    train_df : pd.DataFrame
+    test_df : pd.DataFrame
+    save_dir : Path
+    """
+    rmse_cols = [
+        c for c in results_df.columns if c.startswith("rmse_") and c != "rmse_mean"
+    ]
+    if not rmse_cols:
+        return
+
+    for col in sorted(rmse_cols):
+        series_name = col[len("rmse_") :]
+        valid = results_df.dropna(subset=[col])
+        if valid.empty:
+            continue
+        best_idx = valid[col].idxmin()
+        best_row = valid.loc[best_idx]
+        best_name = best_row["name"]
+
+        if best_name not in model_cache:
+            continue
+
+        model, pool_type = model_cache[best_name]
+        group_map = {v: k for k, v in model.groups_.items()}
+        group_code = group_map.get(series_name)
+        if group_code is None:
+            continue
+
+        horizon = _compute_horizon(model, test_df)
+        try:
+            yhat = model.predict_uncertainty(horizon=horizon)
+            has_uncertainty = True
+        except Exception:
+            yhat = model.predict(horizon=horizon)
+            has_uncertainty = False
+        yhat_col = f"yhat_{group_code}"
+        lower_col = f"yhat_lower_{group_code}"
+        upper_col = f"yhat_upper_{group_code}"
+
+        series_train = train_df[train_df["series"] == series_name]
+        series_test = test_df[test_df["series"] == series_name]
+
+        date_min = series_train["ds"].min()
+        date_max = series_test["ds"].max()
+        yhat_clipped = yhat[(yhat["ds"] >= date_min) & (yhat["ds"] <= date_max)]
+
+        fig, ax = plt.subplots(figsize=(14, 5))
+        if yhat_col in yhat_clipped.columns:
+            ax.plot(
+                yhat_clipped["ds"],
+                yhat_clipped[yhat_col],
+                label="Predicted",
+                alpha=0.8,
+                color="C0",
+                lw=1.5,
+            )
+        if has_uncertainty and lower_col in yhat_clipped.columns:
+            ax.fill_between(
+                yhat_clipped["ds"],
+                yhat_clipped[lower_col],
+                yhat_clipped[upper_col],
+                alpha=0.2,
+                color="C0",
+                label="95% interval",
+            )
+        ax.scatter(
+            series_train["ds"],
+            series_train["y"],
+            s=5,
+            color="C2",
+            label="Train",
+            alpha=0.5,
+            zorder=4,
+        )
+        ax.scatter(
+            series_test["ds"],
+            series_test["y"],
+            s=8,
+            color="C1",
+            label="Test",
+            zorder=5,
+        )
+        rmse_val = best_row[col]
+        ax.set_title(
+            f"Best model for {series_name} (RMSE={rmse_val:.4f})\n{best_name}",
+            fontsize=10,
+        )
+        ax.legend(fontsize=9)
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+
+        safe_series = series_name.replace(" ", "_").replace("/", "_")[:40]
+        fig.savefig(save_dir / f"best_{safe_series}.png", dpi=120)
+        plt.close(fig)
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -482,10 +642,13 @@ def main(dry_run=False):
             SHRINKAGE_STRENGTHS,
             CONSTANT_TYPES,
             EXTRA_SEASONALITIES,
+            INCLUDE_SOURCE_IN_TARGET,
         )
     )
     # Filter: shrinkage only matters for partial pooling
     grid = [g for g in grid if g[4] == "partial" or g[6] == SHRINKAGE_STRENGTHS[0]]
+    # Filter: include_source only makes sense with partial pooling
+    grid = [g for g in grid if g[4] == "partial" or g[9] is False]
 
     print(f"\nTotal configurations: {len(grid)} + baselines")
     if dry_run:
@@ -494,6 +657,7 @@ def main(dry_run=False):
 
     all_results: list[dict] = []
     base_cache: dict[tuple, Any] = {}
+    model_cache: dict[str, Any] = {}  # name -> (model, pool_type)
 
     # ---- Baselines ----
     print("\n=== Baselines ===")
@@ -508,6 +672,7 @@ def main(dry_run=False):
                     )
                     m = evaluate_model(bm, test_df, pt)
                     plot_predictions(bm, test_df, train_df, label, pt, OUTPUT_DIR)
+                    model_cache[label] = (bm, pt)
                     row = {
                         "name": label,
                         "type": "baseline",
@@ -522,6 +687,7 @@ def main(dry_run=False):
                     for sn in m.index:
                         row[f"rmse_{sn}"] = m.loc[sn, "rmse"]
                         row[f"mae_{sn}"] = m.loc[sn, "mae"]
+                        row[f"mape_{sn}"] = m.loc[sn, "mape"]
                     all_results.append(row)
                     print(f"    RMSE: {m['rmse'].mean():.4f}, time: {elapsed:.1f}s")
                 except Exception as e:
@@ -529,10 +695,10 @@ def main(dry_run=False):
 
     # ---- Transfer learning ablations ----
     print(f"\n=== Transfer Learning Ablations ({len(grid)} configs) ===")
-    for i, (so, bsd, scaler, tm, pt, lf, ss, ct, es) in enumerate(grid):
+    for i, (so, bsd, scaler, tm, pt, lf, ss, ct, es, inc_src) in enumerate(grid):
         label = (
             f"so={so}_bsd={bsd}_sc={scaler}_tm={tm}_pt={pt}"
-            f"_lf={lf}_ss={ss}_ct={ct}_es={es}"
+            f"_lf={lf}_ss={ss}_ct={ct}_es={es}_src={inc_src}"
         )
         print(f"  [{i+1}/{len(grid)}] {label}")
 
@@ -557,6 +723,8 @@ def main(dry_run=False):
                 ss,
                 ct,
                 es,
+                include_source=inc_src,
+                temp_df=temp_df,
             )
 
             # Evaluate
@@ -565,6 +733,7 @@ def main(dry_run=False):
             # Plot predictions for selected configs
             if i % max(1, len(grid) // 20) == 0:
                 plot_predictions(tm_model, test_df, train_df, label, pt, OUTPUT_DIR)
+            model_cache[label] = (tm_model, pt)
 
             row = {
                 "name": label,
@@ -578,6 +747,7 @@ def main(dry_run=False):
                 "shrinkage": ss,
                 "constant": ct,
                 "extra_seas": es,
+                "include_source": inc_src,
                 "base_time": bm_time,
                 "target_time": tm_time,
                 "elapsed": bm_time + tm_time,
@@ -588,6 +758,7 @@ def main(dry_run=False):
             for sn in m.index:
                 row[f"rmse_{sn}"] = m.loc[sn, "rmse"]
                 row[f"mae_{sn}"] = m.loc[sn, "mae"]
+                row[f"mape_{sn}"] = m.loc[sn, "mape"]
             all_results.append(row)
             print(
                 f"    RMSE: {m['rmse'].mean():.4f}, " f"time: {bm_time + tm_time:.1f}s"
@@ -607,12 +778,40 @@ def main(dry_run=False):
     if len(results_df) > 0:
         plot_results_summary(results_df, OUTPUT_DIR)
         plot_hparam_effects(results_df, OUTPUT_DIR)
+        plot_best_per_series(results_df, model_cache, train_df, test_df, OUTPUT_DIR)
         print(f"Plots saved to {OUTPUT_DIR}/")
 
     # Top 10 summary
     print("\n=== Top 10 Configurations by RMSE ===")
     top10 = results_df.nsmallest(10, "rmse_mean")
-    print(top10[["name", "rmse_mean", "mae_mean", "elapsed"]].to_string(index=False))
+    print(
+        top10[["name", "rmse_mean", "mae_mean", "mape_mean", "elapsed"]].to_string(
+            index=False
+        )
+    )
+
+    # Best model per series
+    if len(results_df) > 0:
+        rmse_cols = [
+            c for c in results_df.columns if c.startswith("rmse_") and c != "rmse_mean"
+        ]
+        print("\n=== Best Model per Series (by RMSE) ===")
+        for col in sorted(rmse_cols):
+            series_name = col[len("rmse_") :]
+            valid = results_df.dropna(subset=[col])
+            if valid.empty:
+                continue
+            best_idx = valid[col].idxmin()
+            best = valid.loc[best_idx]
+            mae_col = f"mae_{series_name}"
+            mape_col = f"mape_{series_name}"
+            mae_val = best[mae_col] if mae_col in best.index else float("nan")
+            mape_val = best[mape_col] if mape_col in best.index else float("nan")
+            print(
+                f"  {series_name}: {best['name']}  "
+                f"(RMSE={best[col]:.4f}, MAE={mae_val:.4f}, "
+                f"MAPE={mape_val:.4f})"
+            )
 
     return results_df
 
