@@ -6,7 +6,12 @@ From: continuumio/miniconda3:v25.11.1
     Version 1.0.0
     Description Singularity container for vangja ablation studies on HPC
 
+%files
+    src /vangja/src
+    pyproject.toml /vangja/pyproject.toml
+
 %post
+    ls /vangja
     # System dependencies
     apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
@@ -25,7 +30,7 @@ From: continuumio/miniconda3:v25.11.1
 
     # Activate environment and install vangja with reproducibility deps
     /bin/bash -c "source activate pymc_env && \
-        pip install --no-cache-dir --retries 5 --timeout 120 'vangja[reproducibility]'"
+        pip install --no-cache-dir --retries 5 --timeout 120 '/vangja[reproducibility]'"
 
 %environment
     # Activate the conda environment by default
