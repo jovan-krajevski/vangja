@@ -33,9 +33,12 @@ set -euo pipefail
 CASE_STUDY="${1:?Usage: sbatch submit_ablation.slurm <case_study> [fast|full|classical]}"
 MODE="${2:-full}"
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(pwd)"
+echo "${REPO_ROOT}"
 CASE_DIR="${REPO_ROOT}/case_studies/${CASE_STUDY}"
 SIF="${REPO_ROOT}/case_studies/vangja.sif"
+
+ls "${REPO_ROOT}"
 
 # ---------------------------------------------------------------------------
 # Validate inputs
