@@ -390,6 +390,17 @@ def main():
     print(summary.to_string())
     summary.to_csv(OUTPUT_DIR / "classical_summary.csv")
 
+    # Best model per series
+    print("\n=== Best Model per Series (by RMSE) ===")
+    for series_name in sorted(metrics_df["series"].unique()):
+        series_data = metrics_df[metrics_df["series"] == series_name]
+        best = series_data.loc[series_data["rmse"].idxmin()]
+        print(
+            f"  {series_name}: {best['model']}  "
+            f"(RMSE={best['rmse']:.4f}, MAE={best['mae']:.4f}, "
+            f"MAPE={best['mape']:.4f})"
+        )
+
     # Plots
     plot_all_forecasts(all_results, train_df, test_df, OUTPUT_DIR)
     plot_metrics_comparison(metrics_df, OUTPUT_DIR)

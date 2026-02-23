@@ -507,6 +507,216 @@ class TimeSeriesModel:
 
         return future
 
+    def predict_uncertainty(
+        self,
+        horizon: int,
+        freq: FreqStr = "D",
+        uncertainty_samples: int = 200,
+        interval_width: float = 0.95,
+    ) -> pd.DataFrame:
+        """Predict with uncertainty intervals.
+
+        For MCMC/VI methods, uncertainty is derived from posterior samples.
+        Each posterior draw is propagated through the model to produce a
+        family of prediction trajectories, from which percentile-based
+        credible intervals are computed.
+
+        For MAP methods, uncertainty is estimated using a hybrid approach:
+
+        1. The fitted observation noise ``sigma`` provides a base noise level.
+        2. In-sample residuals are used to calibrate the noise estimate.
+        3. A forecast-distance scaling factor ``sqrt(1 + h/n)`` widens
+           the intervals for predictions further from the training data,
+           reflecting increasing epistemic uncertainty.
+
+        Parameters
+        ----------
+        horizon : int
+            Number of future steps to forecast.
+        freq : FreqStr, default "D"
+            Frequency of forecast steps.
+        uncertainty_samples : int, default 200
+            Number of posterior draws to use for interval estimation.
+            Only used for MCMC/VI methods.
+        interval_width : float, default 0.95
+            Width of the prediction interval (e.g. 0.95 for 95%% interval).
+
+        Returns
+        -------
+        pd.DataFrame
+            The future DataFrame with columns ``yhat_<group>``,
+            ``yhat_lower_<group>``, and ``yhat_upper_<group>`` for each group.
+
+        Notes
+        -----
+        See ``uncertainty.md`` for a detailed description of the approaches.
+        """
+        future = self._make_future_df(horizon, freq)
+        is_individual = "scaler" not in self.y_scale_params
+        alpha = 1.0 - interval_width
+        lower_q = alpha / 2.0
+        upper_q = 1.0 - alpha / 2.0
+
+        if self.method not in ["mapx", "map"] and self.trace is not None:
+            # --- MCMC / VI: propagate posterior draws ---
+            posterior = self.trace.posterior
+            n_chains = posterior.dims["chain"]
+            n_draws = posterior.dims["draw"]
+            total_draws = n_chains * n_draws
+            n_samples = min(uncertainty_samples, total_draws)
+
+            # Sub-sample draw indices
+            rng = np.random.default_rng(42)
+            flat_indices = rng.choice(total_draws, size=n_samples, replace=False)
+            chain_indices = flat_indices % n_chains
+            draw_indices = flat_indices // n_chains
+
+            all_predictions = []
+            for s in range(n_samples):
+                ci, di = int(chain_indices[s]), int(draw_indices[s])
+                draw_dict: dict[str, np.ndarray] = {}
+                for var in posterior.data_vars:
+                    draw_dict[var] = posterior[var].values[ci, di]
+
+                future_copy = future[["ds", "t"]].copy()
+                pred = self._predict(future_copy, "mapx", draw_dict, None)
+                all_predictions.append(pred)
+
+            # all_predictions: list of (n_groups, n_timepoints) arrays
+            stacked = np.stack(all_predictions, axis=0)  # (n_samples, n_groups, T)
+
+            # Point forecast from mean
+            forecasts = self._predict(future, self.method, self.map_approx, self.trace)
+
+            for group_code in range(forecasts.shape[0]):
+                y_min, y_max = self._get_y_bounds(group_code, is_individual)
+                scale = y_max - y_min
+
+                future[f"yhat_{group_code}"] = forecasts[group_code] * scale + y_min
+
+                group_samples = stacked[:, group_code, :]  # (n_samples, T)
+                future[f"yhat_lower_{group_code}"] = (
+                    np.quantile(group_samples, lower_q, axis=0) * scale + y_min
+                )
+                future[f"yhat_upper_{group_code}"] = (
+                    np.quantile(group_samples, upper_q, axis=0) * scale + y_min
+                )
+        else:
+            # --- MAP / MAPX: residual-calibrated intervals ---
+            forecasts = self._predict(future, self.method, self.map_approx, self.trace)
+
+            # Get fitted sigma from map_approx
+            sigma_scaled = self._get_map_sigma()
+
+            # Compute in-sample residuals for calibration
+            residual_stds = self._compute_residual_stds(is_individual)
+
+            # Number of training observations per group
+            n_train = len(self.data)
+
+            for group_code in range(forecasts.shape[0]):
+                y_min, y_max = self._get_y_bounds(group_code, is_individual)
+                scale = y_max - y_min
+
+                future[f"yhat_{group_code}"] = forecasts[group_code] * scale + y_min
+
+                # Noise estimate: use the larger of fitted sigma and residual std
+                noise_scaled = max(
+                    (
+                        sigma_scaled[group_code]
+                        if len(sigma_scaled) > 1
+                        else sigma_scaled[0]
+                    ),
+                    residual_stds.get(group_code, sigma_scaled[0]),
+                )
+
+                # Forecast-distance scaling: uncertainty grows for predictions
+                # further from the training data
+                ds_max = pd.Timestamp(self.t_scale_params["ds_max"])
+                forecast_distances = np.maximum(
+                    (future["ds"] - ds_max).dt.days.values, 0
+                ).astype(float)
+                distance_scaling = np.sqrt(1.0 + forecast_distances / max(n_train, 1))
+
+                # Convert from Student-t quantile for small samples
+                from scipy import stats as sp_stats
+
+                dof = max(n_train - 2, 1)
+                z = sp_stats.t.ppf(upper_q, dof)
+
+                half_width = z * noise_scaled * distance_scaling * scale
+
+                future[f"yhat_lower_{group_code}"] = (
+                    future[f"yhat_{group_code}"] - half_width
+                )
+                future[f"yhat_upper_{group_code}"] = (
+                    future[f"yhat_{group_code}"] + half_width
+                )
+
+        # Rescale trend component columns (same as predict)
+        for group_code in range(forecasts.shape[0]):
+            y_min, y_max = self._get_y_bounds(group_code, is_individual)
+            scale = y_max - y_min
+            for model_type, model_cnt in self.model_idxs.items():
+                if not model_type.startswith("lt"):
+                    continue
+                for model_idx in range(model_cnt):
+                    component = f"{model_type}_{model_idx}_{group_code}"
+                    if component in future.columns:
+                        future[component] = future[component] * scale + y_min
+
+        return future
+
+    def _get_y_bounds(
+        self, group_code: int, is_individual: bool
+    ) -> tuple[float, float]:
+        """Get y_min, y_max for a given group."""
+        if is_individual:
+            return (
+                self.y_scale_params[group_code]["y_min"],
+                self.y_scale_params[group_code]["y_max"],
+            )
+        return self.y_scale_params["y_min"], self.y_scale_params["y_max"]
+
+    def _get_map_sigma(self) -> np.ndarray:
+        """Extract the fitted sigma values from map_approx.
+
+        Returns
+        -------
+        np.ndarray
+            Array of sigma values (one per group, or one shared value).
+        """
+        if self.map_approx is not None and "sigma" in self.map_approx:
+            sigma = np.atleast_1d(self.map_approx["sigma"])
+            return sigma
+        # Fallback: estimate from the prior default
+        return np.array([0.5])
+
+    def _compute_residual_stds(self, is_individual: bool) -> dict[int, float]:
+        """Compute per-group residual standard deviations from in-sample fit.
+
+        Returns
+        -------
+        dict[int, float]
+            Mapping from group_code to residual standard deviation (scaled).
+        """
+        result: dict[int, float] = {}
+        try:
+            # Predict on training data
+            future_train = self.data[["ds", "t"]].copy()
+            in_sample = self._predict(
+                future_train, self.method, self.map_approx, self.trace
+            )
+            for group_code in range(in_sample.shape[0]):
+                group_mask = self.group == group_code
+                y_true = self.data.loc[group_mask, "y"].values
+                y_pred = in_sample[group_code][group_mask]
+                residuals = y_true - y_pred
+                result[group_code] = float(np.std(residuals))
+        except Exception:
+            pass
+        return result
+
     def _predict(
         self,
         future: pd.DataFrame,
@@ -540,6 +750,7 @@ class TimeSeriesModel:
         future: pd.DataFrame,
         series: str = "series",
         y_true: pd.DataFrame | None = None,
+        clip_to_data: bool = True,
     ):
         """
         Plot the inference results for a given series.
@@ -555,6 +766,11 @@ class TimeSeriesModel:
             A pandas dataframe containing the true values for the inference period that
             must at least have columns ds (predictor), y (target) and series (name of
             time series).
+        clip_to_data : bool
+            If True, clip predictions to the date range of the training data
+            (and y_true if provided). This avoids plotting predictions for
+            periods before the target series' start date, which can happen
+            when transfer learning shifts t_scale_params.
         """
         group_code: int | None = None
         for group_code_, group_name in self.groups_.items():
@@ -566,6 +782,26 @@ class TimeSeriesModel:
 
         # Check if we have individual scaling
         is_individual = "scaler" not in self.y_scale_params
+
+        # Filter data to only show the specific series
+        series_data = self.data[self.data["series"] == series]
+
+        # Clip future to target series date range when requested
+        plot_future = future
+        if clip_to_data:
+            date_min = series_data["ds"].min()
+            if y_true is not None:
+                y_true_series = y_true.copy()
+                if "series" not in y_true_series.columns:
+                    y_true_series["series"] = "series"
+                y_true_dates = y_true_series[y_true_series["series"] == series]["ds"]
+                date_max = max(series_data["ds"].max(), y_true_dates.max())
+            else:
+                date_max = series_data["ds"].max()
+            # Add a small buffer beyond last date for visibility
+            plot_future = future[
+                (future["ds"] >= date_min) & (future["ds"] <= date_max)
+            ]
 
         plt.figure(figsize=(14, 100 * 6))
         plt.subplot(100, 1, 1)
@@ -579,9 +815,6 @@ class TimeSeriesModel:
         else:
             y_min = self.y_scale_params["y_min"]
             y_max = self.y_scale_params["y_max"]
-
-        # Filter data to only show the specific series
-        series_data = self.data[self.data["series"] == series]
 
         plt.scatter(
             series_data["ds"],
@@ -607,14 +840,30 @@ class TimeSeriesModel:
             )
 
         plt.plot(
-            future["ds"], future[f"yhat_{group_code}"], lw=1, label=r"$\widehat{y}$"
+            plot_future["ds"],
+            plot_future[f"yhat_{group_code}"],
+            lw=1,
+            label=r"$\widehat{y}$",
         )
+
+        # Plot uncertainty bands if present
+        lower_col = f"yhat_lower_{group_code}"
+        upper_col = f"yhat_upper_{group_code}"
+        if lower_col in plot_future.columns and upper_col in plot_future.columns:
+            plt.fill_between(
+                plot_future["ds"],
+                plot_future[lower_col],
+                plot_future[upper_col],
+                alpha=0.2,
+                color="C0",
+                label="Uncertainty",
+            )
 
         plt.legend()
         plot_params = {"idx": 1}
         self._plot(
             plot_params,
-            future,
+            plot_future,
             self.data,
             self.y_scale_params,
             processed_y_true,

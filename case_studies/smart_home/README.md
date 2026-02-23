@@ -86,9 +86,26 @@ Results go to `results/`.
 Each script generates:
 
 - **CSV results** — one row per configuration with all metrics
+- **Checkpoint CSV** — incremental `results_checkpoint.csv` for crash recovery
+- **Base model cache** — `base_models/` directory with MCMC/VI traces (NetCDF) and `t_scale_params` (JSON)
 - **Summary plots** — RMSE bar charts ranking configurations
 - **Per-hyperparameter plots** — effect of each hyperparameter on RMSE
 - **Prediction plots** — predicted vs. actual for selected series
+
+## Checkpointing and Crash Recovery
+
+Both `ablation_fast.py` and `ablation_full.py` support automatic checkpointing. If a run is interrupted (SLURM timeout, OOM, etc.), simply re-run the same command — completed experiments will be skipped and cached base models will be loaded from disk instead of re-trained.
+
+## Running on HPC
+
+See `case_studies/README.md` for the full Singularity + SLURM setup guide. Quick usage:
+
+```bash
+# Submit to SLURM
+sbatch case_studies/submit_ablation.slurm smart_home fast
+sbatch case_studies/submit_ablation.slurm smart_home full
+sbatch case_studies/submit_ablation.slurm smart_home classical
+```
 
 ## Adapting to Other Datasets
 
