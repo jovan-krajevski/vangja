@@ -365,6 +365,8 @@ def prior_predictive_coverage(
     prior_predictive,
     low: float = -2.0,
     high: float = 2.0,
+    series_idx: int | None = None,
+    group: np.ndarray | None = None,
 ) -> float:
     """Calculate the fraction of prior predictive samples within a plausible range.
 
@@ -392,6 +394,14 @@ def prior_predictive_coverage(
         Lower bound of the plausible range (in scaled space).
     high : float, default 2.0
         Upper bound of the plausible range (in scaled space).
+    series_idx : int or None
+        If the prior predictive contains multiple series (e.g. from a hierarchical
+        model), specify which one to calculate coverage for. If None, calculates for everything.
+        If series_idx is not None you must also pass the corresponding group array
+        to the group parameter.
+    group : np.ndarray or None
+        If the prior predictive contains multiple groups (e.g. from a hierarchical
+        model), specify which element belongs to which group.
 
     Returns
     -------
@@ -407,7 +417,24 @@ def prior_predictive_coverage(
     >>> coverage = prior_predictive_coverage(ppc)
     >>> print(f"{coverage * 100:.1f}% of prior samples are within [-2, 2]")
     """
-    obs = prior_predictive.prior_predictive["obs"].values
+    pp = prior_predictive.prior_predictive
+    if series_idx is not None and group is not None:
+        # Find the observation dimension (the one aligned with group)
+        obs_dim = next(
+            (dim for dim, size in pp.sizes.items() if size == len(group)), None
+        )
+        if obs_dim is None:
+            raise ValueError(
+                "Could not find an observation dimension matching group length."
+            )
+
+        # Indices where group == series_idx
+        idx_group = [i for i, g in enumerate(group) if g == series_idx]
+
+        # Subset prior_predictive to only those positions
+        pp = pp.isel({obs_dim: idx_group})
+
+    obs = pp["obs"].values
     mask = (obs >= low) & (obs <= high)
     return float(np.mean(mask))
 
@@ -574,6 +601,8 @@ def plot_prior_predictive(
 
 def plot_posterior_predictive(
     posterior_predictive,
+    series_idx: int | None = None,
+    group: np.ndarray | None = None,
     data: pd.DataFrame | None = None,
     n_samples: int = 50,
     ax=None,
@@ -590,6 +619,14 @@ def plot_posterior_predictive(
     ----------
     posterior_predictive : az.InferenceData
         Result of ``model.sample_posterior_predictive()``.
+    series_idx : int or None
+        If the posterior predictive contains multiple series (e.g. from a hierarchical
+        model), specify which one to plot. If None, plots everything.
+        If series_idx is not None you must also pass the corresponding group array
+        to the group parameter.
+    group : np.ndarray or None
+        If the posterior predictive contains multiple groups (e.g. from a hierarchical
+        model), specify which element belongs to which group.
     data : pd.DataFrame or None
         Observed data with columns ``ds`` and ``y``.
     n_samples : int, default 50
@@ -619,7 +656,24 @@ def plot_posterior_predictive(
     if ax is None:
         _, ax = plt.subplots(figsize=(14, 5))
 
-    obs = posterior_predictive.posterior_predictive["obs"].values
+    pp = posterior_predictive.posterior_predictive
+    if series_idx is not None and group is not None:
+        # Find the observation dimension (the one aligned with group)
+        obs_dim = next(
+            (dim for dim, size in pp.sizes.items() if size == len(group)), None
+        )
+        if obs_dim is None:
+            raise ValueError(
+                "Could not find an observation dimension matching group length."
+            )
+
+        # Indices where group == series_idx
+        idx_group = [i for i, g in enumerate(group) if g == series_idx]
+
+        # Subset posterior_predictive to only those positions
+        pp = pp.isel({obs_dim: idx_group})
+
+    obs = pp["obs"].values
     obs_flat = obs.reshape(-1, obs.shape[-1])
 
     x_axis = np.arange(obs_flat.shape[1]) if t is None else t
@@ -646,7 +700,14 @@ def plot_posterior_predictive(
         ax.plot(x_axis, obs_flat[i], color="C0", alpha=0.1, lw=0.5)
 
     if data is not None:
-        ax.plot(x_axis, data["y"].values, color="C1", lw=2, label="Observed data")
+        data_series = data
+        if series_idx is not None and group is not None:
+            # Filter data to the specified series
+            data_series = data[group == series_idx]
+
+        ax.plot(
+            x_axis, data_series["y"].values, color="C1", lw=2, label="Observed data"
+        )
 
     # Reference lines
     if show_ref_lines:
