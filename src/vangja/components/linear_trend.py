@@ -597,17 +597,13 @@ class LinearTrend(TimeSeriesModel):
                 slope_mu, slope_sd = self._get_slope_params_from_idata(idata)
                 slope = pm.Normal(slope_key, slope_mu, slope_sd, shape=self.n_groups)
             elif priors is not None and self.tune_method == "prior_from_idata":
-                # TODO use delta somehow for slope shared?
                 slope_mu, slope_sd = self._get_slope_params_from_idata(idata)
-                slope = pm.Deterministic(
+                slope = pm.Normal(
                     slope_key,
-                    pm.math.stack(
-                        [priors[f"prior_{slope_key}"] for _ in range(self.n_groups)]
-                    ),
+                    mu=priors[f"prior_{slope_key}"],
+                    sigma=slope_sd,
+                    shape=self.n_groups,
                 )
-                # slope = pm.Deterministic(
-                #     slope_key, pt.tile(priors[f"prior_{slope_key}"], self.n_groups)
-                # )
             else:
                 slope = pm.Normal(
                     slope_key, self.slope_mean, self.slope_sd, shape=self.n_groups
@@ -628,16 +624,34 @@ class LinearTrend(TimeSeriesModel):
                 )
 
             if self.n_changepoints:
-                delta_sd = self.delta_sd
-                if self.delta_sd is None:
-                    delta_sd = pm.Exponential(f"lt_{self.model_idx} - tau", 1.5)
+                delta_key = f"lt_{self.model_idx} - delta"
+                if idata is not None and self.delta_tune_method == "parametric":
+                    delta_loc, delta_scale = self._get_delta_params_from_idata(idata)
+                    delta = pm.Laplace(
+                        delta_key,
+                        delta_loc,
+                        delta_scale,
+                        shape=(self.n_groups, self.n_changepoints),
+                    )
+                elif priors is not None and self.tune_method == "prior_from_idata":
+                    delta_loc, delta_scale = self._get_delta_params_from_idata(idata)
+                    delta = pm.Laplace(
+                        delta_key,
+                        mu=priors[f"prior_{delta_key}"],
+                        b=delta_scale,
+                        shape=(self.n_groups, self.n_changepoints),
+                    )
+                else:
+                    delta_sd = self.delta_sd
+                    if self.delta_sd is None:
+                        delta_sd = pm.Exponential(f"lt_{self.model_idx} - tau", 1.5)
 
-                delta = pm.Laplace(
-                    f"lt_{self.model_idx} - delta",
-                    self.delta_mean,
-                    delta_sd,
-                    shape=(self.n_groups, self.n_changepoints),
-                )
+                    delta = pm.Laplace(
+                        delta_key,
+                        self.delta_mean,
+                        delta_sd,
+                        shape=(self.n_groups, self.n_changepoints),
+                    )
 
                 gamma = -self.s * delta[self.group]
 
@@ -692,6 +706,19 @@ class LinearTrend(TimeSeriesModel):
             elif self.pool_type == "individual":
                 return self._individual_definition(model, data, priors, idata)
 
+    def _assign_model_idx(self, model_idxs: dict[str, int]) -> None:
+        model_idxs["lt"] = model_idxs.get("lt", 0)
+        self.model_idx = model_idxs["lt"]
+        model_idxs["lt"] += 1
+
+    def _get_prior_var_names(self) -> list[str]:
+        if self.tune_method != "prior_from_idata":
+            return []
+        names = [f"lt_{self.model_idx} - slope"]
+        if self.n_changepoints > 0:
+            names.append(f"lt_{self.model_idx} - delta")
+        return names
+
     def _get_initval(self, initvals: dict[str, float], model: pm.Model) -> dict:
         """Get the initval of the slope and the intercept of the linear trend.
 
@@ -708,20 +735,28 @@ class LinearTrend(TimeSeriesModel):
             slopes.append(initvals.get(f"slope_{key}", None))
             intercepts.append(initvals.get(f"intercept_{key}", None))
 
-        # For complete pooling or single series, return scalar values
-        if self.pool_type == "complete" or self.n_groups == 1:
-            return {
-                model.named_vars[f"lt_{self.model_idx} - slope"]: slopes[0],
-                model.named_vars[f"lt_{self.model_idx} - intercept"]: intercepts[0],
-            }
+        result = {}
+        slope_var = model.named_vars[f"lt_{self.model_idx} - slope"]
+        intercept_var = model.named_vars[f"lt_{self.model_idx} - intercept"]
 
-        return {
-            model.named_vars[f"lt_{self.model_idx} - slope"]: np.array(slopes),
-            model.named_vars[f"lt_{self.model_idx} - intercept"]: np.array(intercepts),
-        }
+        # Only set initvals for free RVs (skip Deterministic from prior_from_idata)
+        if slope_var in model.free_RVs:
+            if self.pool_type == "complete" or self.n_groups == 1:
+                result[slope_var] = slopes[0]
+            else:
+                result[slope_var] = np.array(slopes)
+
+        if intercept_var in model.free_RVs:
+            if self.pool_type == "complete" or self.n_groups == 1:
+                result[intercept_var] = intercepts[0]
+            else:
+                result[intercept_var] = np.array(intercepts)
+
+        return result
 
     def _predict_map(self, future, map_approx):
         forecasts = []
+        self._predict_columns = {}
         slope_key = f"lt_{self.model_idx} - slope"
         intercept_key = f"lt_{self.model_idx} - intercept"
         delta_key = f"lt_{self.model_idx} - delta"
@@ -769,7 +804,7 @@ class LinearTrend(TimeSeriesModel):
             intercept = intercept + intercept_correction
 
             forecasts.append(np.array(slope * future["t"] + intercept))
-            future[f"lt_{self.model_idx}_{group_code}"] = forecasts[-1]
+            self._predict_columns[f"lt_{self.model_idx}_{group_code}"] = forecasts[-1]
 
         return np.vstack(forecasts)
 
@@ -778,6 +813,7 @@ class LinearTrend(TimeSeriesModel):
         intercept_key = f"lt_{self.model_idx} - intercept"
         delta_key = f"lt_{self.model_idx} - delta"
         forecasts = []
+        self._predict_columns = {}
         for group_code in self.groups_.keys():
             # Get slope and intercept, averaging over chains and draws
             if slope_key in trace["posterior"]:
@@ -836,7 +872,7 @@ class LinearTrend(TimeSeriesModel):
 
             forecast = total_slope * future["t"].to_numpy() + total_intercept
             forecasts.append(forecast)
-            future[f"lt_{self.model_idx}_{group_code}"] = forecast
+            self._predict_columns[f"lt_{self.model_idx}_{group_code}"] = forecast
 
         return np.vstack(forecasts)
 
@@ -861,6 +897,9 @@ class LinearTrend(TimeSeriesModel):
 
     def needs_priors(self, *args, **kwargs):
         return self.tune_method == "prior_from_idata"
+
+    def is_individual(self, *args, **kwargs):
+        return self.pool_type == "individual"
 
     def __str__(self):
         return f"LT(n={self.n_changepoints},r={self.changepoint_range},tm={self.tune_method})"

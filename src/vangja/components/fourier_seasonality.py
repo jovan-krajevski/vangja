@@ -418,15 +418,11 @@ class FourierSeasonality(TimeSeriesModel):
                 )
             elif priors is not None and self.tune_method == "prior_from_idata":
                 beta_mean, beta_sd = self._get_beta_params_from_idata(idata)
-                # beta = pm.Deterministic(beta_key, priors[f"prior_{beta_key}"])
-                # beta = pm.Deterministic(
-                #     beta_key,
-                #     pm.math.stack(
-                #         [priors[f"prior_{beta_key}"] for _ in range(self.n_groups)]
-                #     ),
-                # )
-                beta = pm.Deterministic(
-                    beta_key, pt.tile(priors[f"prior_{beta_key}"], (self.n_groups, 1))
+                beta = pm.Normal(
+                    beta_key,
+                    mu=priors[f"prior_{beta_key}"],
+                    sigma=beta_sd,
+                    shape=(self.n_groups, 2 * self.series_order),
                 )
             else:
                 beta = pm.Normal(
@@ -532,6 +528,7 @@ class FourierSeasonality(TimeSeriesModel):
 
     def _predict_map(self, future, map_approx):
         forecasts = []
+        self._predict_columns = {}
         for group_code in self.groups_.keys():
             beta_key = (
                 f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"
@@ -546,7 +543,7 @@ class FourierSeasonality(TimeSeriesModel):
             forecasts.append(
                 self._det_seasonality_posterior(beta, self._fourier_series(future))
             )
-            future[f"fs_{self.model_idx}_{group_code}"] = forecasts[-1]
+            self._predict_columns[f"fs_{self.model_idx}_{group_code}"] = forecasts[-1]
 
         return np.vstack(forecasts)
 
@@ -558,6 +555,7 @@ class FourierSeasonality(TimeSeriesModel):
         beta_key = f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"
 
         forecasts = []
+        self._predict_columns = {}
         for group_code in self.groups_.keys():
             # Get beta, averaging over chains and draws
             if beta_key in trace["posterior"]:
@@ -575,7 +573,7 @@ class FourierSeasonality(TimeSeriesModel):
                 beta, self._fourier_series(future, shift)
             )
             forecasts.append(forecast)
-            future[f"fs_{self.model_idx}_{group_code}"] = forecast
+            self._predict_columns[f"fs_{self.model_idx}_{group_code}"] = forecast
 
         return np.vstack(forecasts)
 
@@ -598,8 +596,21 @@ class FourierSeasonality(TimeSeriesModel):
             lw=1,
         )
 
+    def _assign_model_idx(self, model_idxs: dict[str, int]) -> None:
+        model_idxs["fs"] = model_idxs.get("fs", 0)
+        self.model_idx = model_idxs["fs"]
+        model_idxs["fs"] += 1
+
+    def _get_prior_var_names(self) -> list[str]:
+        if self.tune_method != "prior_from_idata":
+            return []
+        return [f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"]
+
     def needs_priors(self, *args, **kwargs):
         return self.tune_method == "prior_from_idata"
+
+    def is_individual(self, *args, **kwargs):
+        return self.pool_type == "individual"
 
     def __str__(self):
         return f"FS(p={self.period},n={self.series_order},tm={self.tune_method})"

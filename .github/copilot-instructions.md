@@ -109,6 +109,18 @@ target_model = LinearTrend(tune_method="parametric") + FourierSeasonality(365.25
 target_model.fit(short_data, idata=base_model.trace)
 ```
 
+**Transfer learning method differences:**
+
+- `"parametric"`: Extracts posterior mean/std from idata and uses them as fixed Normal prior parameters. Each group gets its own free parameter. Simpler, more robust, works well in most cases.
+- `"prior_from_idata"`: Uses `pymc_extras.utils.prior.prior_from_idata` to create an MvNormal approximation of the joint posterior, preserving inter-parameter correlations. For **complete pooling**, parameters become Deterministic functions of the MvNormal. For **partial pooling**, the MvNormal value becomes the shared hyperprior. For **individual pooling**, each group gets its own free parameter (Normal/Laplace) centered at the MvNormal prior with posterior std as spread.
+
+**Implementation details for `prior_from_idata`:**
+
+- Each component declares needed posterior variable names via `_get_prior_var_names()`. Only these variables (not sigma, not intercepts) are passed to `prior_from_idata`.
+- The `_assign_model_idx()` pre-pass assigns model indices before the PyMC model is built, enabling variable name collection.
+- `_get_initval()` skips Deterministic variables (checks `model.free_RVs`) to avoid errors during MAP/MCMC.
+- The base model **must** be fitted with MCMC or VI (not MAP) to produce a meaningful posterior for transfer.
+
 See [07_transfer_learning.ipynb](docs/07_transfer_learning.ipynb) for a complete example using NYC temperature data to forecast short bike sales time series.
 
 ### Datasets Module (`src/vangja/datasets/`)

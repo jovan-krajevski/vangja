@@ -276,8 +276,14 @@ class UniformConstant(TimeSeriesModel):
                     shape=self.n_groups,
                 )
             elif priors is not None and self.tune_method == "prior_from_idata":
-                c = pm.Deterministic(
-                    c_key, pt.tile(priors[f"prior_{c_key}"], self.n_groups)
+                mu, sd = self._get_params_from_idata(idata)
+                c = pm.TruncatedNormal(
+                    c_key,
+                    mu=priors[f"prior_{c_key}"],
+                    sigma=sd,
+                    lower=self.lower,
+                    upper=self.upper,
+                    shape=self.n_groups,
                 )
             else:
                 c = pm.Uniform(
@@ -372,6 +378,7 @@ class UniformConstant(TimeSeriesModel):
             Array of shape (n_groups, n_timestamps) with constant values.
         """
         forecasts = []
+        self._predict_columns = {}
         c_key = f"uc_{self.model_idx} - c(l={self.lower},u={self.upper})"
 
         for group_code in self.groups_.keys():
@@ -381,7 +388,7 @@ class UniformConstant(TimeSeriesModel):
 
             forecast = np.ones(len(future)) * c_value
             forecasts.append(forecast)
-            future[f"uc_{self.model_idx}_{group_code}"] = forecast
+            self._predict_columns[f"uc_{self.model_idx}_{group_code}"] = forecast
 
         return np.vstack(forecasts)
 
@@ -404,6 +411,7 @@ class UniformConstant(TimeSeriesModel):
             Array of shape (n_groups, n_timestamps) with constant values.
         """
         forecasts = []
+        self._predict_columns = {}
         c_key = f"uc_{self.model_idx} - c(l={self.lower},u={self.upper})"
 
         for group_code in self.groups_.keys():
@@ -416,7 +424,7 @@ class UniformConstant(TimeSeriesModel):
 
             forecast = np.ones(len(future)) * c_value
             forecasts.append(forecast)
-            future[f"uc_{self.model_idx}_{group_code}"] = forecast
+            self._predict_columns[f"uc_{self.model_idx}_{group_code}"] = forecast
 
         return np.vstack(forecasts)
 
@@ -467,6 +475,16 @@ class UniformConstant(TimeSeriesModel):
         plt.axhline(self.lower, c="r", linewidth=1, linestyle="--", alpha=0.5)
         plt.axhline(self.upper, c="r", linewidth=1, linestyle="--", alpha=0.5)
         plt.grid(True, alpha=0.3)
+
+    def _assign_model_idx(self, model_idxs: dict[str, int]) -> None:
+        model_idxs["uc"] = model_idxs.get("uc", 0)
+        self.model_idx = model_idxs["uc"]
+        model_idxs["uc"] += 1
+
+    def _get_prior_var_names(self) -> list[str]:
+        if self.tune_method != "prior_from_idata":
+            return []
+        return [f"uc_{self.model_idx} - c(l={self.lower},u={self.upper})"]
 
     def needs_priors(self, *args, **kwargs) -> bool:
         """Check if this component needs priors from idata.

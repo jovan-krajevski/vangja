@@ -282,8 +282,12 @@ class FlatTrend(TimeSeriesModel):
                 mu, sd = self._get_params_from_idata(idata)
                 intercept = pm.Normal(key, mu=mu, sigma=sd, shape=self.n_groups)
             elif priors is not None and self.tune_method == "prior_from_idata":
-                intercept = pm.Deterministic(
-                    key, pt.tile(priors[f"prior_{key}"], self.n_groups)
+                mu, sd = self._get_params_from_idata(idata)
+                intercept = pm.Normal(
+                    key,
+                    mu=priors[f"prior_{key}"],
+                    sigma=sd,
+                    shape=self.n_groups,
                 )
             else:
                 intercept = pm.Normal(
@@ -339,6 +343,16 @@ class FlatTrend(TimeSeriesModel):
             elif self.pool_type == "individual":
                 return self._individual_definition(model, data, priors, idata)
 
+    def _assign_model_idx(self, model_idxs: dict[str, int]) -> None:
+        model_idxs["ft"] = model_idxs.get("ft", 0)
+        self.model_idx = model_idxs["ft"]
+        model_idxs["ft"] += 1
+
+    def _get_prior_var_names(self) -> list[str]:
+        if self.tune_method != "prior_from_idata":
+            return []
+        return [f"ft_{self.model_idx} - intercept"]
+
     def _get_initval(self, initvals: dict[str, float], model: pm.Model) -> dict:
         """Get initial values for the intercept parameter.
 
@@ -358,17 +372,17 @@ class FlatTrend(TimeSeriesModel):
         for key in sorted(self.groups_.keys()):
             intercepts.append(initvals.get(f"intercept_{key}", 0))
 
-        if self.pool_type == "complete" or self.n_groups == 1:
-            return {
-                model.named_vars[f"ft_{self.model_idx} - intercept"]: intercepts[0]
-                or 0,
-            }
+        result = {}
+        intercept_var = model.named_vars[f"ft_{self.model_idx} - intercept"]
 
-        return {
-            model.named_vars[f"ft_{self.model_idx} - intercept"]: np.array(
-                [i or 0 for i in intercepts]
-            ),
-        }
+        # Only set initvals for free RVs (skip Deterministic from prior_from_idata)
+        if intercept_var in model.free_RVs:
+            if self.pool_type == "complete" or self.n_groups == 1:
+                result[intercept_var] = intercepts[0] or 0
+            else:
+                result[intercept_var] = np.array([i or 0 for i in intercepts])
+
+        return result
 
     def _predict_map(
         self, future: pd.DataFrame, map_approx: dict[str, np.ndarray]
@@ -390,6 +404,7 @@ class FlatTrend(TimeSeriesModel):
             Forecast values, shape ``(n_groups, n_timesteps)``.
         """
         forecasts = []
+        self._predict_columns = {}
         for group_code in self.groups_.keys():
             intercept = map_approx[f"ft_{self.model_idx} - intercept"]
 
@@ -398,7 +413,7 @@ class FlatTrend(TimeSeriesModel):
 
             forecast = np.ones(len(future)) * intercept
             forecasts.append(forecast)
-            future[f"ft_{self.model_idx}_{group_code}"] = forecast
+            self._predict_columns[f"ft_{self.model_idx}_{group_code}"] = forecast
 
         return np.vstack(forecasts)
 
@@ -422,6 +437,7 @@ class FlatTrend(TimeSeriesModel):
             Forecast values, shape ``(n_groups, n_timesteps)``.
         """
         forecasts = []
+        self._predict_columns = {}
         for group_code in self.groups_.keys():
             intercept_samples = trace["posterior"][
                 f"ft_{self.model_idx} - intercept"
@@ -434,7 +450,7 @@ class FlatTrend(TimeSeriesModel):
 
             forecast = np.ones(len(future)) * intercept
             forecasts.append(forecast)
-            future[f"ft_{self.model_idx}_{group_code}"] = forecast
+            self._predict_columns[f"ft_{self.model_idx}_{group_code}"] = forecast
 
         return np.vstack(forecasts)
 

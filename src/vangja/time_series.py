@@ -114,6 +114,37 @@ class TimeSeriesModel:
     map_approx: dict[str, np.ndarray] | None
     trace: az.InferenceData | None
 
+    _predict_columns: dict[str, np.ndarray]
+
+    def _get_leaf_components(self) -> list["TimeSeriesModel"]:
+        """Return leaf components of the model tree.
+
+        For a leaf component, returns itself. Combined models override
+        this to recursively collect from children.
+
+        Returns
+        -------
+        list[TimeSeriesModel]
+            List of leaf components.
+        """
+        return [self]
+
+    def _collect_predict_columns(self) -> dict[str, np.ndarray]:
+        """Collect all pending prediction columns from leaf components.
+
+        Gathers ``_predict_columns`` dicts stored by each leaf component
+        during ``_predict_map`` / ``_predict_mcmc`` and merges them.
+
+        Returns
+        -------
+        dict[str, np.ndarray]
+            Merged mapping of column names to value arrays.
+        """
+        all_cols: dict[str, np.ndarray] = {}
+        for leaf in self._get_leaf_components():
+            all_cols.update(getattr(leaf, "_predict_columns", {}))
+        return all_cols
+
     def _get_scale_params(
         self, series: pd.DataFrame, scaler: Scaler, t_scale_params: TScaleParams | None
     ) -> tuple[TScaleParams, YScaleParams]:
@@ -323,14 +354,24 @@ class TimeSeriesModel:
         with self.model:
             priors = None
             if idata is not None and self.needs_priors():
-                priors = pmx.utils.prior.prior_from_idata(
-                    idata,
-                    name="priors",
-                    # add a "prior_" prefix to vars
-                    **{
-                        f"{var}": f"prior_{var}" for var in idata["posterior"].data_vars
-                    },
-                )
+                # Pre-assign model indices so components can declare
+                # which posterior variables they need for transfer learning.
+                pre_idxs: dict[str, int] = {}
+                self._assign_model_idx(pre_idxs)
+
+                needed_vars = self._get_prior_var_names()
+                # Only include variables that actually exist in the posterior
+                available = set(idata["posterior"].data_vars)
+                prior_vars = {
+                    var: f"prior_{var}" for var in needed_vars if var in available
+                }
+
+                if prior_vars:
+                    priors = pmx.utils.prior.prior_from_idata(
+                        idata,
+                        name="priors",
+                        **prior_vars,
+                    )
 
             mu = self.definition(self.model, self.data, self.model_idxs, priors, idata)
             if sigma_pool_type == "partial":
@@ -463,49 +504,24 @@ class TimeSeriesModel:
         # TODO come up with a better way to check this
         is_individual = "scaler" not in self.y_scale_params
 
+        # Collect component columns set during _predict
+        new_cols = self._collect_predict_columns()
+
         for group_code in range(forecasts.shape[0]):
-            if is_individual:
-                future[f"yhat_{group_code}"] = (
-                    forecasts[group_code]
-                    * (
-                        self.y_scale_params[group_code]["y_max"]
-                        - self.y_scale_params[group_code]["y_min"]
-                    )
-                    + self.y_scale_params[group_code]["y_min"]
-                )
-            else:
-                future[f"yhat_{group_code}"] = (
-                    forecasts[group_code]
-                    * (self.y_scale_params["y_max"] - self.y_scale_params["y_min"])
-                    + self.y_scale_params["y_min"]
-                )
+            y_min, y_max = self._get_y_bounds(group_code, is_individual)
+            scale = y_max - y_min
+
+            new_cols[f"yhat_{group_code}"] = forecasts[group_code] * scale + y_min
 
             for model_type, model_cnt in self.model_idxs.items():
                 if model_type.startswith("lt") is False:
                     continue
                 for model_idx in range(model_cnt):
                     component = f"{model_type}_{model_idx}_{group_code}"
-                    if component in future.columns:
-                        if is_individual:
-                            future[component] = (
-                                future[component]
-                                * (
-                                    self.y_scale_params[group_code]["y_max"]
-                                    - self.y_scale_params[group_code]["y_min"]
-                                )
-                                + self.y_scale_params[group_code]["y_min"]
-                            )
-                        else:
-                            future[component] = (
-                                future[component]
-                                * (
-                                    self.y_scale_params["y_max"]
-                                    - self.y_scale_params["y_min"]
-                                )
-                                + self.y_scale_params["y_min"]
-                            )
+                    if component in new_cols:
+                        new_cols[component] = new_cols[component] * scale + y_min
 
-        return future
+        return pd.concat([future, pd.DataFrame(new_cols, index=future.index)], axis=1)
 
     def predict_uncertainty(
         self,
@@ -557,6 +573,9 @@ class TimeSeriesModel:
         lower_q = alpha / 2.0
         upper_q = 1.0 - alpha / 2.0
 
+        # Collect all new columns here, then concat at the end
+        new_cols: dict[str, np.ndarray] = {}
+
         if self.method not in ["mapx", "map"] and self.trace is not None:
             # --- MCMC / VI: propagate posterior draws ---
             posterior = self.trace.posterior
@@ -588,22 +607,29 @@ class TimeSeriesModel:
             # Point forecast from mean
             forecasts = self._predict(future, self.method, self.map_approx, self.trace)
 
+            # Collect component columns before any further _predict calls
+            new_cols.update(self._collect_predict_columns())
+
             for group_code in range(forecasts.shape[0]):
                 y_min, y_max = self._get_y_bounds(group_code, is_individual)
                 scale = y_max - y_min
 
-                future[f"yhat_{group_code}"] = forecasts[group_code] * scale + y_min
+                new_cols[f"yhat_{group_code}"] = forecasts[group_code] * scale + y_min
 
                 group_samples = stacked[:, group_code, :]  # (n_samples, T)
-                future[f"yhat_lower_{group_code}"] = (
+                new_cols[f"yhat_lower_{group_code}"] = (
                     np.quantile(group_samples, lower_q, axis=0) * scale + y_min
                 )
-                future[f"yhat_upper_{group_code}"] = (
+                new_cols[f"yhat_upper_{group_code}"] = (
                     np.quantile(group_samples, upper_q, axis=0) * scale + y_min
                 )
         else:
             # --- MAP / MAPX: residual-calibrated intervals ---
             forecasts = self._predict(future, self.method, self.map_approx, self.trace)
+
+            # Collect component columns before _compute_residual_stds
+            # (which calls _predict again and would overwrite them)
+            new_cols.update(self._collect_predict_columns())
 
             # Get fitted sigma from map_approx
             sigma_scaled = self._get_map_sigma()
@@ -618,7 +644,8 @@ class TimeSeriesModel:
                 y_min, y_max = self._get_y_bounds(group_code, is_individual)
                 scale = y_max - y_min
 
-                future[f"yhat_{group_code}"] = forecasts[group_code] * scale + y_min
+                yhat = forecasts[group_code] * scale + y_min
+                new_cols[f"yhat_{group_code}"] = yhat
 
                 # Noise estimate: use the larger of fitted sigma and residual std
                 noise_scaled = max(
@@ -646,12 +673,8 @@ class TimeSeriesModel:
 
                 half_width = z * noise_scaled * distance_scaling * scale
 
-                future[f"yhat_lower_{group_code}"] = (
-                    future[f"yhat_{group_code}"] - half_width
-                )
-                future[f"yhat_upper_{group_code}"] = (
-                    future[f"yhat_{group_code}"] + half_width
-                )
+                new_cols[f"yhat_lower_{group_code}"] = yhat - half_width
+                new_cols[f"yhat_upper_{group_code}"] = yhat + half_width
 
         # Rescale trend component columns (same as predict)
         for group_code in range(forecasts.shape[0]):
@@ -662,10 +685,10 @@ class TimeSeriesModel:
                     continue
                 for model_idx in range(model_cnt):
                     component = f"{model_type}_{model_idx}_{group_code}"
-                    if component in future.columns:
-                        future[component] = future[component] * scale + y_min
+                    if component in new_cols:
+                        new_cols[component] = new_cols[component] * scale + y_min
 
-        return future
+        return pd.concat([future, pd.DataFrame(new_cols, index=future.index)], axis=1)
 
     def _get_y_bounds(
         self, group_code: int, is_individual: bool
@@ -1126,6 +1149,33 @@ class TimeSeriesModel:
         self.compute_log_likelihood()
         return az.loo(self.trace)
 
+    def _get_prior_var_names(self) -> list[str]:
+        """Return posterior variable names needed for prior_from_idata transfer.
+
+        Each component overrides this to declare which variables from the
+        source posterior it needs.  Called after ``_assign_model_idx``.
+
+        Returns
+        -------
+        list[str]
+            Variable names to request from ``prior_from_idata``.
+        """
+        return []
+
+    def _assign_model_idx(self, model_idxs: dict[str, int]) -> None:
+        """Pre-assign the component's model index without building the PyMC model.
+
+        This mirrors the index-assignment logic inside ``definition()`` so
+        that ``_get_prior_var_names()`` can be called *before* the actual
+        model is constructed.
+
+        Parameters
+        ----------
+        model_idxs : dict[str, int]
+            Mutable counter dict, same semantics as in ``definition``.
+        """
+        pass  # Leaf components override this.
+
     def needs_priors(self, *args, **kwargs):
         return False
 
@@ -1224,6 +1274,28 @@ class CombinedTimeSeries(TimeSeriesModel):
             right = self.right.is_individual(*args, **kwargs)
 
         return left and right
+
+    def _get_prior_var_names(self) -> list[str]:
+        names: list[str] = []
+        if not (type(self.left) is int or type(self.left) is float):
+            names.extend(self.left._get_prior_var_names())
+        if not (type(self.right) is int or type(self.right) is float):
+            names.extend(self.right._get_prior_var_names())
+        return names
+
+    def _assign_model_idx(self, model_idxs: dict[str, int]) -> None:
+        if not (type(self.left) is int or type(self.left) is float):
+            self.left._assign_model_idx(model_idxs)
+        if not (type(self.right) is int or type(self.right) is float):
+            self.right._assign_model_idx(model_idxs)
+
+    def _get_leaf_components(self) -> list["TimeSeriesModel"]:
+        leaves: list["TimeSeriesModel"] = []
+        if not (type(self.left) is int or type(self.left) is float):
+            leaves.extend(self.left._get_leaf_components())
+        if not (type(self.right) is int or type(self.right) is float):
+            leaves.extend(self.right._get_leaf_components())
+        return leaves
 
 
 class AdditiveTimeSeries(CombinedTimeSeries):
