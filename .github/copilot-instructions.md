@@ -109,6 +109,18 @@ target_model = LinearTrend(tune_method="parametric") + FourierSeasonality(365.25
 target_model.fit(short_data, idata=base_model.trace)
 ```
 
+**Transfer learning method differences:**
+
+- `"parametric"`: Extracts posterior mean/std from idata and uses them as fixed Normal prior parameters. Each group gets its own free parameter. Simpler, more robust, works well in most cases.
+- `"prior_from_idata"`: Uses `pymc_extras.utils.prior.prior_from_idata` to create an MvNormal approximation of the joint posterior, preserving inter-parameter correlations. For **complete pooling**, parameters become Deterministic functions of the MvNormal. For **partial pooling**, the MvNormal value becomes the shared hyperprior. For **individual pooling**, each group gets its own free parameter (Normal/Laplace) centered at the MvNormal prior with posterior std as spread.
+
+**Implementation details for `prior_from_idata`:**
+
+- Each component declares needed posterior variable names via `_get_prior_var_names()`. Only these variables (not sigma, not intercepts) are passed to `prior_from_idata`.
+- The `_assign_model_idx()` pre-pass assigns model indices before the PyMC model is built, enabling variable name collection.
+- `_get_initval()` skips Deterministic variables (checks `model.free_RVs`) to avoid errors during MAP/MCMC.
+- The base model **must** be fitted with MCMC or VI (not MAP) to produce a meaningful posterior for transfer.
+
 See [07_transfer_learning.ipynb](docs/07_transfer_learning.ipynb) for a complete example using NYC temperature data to forecast short bike sales time series.
 
 ### Datasets Module (`src/vangja/datasets/`)
@@ -176,6 +188,35 @@ plot_prior_predictive(ppc, show_hdi=True, show_ref_lines=True, t=model.data["t"]
 - Trend (`slope_sd`, `intercept_sd`): default 5 is very wide. Try 1–2 for stable series.
 - Seasonality (`beta_sd`): default 10 is extremely wide. Try 0.5–1 to regularize and prevent overfitting high-frequency noise.
 - Use `prior_sensitivity_analysis()` to sweep over prior standard deviations and compare forecast metrics.
+
+### Uncertainty Estimation
+
+Vangja supports prediction intervals via `predict_uncertainty()`. Two approaches are used depending on the inference method:
+
+- **MCMC/VI**: Each posterior draw is propagated through the model via `_predict_map` (reusing the existing MAP code path). Percentile-based credible intervals are computed from the resulting trajectory ensemble.
+- **MAP/MAPX**: A hybrid residual-calibrated approach: `ŷ(t) ± z * σ̂ * √(1 + h/n)`, where `σ̂ = max(σ_fitted, σ_residual)`, `h` is forecast distance, `n` is training size, and `z` is a Student-t quantile.
+
+See `uncertainty.md` for the full mathematical description and comparison with Prophet's approach.
+
+**Key API:**
+
+```python
+# predict_uncertainty returns yhat + yhat_lower_X + yhat_upper_X columns
+future = model.predict_uncertainty(horizon=90, interval_width=0.95)
+
+# plot() auto-detects uncertainty columns and shows fill_between bands
+model.plot(future)
+```
+
+**Design principle**: Uncertainty estimation is implemented entirely in `TimeSeriesModel` — no component-level changes are needed. For MCMC, individual posterior draws are extracted as dicts and fed through `_predict_map`, avoiding modifications to `_predict_mcmc` or any composition operators.
+
+### Plot Clipping
+
+The `plot()` method supports `clip_to_data=True` (default) which clips predictions to the training + test date range. This is essential for transfer learning where the base model's time scale may extend far beyond the target series dates. The clipping ensures plots only show the relevant prediction window.
+
+### Include Source in Target (Ablation Option)
+
+When performing transfer learning ablation studies, the source time series can be included as an additional series in the target model's training data via `include_source_in_target=True`. This transforms the problem into hierarchical co-learning. **Only meaningful with `pool_type="partial"`** since individual pooling means series don't share information.
 
 ## Development Workflow
 

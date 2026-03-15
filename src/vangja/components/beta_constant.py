@@ -304,14 +304,8 @@ class BetaConstant(TimeSeriesModel):
                 alpha, beta = self._get_params_from_idata(idata)
                 beta_rv = pm.Beta(beta_key, alpha=alpha, beta=beta, shape=self.n_groups)
             elif priors is not None and self.tune_method == "prior_from_idata":
-                beta_rv = pm.Deterministic(
-                    beta_key,
-                    pt.tile(
-                        (priors[f"prior_{c_key}"] - self.lower)
-                        / (self.upper - self.lower),
-                        self.n_groups,
-                    ),
-                )
+                alpha, beta = self._get_params_from_idata(idata)
+                beta_rv = pm.Beta(beta_key, alpha=alpha, beta=beta, shape=self.n_groups)
             else:
                 beta_rv = pm.Beta(
                     beta_key, alpha=self.alpha, beta=self.beta, shape=self.n_groups
@@ -406,6 +400,7 @@ class BetaConstant(TimeSeriesModel):
             Array of shape (n_groups, n_timestamps) with constant values.
         """
         forecasts = []
+        self._predict_columns = {}
         c_key = f"bc_{self.model_idx} - c(l={self.lower},u={self.upper})"
 
         for group_code in self.groups_.keys():
@@ -415,7 +410,7 @@ class BetaConstant(TimeSeriesModel):
 
             forecast = np.ones(len(future)) * c_value
             forecasts.append(forecast)
-            future[f"bc_{self.model_idx}_{group_code}"] = forecast
+            self._predict_columns[f"bc_{self.model_idx}_{group_code}"] = forecast
 
         return np.vstack(forecasts)
 
@@ -438,6 +433,7 @@ class BetaConstant(TimeSeriesModel):
             Array of shape (n_groups, n_timestamps) with constant values.
         """
         forecasts = []
+        self._predict_columns = {}
         c_key = f"bc_{self.model_idx} - c(l={self.lower},u={self.upper})"
 
         for group_code in self.groups_.keys():
@@ -450,7 +446,7 @@ class BetaConstant(TimeSeriesModel):
 
             forecast = np.ones(len(future)) * c_value
             forecasts.append(forecast)
-            future[f"bc_{self.model_idx}_{group_code}"] = forecast
+            self._predict_columns[f"bc_{self.model_idx}_{group_code}"] = forecast
 
         return np.vstack(forecasts)
 
@@ -503,6 +499,16 @@ class BetaConstant(TimeSeriesModel):
         plt.axhline(self.lower, c="r", linewidth=1, linestyle="--", alpha=0.5)
         plt.axhline(self.upper, c="r", linewidth=1, linestyle="--", alpha=0.5)
         plt.grid(True, alpha=0.3)
+
+    def _assign_model_idx(self, model_idxs: dict[str, int]) -> None:
+        model_idxs["bc"] = model_idxs.get("bc", 0)
+        self.model_idx = model_idxs["bc"]
+        model_idxs["bc"] += 1
+
+    def _get_prior_var_names(self) -> list[str]:
+        if self.tune_method != "prior_from_idata":
+            return []
+        return [f"bc_{self.model_idx} - c(l={self.lower},u={self.upper})"]
 
     def needs_priors(self, *args, **kwargs) -> bool:
         """Check if this component needs priors from idata.

@@ -61,6 +61,8 @@ vangja.components : Individual model components.
 vangja.datasets : Dataset loading and generation.
 """
 
+from importlib.metadata import version
+
 from vangja import datasets, utils
 from vangja.components import (
     BetaConstant,
@@ -70,6 +72,8 @@ from vangja.components import (
     NormalConstant,
     UniformConstant,
 )
+
+__version__ = version("vangja")
 
 __all__ = [
     "LinearTrend",
