@@ -21,7 +21,7 @@ dependencies = [
 
 [project.urls]
 Repository = "https://github.com/jovan-krajevski/vangja"
-"Documentation" = "https://vangja.readthedocs.io"
+Documentation = "https://vangja.readthedocs.io"
 
 [project.optional-dependencies]
 datasets = [
