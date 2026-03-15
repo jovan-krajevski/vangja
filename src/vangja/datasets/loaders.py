@@ -448,6 +448,7 @@ def load_kaggle_temperature(
 
         - ``ds``: datetime
         - ``y``: float, temperature in degrees Celsius
+        - ``series``: str, the original city name from the Kaggle dataset
 
     Raises
     ------
@@ -459,7 +460,7 @@ def load_kaggle_temperature(
     >>> from vangja.datasets import load_kaggle_temperature
     >>> df = load_kaggle_temperature("New York", "2015-01-01", "2015-12-31")  # doctest: +SKIP
     >>> print(df.columns.tolist())  # doctest: +SKIP
-    ['ds', 'y']
+    ['ds', 'y', 'series']
 
     Notes
     -----
@@ -503,7 +504,10 @@ def load_kaggle_temperature(
     df = df.resample(freq, on="ds").mean(numeric_only=True).reset_index()
     df = df.dropna(subset=["y"])
 
-    return df[["ds", "y"]]
+    # Add series column for compatibility with multi-series datasets (e.g. smart home)
+    df["series"] = city
+
+    return df[["ds", "y", "series"]]
 
 
 def load_smart_home_readings(

@@ -23,6 +23,13 @@ Welcome to Vangja's documentation!
    notebooks/10_bayesian_workflow
 
 .. toctree::
+   :maxdepth: 2
+   :caption: Case Studies
+   
+   notebooks/01_case_study_smart_home
+   notebooks/02_case_study_stocks
+
+.. toctree::
    :maxdepth: 3
    :caption: API Reference
 
