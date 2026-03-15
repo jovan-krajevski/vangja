@@ -21,6 +21,7 @@ Welcome to Vangja's documentation!
    notebooks/08_prior_from_idata
    notebooks/09_advanced_transfer_learning
    notebooks/10_bayesian_workflow
+   uncertainty
 
 .. toctree::
    :maxdepth: 2
