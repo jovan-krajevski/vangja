@@ -172,3 +172,5 @@ cython_debug/
 
 # Singularity image files
 *.sif
+
+data/
