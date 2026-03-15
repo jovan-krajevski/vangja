@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vangja"
-version = "0.2.3"
+version = "0.2.4"
 description = "A time-series forecasting package with an intuitive API capable of modeling short time series with prior knowledge derived from a similar long time series."
 authors = [{ name = "Jovan Krajevski", email = "jovan.krajevski@gmail.com" }, { name = "Biljana Tojtovska Ribarski", email = "biljana.tojtovska@finki.ukim.mk" }]
 classifiers = [
@@ -21,6 +21,7 @@ dependencies = [
 
 [project.urls]
 Repository = "https://github.com/jovan-krajevski/vangja"
+"Documentation" = "https://vangja.readthedocs.io"
 
 [project.optional-dependencies]
 datasets = [
