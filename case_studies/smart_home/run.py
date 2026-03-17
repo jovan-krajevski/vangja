@@ -46,8 +46,8 @@ def build_dataset(
 ##########################################################################
 train_temp_df, test_temp_df = build_dataset(smart_home_df=None, temp_df=temp_df)
 
-temp_model = FlatTrend(intercept_sd=1) + FourierSeasonality(
-    period=365.25, series_order=5, beta_sd=0.1
+temp_model = FlatTrend(intercept_mean=0.5, intercept_sd=0.1) + FourierSeasonality(
+    period=365.25, series_order=5, beta_sd=1.5
 )
 temp_model.fit(temp_df, scaler="minmax", method="nuts", samples=1000)
 
@@ -69,7 +69,9 @@ train_tl_h_df, test_tl_h_df = build_dataset(
 experiments: set[tuple[str, str, bool, str, int, int]] = set()
 
 for uc, tm, tlf, shs in params:
-    experiments.add(("without_temp_df", "individual", uc, tm, tlf, shs))
+    if shs == 0:
+        experiments.add(("without_temp_df", "individual", False, tm, tlf, shs))
+
     if shs != 0:
         experiments.add(("with_temp_df", "partial", uc, tm, tlf, shs))
 
@@ -108,23 +110,26 @@ for experiment in sorted_experiments:
         (train_tl_df, test_tl_df) if not use_temp_df else (train_tl_h_df, test_tl_h_df)
     )
 
-    trend = FlatTrend(intercept_sd=1)
+    trend = FlatTrend(intercept_mean=0.5, intercept_sd=0.1, pool_type="individual")
     yearly = FourierSeasonality(
         period=365.25,
         series_order=5,
-        pool_type=hierarchical,
+        beta_sd=1.5,
         tune_method=tm,
+        pool_type=hierarchical,
         loss_factor_for_tune=tlf,
         shrinkage_strength=shs,
     )
     weekly = FourierSeasonality(
         period=7,
         series_order=3,
-        beta_sd=1,
+        beta_sd=1.5,
         pool_type=hierarchical,
         shrinkage_strength=shs,
     )
-    constant = UniformConstant(lower=-1, upper=1, pool_type="partial")
+    constant = UniformConstant(
+        lower=-1, upper=1, pool_type="partial", shrinkage_strength=shs
+    )
 
     model = (trend + constant * yearly + weekly) if uc else (trend + yearly + weekly)
     print(model)
