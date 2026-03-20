@@ -613,4 +613,4 @@ class FourierSeasonality(TimeSeriesModel):
         return self.pool_type == "individual"
 
     def __str__(self):
-        return f"FS(p={self.period},n={self.series_order},tm={self.tune_method})"
+        return f"FS(p={self.period},n={self.series_order},pt={self.pool_type},tm={self.tune_method})"
