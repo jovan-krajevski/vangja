@@ -9,16 +9,28 @@ from vangja.utils import metrics
 
 RESULTS_FILE = Path(__file__).parent / "metrics.csv"
 
+# Define hyperparameter search space
+uniform_constant = [True, False]
+tune_method = ["parametric", "prior_from_idata"]
+tune_loss_factor = [0, 1]
+shrinkage_strength = [0, 1, 10, 100, 1000, 10000]
+intercept_sd = [0.1, 0.5, 1.0]
+beta_sd = [0.5, 1.0, 1.5]
+scalers = ["maxabs", "minmax"]
+
 smart_home_df = load_smart_home_readings(
     column=["Furnace 1 [kW]", "Furnace 2 [kW]", "Fridge [kW]", "Wine cellar [kW]"],
     freq="D",
 )
-temp_df = load_kaggle_temperature(
-    city="Boston",
-    start_date="2016-01-01",
-    end_date=smart_home_df["ds"].max().strftime("%Y-%m-%d"),
-    freq="D",
-)
+temp_dfs = {
+    start_date: load_kaggle_temperature(
+        city="Boston",
+        start_date=start_date,
+        end_date=smart_home_df["ds"].max().strftime("%Y-%m-%d"),
+        freq="D",
+    )
+    for start_date in ["2015-01-01", "2014-01-01", "2013-01-01"]
+}
 
 
 def build_dataset(
@@ -44,36 +56,60 @@ def build_dataset(
 ##########################################################################
 # Train the temperature model
 ##########################################################################
-train_temp_df, test_temp_df = build_dataset(smart_home_df=None, temp_df=temp_df)
+temp_models = {}
+for start_date, temp_df in temp_dfs.items():
+    train_temp_df, test_temp_df = build_dataset(smart_home_df=None, temp_df=temp_df)
 
-temp_model = FlatTrend(intercept_mean=0.5, intercept_sd=0.1) + FourierSeasonality(
-    period=365.25, series_order=5, beta_sd=1.5
-)
-temp_model.fit(temp_df, scaler="minmax", method="nuts", samples=1000)
+    for scaler in scalers:
+        temp_model = FlatTrend(
+            intercept_mean=0.5, intercept_sd=0.1
+        ) + FourierSeasonality(period=365.25, series_order=5, beta_sd=1.5)
+        temp_model.fit(train_temp_df, scaler=scaler, method="nuts", samples=1000)
+        temp_models[(start_date, scaler)] = temp_model
 
 ##########################################################################
 # Train the smart home model
 ##########################################################################
-uniform_constant = [True, False]
-tune_method = ["parametric", "prior_from_idata"]
-tune_loss_factor = [0, 1]
-shrinkage_strength = [0, 1, 10, 100, 1000, 10000]
-
-params = product(uniform_constant, tune_method, tune_loss_factor, shrinkage_strength)
-
-train_tl_df, test_tl_df = build_dataset(smart_home_df=smart_home_df)
-train_tl_h_df, test_tl_h_df = build_dataset(
-    smart_home_df=smart_home_df, temp_df=temp_df
+params = product(
+    temp_dfs.keys(),
+    uniform_constant,
+    tune_method,
+    tune_loss_factor,
+    shrinkage_strength,
+    intercept_sd,
+    beta_sd,
+    scalers,
 )
 
-experiments: set[tuple[str, str, bool, str, int, int]] = set()
+train_tl_df, test_tl_df = build_dataset(smart_home_df=smart_home_df)
+tl_h_dfs = {
+    start_date: build_dataset(smart_home_df=smart_home_df, temp_df=temp_df)
+    for start_date, temp_df in temp_dfs.items()
+}
 
-for uc, tm, tlf, shs in params:
+experiments: set[tuple[str, str, str, bool, str, int, int, float, float, str]] = set()
+
+for start_date, uc, tm, tlf, shs, isd, bsd, scaler in params:
     if shs == 0:
-        experiments.add(("without_temp_df", "individual", False, tm, tlf, shs))
+        experiments.add(
+            (
+                start_date,
+                "without_temp_df",
+                "individual",
+                uc,
+                tm,
+                tlf,
+                shs,
+                isd,
+                bsd,
+                scaler,
+            )
+        )
 
     if shs != 0:
-        experiments.add(("with_temp_df", "partial", uc, tm, tlf, shs))
+        experiments.add(
+            (start_date, "with_temp_df", "partial", uc, tm, tlf, shs, isd, bsd, scaler)
+        )
 
 # Sort experiments to be deterministic
 sorted_experiments = sorted(list(experiments))
@@ -84,37 +120,47 @@ if RESULTS_FILE.exists():
     for _, row in existing_df.iterrows():
         processed_experiments.add(
             (
+                row["start_date"],
                 row["use_temp_df"],
                 row["hierarchical"],
                 bool(row["uniform_constant"]),
                 row["tune_method"],
                 int(row["tune_loss_factor"]),
                 int(row["shrinkage_strength"]),
+                float(row["intercept_sd"]),
+                float(row["beta_sd"]),
+                row["scaler"],
             )
         )
 
-for experiment in sorted_experiments:
+for i, experiment in enumerate(sorted_experiments):
+    print(f"\n=== Running Experiment {i+1}/{len(sorted_experiments)} ===")
     if experiment in processed_experiments:
         print(f"Skipping already processed experiment: {experiment}")
         continue
 
-    use_temp_df, hierarchical, uc, tm, tlf, shs = experiment
+    start_date, use_temp_df, hierarchical, uc, tm, tlf, shs, isd, bsd, scaler = (
+        experiment
+    )
     print(
         f"Training {hierarchical} model {use_temp_df} with uniform_constant={uc}, "
         f"tune_method={tm}, "
         f"tune_loss_factor={tlf}, "
-        f"shrinkage_strength={shs}"
+        f"shrinkage_strength={shs}, "
+        f"intercept_sd={isd}, "
+        f"beta_sd={bsd}, "
+        f"scaler={scaler}"
     )
 
     train_df, test_df = (
-        (train_tl_df, test_tl_df) if not use_temp_df else (train_tl_h_df, test_tl_h_df)
+        (train_tl_df, test_tl_df) if not use_temp_df else tl_h_dfs[start_date]
     )
 
-    trend = FlatTrend(intercept_mean=0.5, intercept_sd=0.1, pool_type="individual")
+    trend = FlatTrend(intercept_mean=0.5, intercept_sd=isd, pool_type="individual")
     yearly = FourierSeasonality(
         period=365.25,
         series_order=5,
-        beta_sd=1.5,
+        beta_sd=bsd,
         tune_method=tm,
         pool_type=hierarchical,
         loss_factor_for_tune=tlf,
@@ -123,24 +169,24 @@ for experiment in sorted_experiments:
     weekly = FourierSeasonality(
         period=7,
         series_order=3,
-        beta_sd=1.5,
+        beta_sd=bsd,
         pool_type=hierarchical,
         shrinkage_strength=shs,
     )
     constant = UniformConstant(
-        lower=-1, upper=1, pool_type="partial", shrinkage_strength=shs
+        lower=-1, upper=1, pool_type=hierarchical, shrinkage_strength=shs
     )
 
     model = (trend + constant * yearly + weekly) if uc else (trend + yearly + weekly)
     print(model)
     model.fit(
         train_df,
-        scaler="minmax",
+        scaler=scaler,
         method="mapx",
         scale_mode="individual",
         sigma_pool_type="individual",
-        t_scale_params=temp_model.t_scale_params,
-        idata=temp_model.trace,
+        t_scale_params=temp_models[(start_date, scaler)].t_scale_params,
+        idata=temp_models[(start_date, scaler)].trace,
     )
     yhat = model.predict(horizon=365)
     model_metrics = metrics(test_df, yhat, pool_type="individual")
@@ -152,12 +198,16 @@ for experiment in sorted_experiments:
         result_rows.append(
             {
                 "timeseries": ts,
+                "start_date": start_date,
                 "use_temp_df": use_temp_df,
                 "hierarchical": hierarchical,
                 "uniform_constant": uc,
                 "tune_method": tm,
                 "tune_loss_factor": tlf,
                 "shrinkage_strength": shs,
+                "intercept_sd": isd,
+                "beta_sd": bsd,
+                "scaler": scaler,
                 **(model_metrics.loc[ts].to_dict()),
             }
         )
