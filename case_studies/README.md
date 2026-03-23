@@ -1,23 +1,19 @@
 # Reproducing Ablation Studies on HPC Clusters
 
-This directory contains infrastructure for running vangja ablation studies on High Performance Computing (HPC) clusters using Singularity (SyLabs) containers and the SLURM workload manager. The containerized setup ensures **bit-for-bit reproducibility** of all experiments reported in the accompanying paper.
+This directory contains infrastructure for running vangja ablation studies on High Performance Computing (HPC) clusters using Singularity (SyLabs) containers and the SLURM workload manager. The containerized setup ensures reproducibility of all experiments reported in the accompanying paper.
 
 ## Directory Structure
 
 ```
 case_studies/
-├── README.md                 # This file
-├── singularity.def           # Container definition (Miniconda + PyMC + vangja)
-├── submit_ablation.slurm     # Generic SLURM batch script for any case study
-├── smart_home/               # Smart home energy dataset case study
-│   ├── ablation_fast.py      # Fast pipeline validation (~minutes)
-│   ├── ablation_full.py      # Full hyperparameter sweep (~hours)
-│   ├── classical_baselines.py
-│   ├── train.py
-│   ├── ablations.md
-│   ├── general_ablations.md  # Reusable template for new datasets
-│   └── README.md
-└── <other_datasets>/         # Additional case studies follow the same layout
+├── README.md                # This file
+├── singularity.def          # Container definition (Miniconda + PyMC + vangja)
+├── submit_ablation.slurm    # Generic SLURM batch script for any case study
+├── <case_study_1>/          # Case study
+│   ├── run_vangja.py        # Full hyperparameter sweep (~hours)
+│   ├── run_baselines.py     # Classical baselines (~minutes)
+│   └── results/             # Output directory for results and plots
+└── <other_case_studies>/    # Additional case studies follow the same layout
 ```
 
 ## Prerequisites
@@ -26,7 +22,7 @@ case_studies/
 - Access to an HPC cluster with:
   - SLURM workload manager
   - Singularity / Apptainer container runtime
-  - At least 32 GB RAM per node (for MCMC sampling)
+  - At least 16 GB RAM per node (for MCMC sampling)
 - Basic familiarity with the Linux command line and SSH
 
 ## Step-by-Step Reproduction Guide
@@ -118,32 +114,26 @@ git ls-remote git@github.com:jovan-krajevski/vangja.git
 
 ### 4. Run Ablation Studies
 
-#### Quick Validation (Fast Mode)
-
-Validate the full pipeline with a reduced hyperparameter grid before committing to the full run:
+You can run the ablation studies by submitting SLURM jobs using the provided `submit_ablation.slurm` script. This script is designed to run any of the case studies. You need to specify the case study name (e.g., `smart_home`) and the pipeline type (`vangja`, for running the Vangja ablation pipeline, or `baselines`, for running the classical baselines):
 
 ```bash
 cd <work_dir>/vangja
-sbatch case_studies/submit_ablation.slurm smart_home fast
+sbatch case_studies/submit_ablation.slurm <case_study> <pipeline>
 ```
 
-This runs `ablation_fast.py` — two series, VI instead of NUTS, fewer hyperparameter combinations. Completes in minutes.
-
-#### Full Ablation Study
+As an example, to run the full Vangja ablation study for the `smart_home` case study:
 
 ```bash
-sbatch case_studies/submit_ablation.slurm smart_home full
+cd <work_dir>/vangja
+sbatch case_studies/submit_ablation.slurm smart_home vangja
 ```
 
-This runs `ablation_full.py` — four series, NUTS sampling for base models, exhaustive hyperparameter grid. Expect several hours of wall time.
-
-#### Classical Baselines
+As for running the classical baselines for the same case study:
 
 ```bash
-sbatch case_studies/submit_ablation.slurm smart_home classical
+cd <work_dir>/vangja
+sbatch case_studies/submit_ablation.slurm smart_home baselines
 ```
-
-Fits ARIMA, Holt-Winters, and Seasonal Naive models per-series. Completes in minutes.
 
 #### Monitoring Jobs
 
@@ -155,18 +145,9 @@ scancel <jobid>                    # Cancel a job
 
 ### 5. Checkpointing and Crash Recovery
 
-Both `ablation_fast.py` and `ablation_full.py` implement automatic checkpointing to survive node failures, job timeouts, and out-of-memory conditions:
+`run_vangja.py` implements automatic checkpointing to survive node failures, job timeouts, and out-of-memory conditions. After each target model experiment completes, its metrics are appended to an incremental CSV. On restart, completed experiments are skipped automatically.
 
-- **Base model caching**: After each NUTS/VI base model is trained, its ArviZ `InferenceData` trace and `t_scale_params` are saved to disk under `results*/base_models/`. On restart, cached base models are loaded instead of retrained.
-- **Per-experiment results**: After each target model experiment completes, its metrics are appended to an incremental `results_checkpoint.csv`. On restart, completed experiments are skipped automatically.
-- **Atomic writes**: Checkpoint files are written atomically (write to temp file, then rename) to prevent corruption from mid-write crashes.
-
-If a job is interrupted, simply resubmit the same command — the script will resume from where it left off:
-
-```bash
-# Job timed out or crashed? Just resubmit:
-sbatch case_studies/submit_ablation.slurm smart_home full
-```
+If a job is interrupted, simply resubmit the same command — the script will resume from where it left off.
 
 ### 6. Customizing SLURM Parameters
 
@@ -174,10 +155,10 @@ Edit `submit_ablation.slurm` or override via `sbatch` flags:
 
 ```bash
 # Request more time and memory
-sbatch --time=48:00:00 --mem=64G case_studies/submit_ablation.slurm smart_home full
+sbatch --time=48:00:00 --mem=64G case_studies/submit_ablation.slurm <case_study> <pipeline>
 
 # Target a specific partition or node
-sbatch --partition=long --nodelist=node01 case_studies/submit_ablation.slurm smart_home full
+sbatch --partition=long --nodelist=node01 case_studies/submit_ablation.slurm <case_study> <pipeline>
 ```
 
 Key SLURM parameters to tune:
@@ -193,17 +174,13 @@ Key SLURM parameters to tune:
 After all jobs complete, results are stored in the case study's output directory:
 
 ```
-case_studies/smart_home/results/
-├── results.csv              # Full results table (one row per configuration)
-├── results_checkpoint.csv   # Incremental checkpoint (same content as results.csv)
-├── summary_rmse.png         # Bar chart ranking all configurations
-├── hparam_*.png             # Per-hyperparameter effect plots
-├── pred_*.png               # Prediction plots for selected configurations
-├── best_*.png               # Best model per series with uncertainty
-└── base_models/             # Cached base model traces
-    ├── base_so=5_bsd=1.0_sc=minmax.nc
-    ├── base_so=5_bsd=1.0_sc=minmax_tscale.json
-    └── ...
+case_studies/<case_study_1>/results/
+├── vangja/                         # Vangja ablation results
+    ├── metrics_<start_date>.csv    # Metrics for all configurations on a given start date in the dataset
+    └── ...                         # Other Vangja-specific outputs for analysis
+└── baselines/                      # Classical baselines results
+    ├── metrics_<start_date>.csv    # Metrics for all baselines on a given start date in the dataset
+    └── ...                         # Other baseline-specific outputs for analysis
 ```
 
 ## Adding New Case Studies
@@ -213,24 +190,21 @@ To create an ablation study for a new dataset:
 ```bash
 mkdir case_studies/my_dataset
 
-# Copy the template scripts
-cp case_studies/smart_home/ablation_fast.py case_studies/my_dataset/
-cp case_studies/smart_home/ablation_full.py case_studies/my_dataset/
-cp case_studies/smart_home/classical_baselines.py case_studies/my_dataset/
+# Create the pipelines
+touch case_studies/my_dataset/run_vangja.py
+touch case_studies/my_dataset/run_baselines.py
 ```
 
-Then modify the data loading section, hyperparameter grid, and train/test split. See `case_studies/smart_home/general_ablations.md` for a detailed template.
+Then create the data loading section, hyperparameter grid, and train/test split. See the other case studies for a detailed template.
 
 Run the new case study using the same SLURM script:
 
 ```bash
-sbatch case_studies/submit_ablation.slurm my_dataset fast
-sbatch case_studies/submit_ablation.slurm my_dataset full
+sbatch case_studies/submit_ablation.slurm my_dataset vangja
+sbatch case_studies/submit_ablation.slurm my_dataset baselines
 ```
 
 ## Reproducibility Checklist
-
-For submission to journals with strict reproducibility requirements (e.g., Journal of Statistical Software):
 
 - [ ] `singularity.def` pins the base Docker image tag (`continuumio/miniconda3:24.7.1-0`)
 - [ ] All Python dependencies are version-pinned in `pyproject.toml`
@@ -250,5 +224,4 @@ For submission to journals with strict reproducibility requirements (e.g., Journ
 | Permission denied building `.sif` | Build locally with `sudo`, then `scp` to cluster |
 | Out of memory during NUTS | Increase `--mem` in SLURM or reduce `BASE_NUTS_CHAINS` |
 | Job timeout | Increase `--time`; checkpointing will resume from last completed experiment |
-| `kagglehub` download fails (no internet on compute nodes) | Run `ablation_fast.py` once on a login node to cache datasets, then submit SLURM jobs |
-| Results differ across runs | Ensure the same `vangja.sif` is used and random seeds are set; MCMC is inherently stochastic but base model caching ensures deterministic transfer |
+| Results differ across runs | Ensure the same `vangja.sif` is used and random seeds are set; remember that MCMC is inherently stochastic |

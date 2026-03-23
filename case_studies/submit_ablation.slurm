@@ -13,16 +13,15 @@
 # Vangja Ablation Study — SLURM Submission Script
 #
 # Usage:
-#   sbatch case_studies/submit_ablation.slurm <case_study> [mode]
+#   sbatch case_studies/submit_ablation.slurm <case_study> <pipeline>
 #
 # Arguments:
 #   <case_study>  Directory name under case_studies/ (e.g. "smart_home")
-#   [mode]        One of: fast, full, classical (default: full)
+#   <pipeline>    One of: vangja, baselines (default: vangja)
 #
 # Examples:
-#   sbatch case_studies/submit_ablation.slurm smart_home fast
-#   sbatch case_studies/submit_ablation.slurm smart_home full
-#   sbatch case_studies/submit_ablation.slurm smart_home classical
+#   sbatch case_studies/submit_ablation.slurm smart_home vangja
+#   sbatch case_studies/submit_ablation.slurm smart_home baselines
 # =========================================================================
 
 set -euo pipefail
@@ -30,8 +29,8 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Parse arguments
 # ---------------------------------------------------------------------------
-CASE_STUDY="${1:?Usage: sbatch submit_ablation.slurm <case_study> [fast|full|classical]}"
-MODE="${2:-full}"
+CASE_STUDY="${1:?Usage: sbatch submit_ablation.slurm <case_study> <pipeline>}"
+PIPELINE="${2:-vangja}"
 
 REPO_ROOT="$(pwd)"
 echo "${REPO_ROOT}"
@@ -54,12 +53,11 @@ if [[ ! -f "${SIF}" ]]; then
     exit 1
 fi
 
-case "${MODE}" in
-    fast)      SCRIPT="ablation_fast.py" ;;
-    full)      SCRIPT="ablation_full.py" ;;
-    classical) SCRIPT="classical_baselines.py" ;;
+case "${PIPELINE}" in
+    vangja)    SCRIPT="run_vangja.py" ;;
+    baselines) SCRIPT="run_baselines.py" ;;
     *)
-        echo "ERROR: Unknown mode '${MODE}'. Use: fast, full, or classical." >&2
+        echo "ERROR: Unknown pipeline '${PIPELINE}'. Use: vangja or baselines." >&2
         exit 1
         ;;
 esac
@@ -80,7 +78,7 @@ echo "Job ID:        ${SLURM_JOB_ID}"
 echo "Node:          $(hostname)"
 echo "CPUs:          ${SLURM_CPUS_PER_TASK:-N/A}"
 echo "Case study:    ${CASE_STUDY}"
-echo "Mode:          ${MODE}"
+echo "Pipeline:      ${PIPELINE}"
 echo "Script:        ${SCRIPT}"
 echo "Started at:    $(date --iso-8601=seconds)"
 echo "========================================"
