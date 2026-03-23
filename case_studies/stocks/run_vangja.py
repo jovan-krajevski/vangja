@@ -12,7 +12,7 @@ CT_PATH = Path(__file__).parent / "data/sp500_constituents"
 TICKERS_PATH = Path(__file__).parent / "data/tickers"
 RESULTS_FOLDER = Path(__file__).parent / "results" / "vangja"
 
-RESULTS_FOLDER.mkdir(exist_ok=True)
+RESULTS_FOLDER.mkdir(parents=True, exist_ok=True)
 
 
 def rescale_dataset(
