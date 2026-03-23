@@ -170,7 +170,9 @@ for (
 sorted_experiments = sorted(list(experiments))
 
 for start_date in start_dates:
-    processed_experiments = set()
+    processed_experiments: set[
+        tuple[str, str, str, int, bool, str, int, int, int, float, float, float, str]
+    ] = set()
     results_file = RESULTS_FOLDER / f"results_{start_date}.csv"
     mean_results_file = RESULTS_FOLDER / f"mean_results_{start_date}.csv"
 
@@ -180,12 +182,14 @@ for start_date in start_dates:
             processed_experiments.add(
                 (
                     row["use_smp500"],
-                    row["hierarchical"],
+                    row["lt_hierarchical"],
+                    row["fs_hierarchical"],
                     int(row["window_size"]),
                     bool(row["uniform_constant"]),
                     row["tune_method"],
                     int(row["tune_loss_factor"]),
-                    int(row["shrinkage_strength"]),
+                    int(row["lt_shrinkage_strength"]),
+                    int(row["fs_shrinkage_strength"]),
                     float(row["slope_sd"]),
                     float(row["intercept_sd"]),
                     float(row["beta_sd"]),
@@ -293,7 +297,7 @@ for start_date in start_dates:
             smp_model = smp_models[(ws, ssd, icd, bsd, scl)]
 
         trend = LinearTrend(
-            n_changepoints=5,
+            n_changepoints=25,
             changepoint_range=1,
             slope_sd=ssd,
             intercept_sd=icd,
@@ -351,7 +355,8 @@ for start_date in start_dates:
                     "timeseries": ts,
                     "start_date": start_date,
                     "use_smp500": use_smp500,
-                    "hierarchical": f"LT: {lt_hierarchical}, FS: {fs_hierarchical}",
+                    "lt_hierarchical": lt_hierarchical,
+                    "fs_hierarchical": fs_hierarchical,
                     "window_size": ws,
                     "uniform_constant": uc,
                     "tune_method": tm,
@@ -373,7 +378,8 @@ for start_date in start_dates:
         mean_result_row = {
             "start_date": start_date,
             "use_smp500": use_smp500,
-            "hierarchical": f"LT: {lt_hierarchical}, FS: {fs_hierarchical}",
+            "lt_hierarchical": lt_hierarchical,
+            "fs_hierarchical": fs_hierarchical,
             "window_size": ws,
             "uniform_constant": uc,
             "tune_method": tm,
