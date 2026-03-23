@@ -44,11 +44,11 @@ window_size = [2 * 365, 3 * 365, 4 * 365]
 uniform_constant = [True, False]
 tune_method = ["parametric", "prior_from_idata"]
 tune_loss_factor = [0, 1]
-lt_shrinkage_strength = [0, 1, 10, 100, 1000, 10000]
-fs_shrinkage_strength = [0, 1, 10, 100, 1000, 10000]
-slope_sd = [0.1, 0.5, 1.0]
-intercept_sd = [0.1, 0.5, 1.0]
-beta_sd = [0.5, 1.0, 1.5]
+lt_shrinkage_strength = [0, 1, 100, 10000]
+fs_shrinkage_strength = [0, 1, 100, 10000]
+slope_sd = [5.0]
+intercept_sd = [5.0]
+beta_sd = [1.0, 5.0, 10.0]
 scalers = ["maxabs"]
 
 # all months from 2013 to 2015
@@ -248,7 +248,7 @@ for start_date in start_dates:
             interpolate=True,
         )
         train_df, test_df = rescale_dataset(smp_train, stocks_train, stocks_test)
-        if use_smp500:
+        if use_smp500 == "with_smp500":
             train_df = pd.concat([train_df, smp_train], ignore_index=True)
             test_df = pd.concat([test_df, smp_test], ignore_index=True)
 
@@ -269,14 +269,14 @@ for start_date in start_dates:
                     period=365.25,
                     series_order=6,
                     beta_sd=bsd,
-                    pool_type="individual",
+                    pool_type="complete",
                     tune_method=None,
                 )
                 + FourierSeasonality(
                     period=7,
                     series_order=3,
                     beta_sd=bsd,
-                    pool_type="individual",
+                    pool_type="complete",
                     tune_method=None,
                 )
             )
@@ -286,27 +286,27 @@ for start_date in start_dates:
                 scaler=scl,
                 scale_mode="complete",
                 sigma_pool_type="individual",
-                method="nuts",
+                method="advi",
             )
             smp_models[(ws, ssd, icd, bsd, scl)] = smp_model
         else:
             smp_model = smp_models[(ws, ssd, icd, bsd, scl)]
 
         trend = LinearTrend(
-            n_changepoints=25,
+            n_changepoints=5,
             changepoint_range=1,
             slope_sd=ssd,
             intercept_sd=icd,
             delta_side="right",
             pool_type="partial" if lt_hierarchical == "lt_partial" else "individual",
             delta_pool_type="complete",
-            tune_method=None,
+            tune_method=tm,
             delta_tune_method=None,
             shrinkage_strength=lt_ss,
         )
         yearly = FourierSeasonality(
             period=365.25,
-            series_order=5,
+            series_order=6,
             beta_sd=bsd,
             pool_type="partial" if fs_hierarchical == "fs_partial" else "individual",
             tune_method=tm,
@@ -318,8 +318,11 @@ for start_date in start_dates:
             series_order=3,
             beta_sd=bsd,
             pool_type="individual",
+            tune_method=None,
         )
-        constant = UniformConstant(lower=-1, upper=1, pool_type="individual")
+        constant = UniformConstant(
+            lower=-1, upper=1, pool_type="individual", tune_method=None
+        )
         model = (
             (trend ** (constant**yearly + weekly))
             if uc
@@ -331,7 +334,7 @@ for start_date in start_dates:
             train_df,
             scaler=scl,
             method="mapx",
-            scale_mode="individual",
+            scale_mode="complete",
             sigma_pool_type="individual",
             t_scale_params=smp_model.t_scale_params,
             idata=smp_model.trace,

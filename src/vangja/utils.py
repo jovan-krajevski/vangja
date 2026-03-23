@@ -288,7 +288,12 @@ def metrics(
     future = future.copy()
     future["ds"] = pd.to_datetime(future["ds"])
 
-    metrics_dict = {"mse": {}, "rmse": {}, "mae": {}, "mape": {}}
+    metrics_dict: dict[str, dict[str, float]] = {
+        "mse": {},
+        "rmse": {},
+        "mae": {},
+        "mape": {},
+    }
     test_group, _, test_groups_ = get_group_definition(processed_y_true, pool_type)
     for group_code, group_name in test_groups_.items():
         group_idx = test_group == group_code
