@@ -67,7 +67,7 @@ def rescale_dataset(
 def evaluate_forecast(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
     """Compute RMSE, MAE, MAPE for a single series."""
     n = min(len(y_true), len(y_pred))
-    yt, yp = y_true[:n], y_pred[:n]
+    yt, yp = np.nan_to_num(y_true[:n]), np.nan_to_num(y_pred[:n])
     return {
         "rmse": root_mean_squared_error(yt, yp),
         "mae": mean_absolute_error(yt, yp),
@@ -79,6 +79,7 @@ def evaluate_forecast(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
 # ---------------------------------------------------------------------------
 # Model implementations
 # ---------------------------------------------------------------------------
+
 
 # 1. Naive (Last observation)
 def naive_forecast(train_y: np.ndarray, horizon: int) -> np.ndarray:
@@ -103,7 +104,7 @@ def rolling_mean_forecast(
     """Constant forecast = mean of last `window` observations."""
     if len(train_y) == 0:
         return np.zeros(horizon)
-    return np.full(horizon, train_y[-min(len(train_y), window):].mean())
+    return np.full(horizon, train_y[-min(len(train_y), window) :].mean())
 
 
 # 3. Fixed ARIMA orders
@@ -189,13 +190,14 @@ def fit_smp_regression(
     """
     t0 = time.time()
     try:
+
         def make_features(dates: pd.Series, smp_data: pd.DataFrame) -> pd.DataFrame:
             df = pd.DataFrame({"ds": pd.to_datetime(dates)})
             df = df.merge(smp_data.rename(columns={"y": "smp"}), on="ds", how="left")
             df["smp"] = df["smp"].ffill().bfill()
             df["dow"] = df["ds"].dt.dayofweek
             df["month"] = df["ds"].dt.month
-            
+
             dow_dummies = pd.get_dummies(df["dow"], prefix="dow", dtype=float)
             month_dummies = pd.get_dummies(df["month"], prefix="mon", dtype=float)
             features = pd.concat([df[["smp"]], dow_dummies, month_dummies], axis=1)
@@ -232,6 +234,7 @@ def fit_smp_only_regression(
     """Simple regression: y ~ S&P 500 (linear relationship only)."""
     t0 = time.time()
     try:
+
         def make_features(dates: pd.Series, smp_data: pd.DataFrame) -> pd.DataFrame:
             df = pd.DataFrame({"ds": pd.to_datetime(dates)})
             df = df.merge(smp_data.rename(columns={"y": "smp"}), on="ds", how="left")
@@ -240,7 +243,7 @@ def fit_smp_only_regression(
 
         X_train = make_features(train_dates, smp_df).fillna(0)
         X_test = make_features(test_dates, smp_df).fillna(0)
-        
+
         reg = LinearRegression()
         reg.fit(X_train.values, train_y)
         forecast = reg.predict(X_test.values)
@@ -273,11 +276,13 @@ def main() -> pd.DataFrame:
         .strftime("%Y-%m-%d")
         .tolist()
     )
-    
-    tickers = get_sp500_tickers_for_range("2012-09-01", "2015-01-01", cache_path=CT_PATH)
-    
+
+    tickers = get_sp500_tickers_for_range(
+        "2012-09-01", "2015-01-01", cache_path=CT_PATH
+    )
+
     # Models to run
-    # Note: Stock dataset loops through thousands of time series overall, 
+    # Note: Stock dataset loops through thousands of time series overall,
     # so slower Auto-ARIMA baselines are omitted in favor of predefined fast approximations.
     model_configs = [
         ("Naive (Last Value)", "naive"),
@@ -291,14 +296,14 @@ def main() -> pd.DataFrame:
         ("SMP Regression (linear+dow+month)", "smp_reg"),
         ("SMP Only Regression", "smp_only_reg"),
     ]
-    
+
     all_metrics: list[dict] = []
 
     for start_date in start_dates:
         print(f"\n{'='*60}")
         print(f"Processing Start Date: {start_date}")
         print(f"{'='*60}")
-        
+
         # Check if already processed
         results_file = OUTPUT_DIR / f"results_classical_{start_date}.csv"
         if results_file.exists():
@@ -315,38 +320,38 @@ def main() -> pd.DataFrame:
             cache_path=TICKERS_PATH,
             interpolate=True,
         )
-        
+
         # 4 years window for SMP to match max 'ws' used in run_vangja.py
         smp_train, smp_test = load_stock_data(
             ["^GSPC"],
             split_date=start_date,
-            window_size=4 * 365, 
+            window_size=4 * 365,
             horizon_size=365,
             cache_path=TICKERS_PATH,
             interpolate=True,
         )
-        
+
         # Rescale target dataset exactly like Vangja model pipeline does
         train_df, test_df = rescale_dataset(smp_train, stocks_train, stocks_test)
         smp_full = pd.concat([smp_train, smp_test], ignore_index=True)
-        
+
         series_list = train_df["series"].unique()
         start_date_metrics = []
-        
+
         for series_name in series_list:
             s_train = train_df[train_df["series"] == series_name].sort_values("ds")
             s_test = test_df[test_df["series"] == series_name].sort_values("ds")
-            
+
             if s_test.empty or s_train.empty:
                 continue
-                
+
             train_y = s_train["y"].values
             test_y = s_test["y"].values
             horizon = len(test_y)
-            
+
             for model_name, model_code in model_configs:
                 t_start = time.time()
-                
+
                 if model_code == "naive":
                     forecast = naive_forecast(train_y, horizon)
                 elif model_code == "snaive_7":
@@ -363,7 +368,9 @@ def main() -> pd.DataFrame:
                     forecast, _ = fit_arima_fixed(train_y, horizon, (2, 1, 1))
                 elif model_code == "hw_a":
                     # Exponential Smoothing without seasonality
-                    forecast, _ = fit_holt_winters(train_y, horizon, trend="add", seasonal=None)
+                    forecast, _ = fit_holt_winters(
+                        train_y, horizon, trend="add", seasonal=None
+                    )
                 elif model_code == "smp_reg":
                     forecast, _ = fit_smp_regression(
                         train_y, s_train["ds"], s_test["ds"], smp_full, horizon
@@ -374,7 +381,7 @@ def main() -> pd.DataFrame:
                     )
                 else:
                     continue
-                    
+
                 elapsed = time.time() - t_start
                 m = evaluate_forecast(test_y, forecast)
                 m["model"] = model_name
@@ -382,7 +389,7 @@ def main() -> pd.DataFrame:
                 m["start_date"] = start_date
                 m["elapsed"] = elapsed
                 start_date_metrics.append(m)
-        
+
         # Save metrics for this start_date loop
         sd_metrics_df = pd.DataFrame(start_date_metrics)
         sd_metrics_df.to_csv(results_file, index=False)
@@ -390,7 +397,7 @@ def main() -> pd.DataFrame:
         print(f"  Processed {len(series_list)} timeseries matches.")
 
     metrics_df = pd.DataFrame(all_metrics)
-    
+
     if not metrics_df.empty:
         # Summary table
         print("\n" + "=" * 60)
@@ -406,6 +413,7 @@ def main() -> pd.DataFrame:
         print(f"\nResults and plots saved to {OUTPUT_DIR}/")
 
     return metrics_df
+
 
 if __name__ == "__main__":
     main()
