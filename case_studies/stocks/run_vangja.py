@@ -53,7 +53,7 @@ scalers = ["maxabs"]
 
 # all months from 2013 to 2015
 start_dates = (
-    pd.date_range(start="2013-01-01", end="2015-12-01", freq="MS")
+    pd.date_range(start="2013-01-01", end="2014-12-01", freq="MS")
     .strftime("%Y-%m-%d")
     .tolist()
 )
