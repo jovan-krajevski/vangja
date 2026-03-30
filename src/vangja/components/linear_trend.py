@@ -902,4 +902,4 @@ class LinearTrend(TimeSeriesModel):
         return self.pool_type == "individual"
 
     def __str__(self):
-        return f"LT(n={self.n_changepoints},r={self.changepoint_range},pt={self.pool_type}),tm={self.tune_method})"
+        return f"LT(n={self.n_changepoints},r={self.changepoint_range},pt={self.pool_type},tm={self.tune_method})"
