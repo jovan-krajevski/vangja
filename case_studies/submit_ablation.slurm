@@ -17,11 +17,12 @@
 #
 # Arguments:
 #   <case_study>  Directory name under case_studies/ (e.g. "smart_home")
-#   <pipeline>    One of: vangja, baselines (default: vangja)
+#   <pipeline>    One of: vangja, baselines, workflow (default: vangja)
 #
 # Examples:
 #   sbatch case_studies/submit_ablation.slurm smart_home vangja
 #   sbatch case_studies/submit_ablation.slurm smart_home baselines
+#   sbatch case_studies/submit_ablation.slurm smart_home workflow
 # =========================================================================
 
 set -euo pipefail
@@ -56,8 +57,9 @@ fi
 case "${PIPELINE}" in
     vangja)    SCRIPT="run_vangja.py" ;;
     baselines) SCRIPT="run_baselines.py" ;;
+    workflow)  SCRIPT="run_bayesian_workflow.py" ;;
     *)
-        echo "ERROR: Unknown pipeline '${PIPELINE}'. Use: vangja or baselines." >&2
+        echo "ERROR: Unknown pipeline '${PIPELINE}'. Use: vangja, baselines or workflow." >&2
         exit 1
         ;;
 esac
