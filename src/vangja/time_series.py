@@ -291,6 +291,7 @@ class TimeSeriesModel:
         maxiter: int = 10000,
         n: int = 10000,
         samples: int = 1000,
+        tune: int = 1000,
         chains: int = 4,
         cores: int = 4,
         nuts_sampler: NutsSampler = "pymc",
@@ -331,6 +332,9 @@ class TimeSeriesModel:
         samples: int
             Denotes the number of samples to be drawn from the posterior for MCMC and
             VI methods.
+        tune: int
+            The number of tuning steps for MCMC methods. These samples are discarded
+            and not included in the trace. Only applicable to the MCMC methods.
         chains: int
             Denotes the number of independent chains drawn from the posterior. Only
             applicable to the MCMC methods.
@@ -439,6 +443,7 @@ class TimeSeriesModel:
 
                 self.trace = pm.sample(
                     self.samples,
+                    tune=tune,
                     chains=chains,
                     cores=cores,
                     nuts_sampler=nuts_sampler,
