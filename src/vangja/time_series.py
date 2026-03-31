@@ -17,7 +17,10 @@ CombinedTimeSeries
     Base class for combined time series models.
 """
 
+from pathlib import Path
+
 import arviz as az
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -36,6 +39,8 @@ from vangja.types import (
     YScaleParams,
 )
 from vangja.utils import get_group_definition
+
+matplotlib.use("Agg")
 
 
 class TimeSeriesModel:
@@ -779,6 +784,7 @@ class TimeSeriesModel:
         series: str = "series",
         y_true: pd.DataFrame | None = None,
         clip_to_data: bool = True,
+        file_path: Path | None = None,
     ):
         """
         Plot the inference results for a given series.
@@ -897,6 +903,11 @@ class TimeSeriesModel:
             processed_y_true,
             group_code,
         )
+
+        if file_path is not None:
+            plt.savefig(file_path, bbox_inches="tight")
+        else:
+            plt.show()
 
     def sample_prior_predictive(self, samples: int = 500) -> az.InferenceData:
         """Sample from the prior predictive distribution.

@@ -1,18 +1,24 @@
+import argparse
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 
 from vangja import FourierSeasonality, LinearTrend, UniformConstant
 from vangja.datasets import get_sp500_tickers_for_range, load_stock_data
-from vangja.time_series import TimeSeriesModel
 from vangja.utils import (
     metrics,
     plot_posterior_predictive,
     plot_prior_predictive,
     prior_predictive_coverage,
 )
+
+# read test_run from command line arguments, default to False if not provided
+parser = argparse.ArgumentParser()
+parser.add_argument("--test-run", action="store_true", help="Run in test mode")
+args = parser.parse_args()
+
+TEST_RUN = args.test_run
 
 CT_PATH = Path("../data/sp500_constituents")
 TICKERS_PATH = Path("../data/tickers")
@@ -47,13 +53,17 @@ SPLIT_DATE = "2013-01-01"
 smp_train, smp_test = load_stock_data(
     ["^GSPC"],
     split_date=SPLIT_DATE,
-    window_size=4 * 365,
+    window_size=365 if TEST_RUN else 4 * 365,
     horizon_size=365,
     cache_path=TICKERS_PATH,
     interpolate=True,
 )
 
-tickers = get_sp500_tickers_for_range("2012-09-01", "2015-01-01", cache_path=CT_PATH)
+# We will only use a subset of the S&P 500 stocks to keep the model fitting time reasonable for this workflow example.
+# In practice, you would likely want to use all available stocks.
+tickers = get_sp500_tickers_for_range("2012-09-01", "2015-01-01", cache_path=CT_PATH)[
+    ::100
+]
 
 stocks_train, stocks_test = load_stock_data(
     tickers,
@@ -132,32 +142,44 @@ smp_prior_pred = smp_model.sample_prior_predictive()
 smp_prior_pred_plot = plot_prior_predictive(
     smp_prior_pred, data=smp_model.data, show_hdi=True, show_ref_lines=True
 )
-smp_prior_pred_plot.savefig(RESULTS_FOLDER / f"{PLOT_IDX:02d}_smp_prior_predictive.png")
+smp_prior_pred_plot.figure.savefig(
+    RESULTS_FOLDER / f"{PLOT_IDX:02d}_smp_prior_predictive.png"
+)
 PLOT_IDX += 1
 print(f"Prior predictive coverage: {prior_predictive_coverage(smp_prior_pred)}")
 
 smp_model = create_smp_model()
-smp_model.fit(smp_train, scaler="maxabs", scale_mode="complete", method="nuts")
+smp_model.fit(
+    smp_train,
+    scaler="maxabs",
+    scale_mode="complete",
+    method="nuts",
+    samples=100 if TEST_RUN else 1000,
+    tune=100 if TEST_RUN else 1000,
+)
 smp_summary = smp_model.convergence_summary()
-smp_summary.to_csv(RESULTS_FOLDER / "smp_convergence_summary.csv", index=False)
-
-smp_model.plot_trace()
-plt.suptitle("S&P 500 Model — Trace Plots", y=1.02, fontsize=14)
-plt.tight_layout()
-plt.savefig(RESULTS_FOLDER / f"{PLOT_IDX:02d}_smp_trace_plots.png")
+smp_summary.to_csv(
+    RESULTS_FOLDER / f"{PLOT_IDX:02d}_smp_convergence_summary.csv", index=False
+)
 PLOT_IDX += 1
 
-smp_model.plot_energy()
-plt.suptitle("S&P 500 Model — Energy Diagnostic", y=1.02)
-plt.tight_layout()
-plt.savefig(RESULTS_FOLDER / f"{PLOT_IDX:02d}_smp_energy_plot.png")
+smp_plot_trace = smp_model.plot_trace()
+smp_plot_trace[0, 0].figure.tight_layout()
+smp_plot_trace[0, 0].figure.savefig(
+    RESULTS_FOLDER / f"{PLOT_IDX:02d}_smp_trace_plots.png"
+)
+PLOT_IDX += 1
+
+smp_plot_energy = smp_model.plot_energy()
+smp_plot_energy.figure.tight_layout()
+smp_plot_energy.figure.savefig(RESULTS_FOLDER / f"{PLOT_IDX:02d}_smp_energy_plot.png")
 PLOT_IDX += 1
 
 smp_posterior_pred = smp_model.sample_posterior_predictive()
 smp_posterior_pred_plot = plot_posterior_predictive(
     smp_posterior_pred, data=smp_model.data, show_hdi=True, show_ref_lines=True
 )
-smp_posterior_pred_plot.savefig(
+smp_posterior_pred_plot.figure.savefig(
     RESULTS_FOLDER / f"{PLOT_IDX:02d}_smp_posterior_predictive.png"
 )
 PLOT_IDX += 1
@@ -166,7 +188,7 @@ PLOT_IDX += 1
 def create_stocks_model():
     return LinearTrend(
         n_changepoints=25,
-        changepoint_range=1,
+        # changepoint_range=1,
         slope_sd=5.0,
         intercept_sd=5.0,
         delta_side="right",
@@ -204,20 +226,18 @@ stocks_model.fit(
 stocks_prior_pred = stocks_model.sample_prior_predictive()
 
 for series_idx in range(stocks_model.n_groups):
-    # there are 400+ series, so we will only plot every 100th series to avoid overwhelming the output
-    if series_idx % 100 == 0:
-        stocks_prior_pred_plot = plot_prior_predictive(
-            stocks_prior_pred,
-            data=stocks_model.data,
-            series_idx=series_idx,
-            group=stocks_model.group,
-            show_hdi=True,
-            show_ref_lines=True,
-        )
-        stocks_prior_pred_plot.savefig(
-            RESULTS_FOLDER / f"{PLOT_IDX:02d}_stocks_prior_predictive_{series_idx}.png"
-        )
-        PLOT_IDX += 1
+    stocks_prior_pred_plot = plot_prior_predictive(
+        stocks_prior_pred,
+        data=stocks_model.data,
+        series_idx=series_idx,
+        group=stocks_model.group,
+        show_hdi=True,
+        show_ref_lines=True,
+    )
+    stocks_prior_pred_plot.figure.savefig(
+        RESULTS_FOLDER / f"{PLOT_IDX:02d}_stocks_prior_predictive_{series_idx}.png"
+    )
+    PLOT_IDX += 1
     print(
         f"Prior predictive coverage (series {series_idx}): {prior_predictive_coverage(stocks_prior_pred, series_idx=series_idx, group=stocks_model.group)}"
     )
@@ -227,6 +247,8 @@ stocks_model.fit(
     stocks_train,
     scaler="maxabs",
     method="nuts",
+    samples=500 if TEST_RUN else 1000,
+    tune=500 if TEST_RUN else 1000,
     scale_mode="complete",
     sigma_pool_type="individual",
     t_scale_params=smp_model.t_scale_params,
@@ -234,26 +256,33 @@ stocks_model.fit(
 )
 future = stocks_model.predict_uncertainty(horizon=365)
 stocks_model_metrics = metrics(stocks_test, future, pool_type="partial")
-stocks_model_metrics.to_csv(RESULTS_FOLDER / "stocks_model_metrics.csv", index=False)
-
-stocks_summary = stocks_model.convergence_summary()
-stocks_summary.to_csv(RESULTS_FOLDER / "stocks_convergence_summary.csv", index=False)
-
-stocks_model.plot_trace()
-plt.suptitle("Stocks Model — Trace Plots", y=1.02, fontsize=14)
-plt.tight_layout()
-plt.savefig(RESULTS_FOLDER / f"{PLOT_IDX:02d}_stocks_trace_plots.png")
+stocks_model_metrics.to_csv(
+    RESULTS_FOLDER / f"{PLOT_IDX:02d}_stocks_model_metrics.csv", index=False
+)
 PLOT_IDX += 1
 
-stocks_model.plot_energy()
-plt.suptitle("Stocks Model — Energy Diagnostic", y=1.02)
-plt.tight_layout()
-plt.savefig(RESULTS_FOLDER / f"{PLOT_IDX:02d}_stocks_energy_plot.png")
+stocks_summary = stocks_model.convergence_summary()
+stocks_summary.to_csv(
+    RESULTS_FOLDER / f"{PLOT_IDX:02d}_stocks_convergence_summary.csv", index=False
+)
+PLOT_IDX += 1
+
+stocks_trace_plot = stocks_model.plot_trace()
+stocks_trace_plot[0, 0].figure.tight_layout()
+stocks_trace_plot[0, 0].figure.savefig(
+    RESULTS_FOLDER / f"{PLOT_IDX:02d}_stocks_trace_plots.png"
+)
+PLOT_IDX += 1
+
+stocks_energy_plot = stocks_model.plot_energy()
+stocks_energy_plot.figure.tight_layout()
+stocks_energy_plot.figure.savefig(
+    RESULTS_FOLDER / f"{PLOT_IDX:02d}_stocks_energy_plot.png"
+)
 PLOT_IDX += 1
 
 stocks_posterior_pred = stocks_model.sample_posterior_predictive()
-# there are 400+ series, so we will only plot every 100th series to avoid overwhelming the output
-for series_idx in range(0, stocks_model.n_groups, 100):
+for series_idx in range(stocks_model.n_groups):
     plot_posterior_predictive(
         stocks_posterior_pred,
         data=stocks_model.data,
@@ -261,7 +290,16 @@ for series_idx in range(0, stocks_model.n_groups, 100):
         group=stocks_model.group,
         show_hdi=True,
         show_ref_lines=True,
-    ).savefig(
+    ).figure.savefig(
         RESULTS_FOLDER / f"{PLOT_IDX:02d}_stocks_posterior_predictive_{series_idx}.png"
+    )
+    PLOT_IDX += 1
+
+for series in stocks_model.groups_.values():
+    stocks_model.plot(
+        future,
+        series=series,
+        y_true=stocks_test[stocks_test["series"] == series],
+        file_path=RESULTS_FOLDER / f"{PLOT_IDX:02d}_stocks_forecast_{series}.png",
     )
     PLOT_IDX += 1
