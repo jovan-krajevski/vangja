@@ -62,7 +62,7 @@ smp_train, smp_test = load_stock_data(
 # We will only use a subset of the S&P 500 stocks to keep the model fitting time reasonable for this workflow example.
 # In practice, you would likely want to use all available stocks.
 tickers = get_sp500_tickers_for_range("2012-09-01", "2015-01-01", cache_path=CT_PATH)[
-    ::100
+    ::50
 ]
 
 stocks_train, stocks_test = load_stock_data(

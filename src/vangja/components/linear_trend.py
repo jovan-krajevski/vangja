@@ -197,26 +197,16 @@ class LinearTrend(TimeSeriesModel):
             Sample from a posterior.
         """
         slope_key = f"lt_{self.model_idx} - slope"
-        delta_key = f"lt_{self.model_idx} - delta"
-
-        delta = (
-            (idata["posterior"][delta_key].to_numpy().sum(axis=2))
-            # self.delta_side == "right" check because of how the model was pre-trained
-            # with the old implementation
-            # TODO change this on release
-            if delta_key in idata["posterior"] and self.delta_side == "right"
-            else 0
-        )
 
         if self.override_slope_mean_for_tune is not None:
             slope_mean = self.override_slope_mean_for_tune
         else:
-            slope_mean = (idata["posterior"][slope_key].to_numpy() + delta).mean()
+            slope_mean = (idata["posterior"][slope_key].to_numpy()).mean()
 
         if self.override_slope_sd_for_tune is not None:
             slope_sd = self.override_slope_sd_for_tune
         else:
-            slope_sd = (idata["posterior"][slope_key].to_numpy() + delta).std()
+            slope_sd = (idata["posterior"][slope_key].to_numpy()).std()
 
         return slope_mean, slope_sd
 
