@@ -46,6 +46,7 @@ uniform_constant = [True, False]
 tune_method = ["parametric", "prior_from_idata"]
 lt_tune_loss_factor = [0, 1]
 fs_tune_loss_factor = [0, 1]
+# shrinage_strength 0 is used to denote individual pooling, since division by 0 is not possible
 lt_shrinkage_strength = [0, 1, 100, 10000]
 fs_shrinkage_strength = [0, 1, 100, 10000]
 slope_sd = [5.0]
