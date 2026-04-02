@@ -98,7 +98,7 @@ mkdir -p "${REPO_ROOT}/logs"
 singularity exec \
     --bind "${REPO_ROOT}:${REPO_ROOT}" \
     --pwd "${REPO_ROOT}" \
-    "${SIF}" \
+    --nv "${SIF}" \
     python "${SCRIPT_PATH}"
 
 EXIT_CODE=$?

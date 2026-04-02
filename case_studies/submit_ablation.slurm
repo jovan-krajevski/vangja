@@ -4,7 +4,7 @@
 #SBATCH --output=logs/ablation_%j.out
 #SBATCH --error=logs/ablation_%j.err
 #SBATCH --nodes=1
-#SBATCH --nodelist=gpgpu01
+#SBATCH --nodelist=gpgpu02
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --partition=openlab-queue
