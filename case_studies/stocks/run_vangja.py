@@ -345,7 +345,7 @@ for start_date in start_dates:
             tune_method=experiment.tune_method,
             delta_tune_method=None,
             loss_factor_for_tune=experiment.lt_tune_loss_factor,
-            shrinkage_strength=lt_ss,
+            shrinkage_strength=experiment.lt_shrinkage_strength,
         )
         yearly = FourierSeasonality(
             period=365.25,
@@ -358,7 +358,7 @@ for start_date in start_dates:
             ),
             tune_method=experiment.tune_method,
             loss_factor_for_tune=experiment.fs_tune_loss_factor,
-            shrinkage_strength=fs_ss,
+            shrinkage_strength=experiment.fs_shrinkage_strength,
         )
         weekly = FourierSeasonality(
             period=7,
@@ -405,8 +405,8 @@ for start_date in start_dates:
                     "tune_method": experiment.tune_method,
                     "lt_tune_loss_factor": experiment.lt_tune_loss_factor,
                     "fs_tune_loss_factor": experiment.fs_tune_loss_factor,
-                    "lt_shrinkage_strength": lt_ss,
-                    "fs_shrinkage_strength": fs_ss,
+                    "lt_shrinkage_strength": experiment.lt_shrinkage_strength,
+                    "fs_shrinkage_strength": experiment.fs_shrinkage_strength,
                     "slope_sd": experiment.slope_sd,
                     "intercept_sd": experiment.intercept_sd,
                     "beta_sd": experiment.beta_sd,
@@ -429,8 +429,8 @@ for start_date in start_dates:
             "tune_method": experiment.tune_method,
             "lt_tune_loss_factor": experiment.lt_tune_loss_factor,
             "fs_tune_loss_factor": experiment.fs_tune_loss_factor,
-            "lt_shrinkage_strength": lt_ss,
-            "fs_shrinkage_strength": fs_ss,
+            "lt_shrinkage_strength": experiment.lt_shrinkage_strength,
+            "fs_shrinkage_strength": experiment.fs_shrinkage_strength,
             "slope_sd": experiment.slope_sd,
             "intercept_sd": experiment.intercept_sd,
             "beta_sd": experiment.beta_sd,
