@@ -1,6 +1,6 @@
 from itertools import product
 from pathlib import Path
-from typing import Iterable, NamedTuple
+from typing import NamedTuple
 
 import pandas as pd
 
