@@ -38,7 +38,7 @@ PIPELINE="${2:-vangja}"
 REPO_ROOT="$(pwd)"
 echo "${REPO_ROOT}"
 CASE_DIR="${REPO_ROOT}/case_studies/${CASE_STUDY}"
-SIF="${REPO_ROOT}/case_studies/vangja.sif"
+SIF="${REPO_ROOT}/case_studies/vangja_gpu.sif"
 
 ls "${REPO_ROOT}"
 
@@ -52,7 +52,7 @@ fi
 
 if [[ ! -f "${SIF}" ]]; then
     echo "ERROR: Singularity image not found: ${SIF}" >&2
-    echo "Build it first: singularity build case_studies/vangja.sif case_studies/singularity.def" >&2
+    echo "Build it first: singularity build case_studies/vangja_gpu.sif case_studies/singularity.def" >&2
     exit 1
 fi
 
