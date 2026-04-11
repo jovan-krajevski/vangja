@@ -22,7 +22,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from vangja import FourierSeasonality, LinearTrend, UniformConstant
+from vangja import FourierSeasonality, LinearTrend
 from vangja.datasets import get_sp500_tickers_for_range, load_stock_data
 from vangja.utils import (
     metrics,
