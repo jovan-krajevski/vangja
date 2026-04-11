@@ -1,3 +1,21 @@
+"""
+Best model specs:
+beta_sd                               1.0
+fs_hierarchical                fs_partial
+fs_shrinkage_strength               10000
+fs_tune_loss_factor                     0
+intercept_sd                          5.0
+lt_hierarchical                lt_partial
+lt_shrinkage_strength                 100
+lt_tune_loss_factor                     1
+scaler                             maxabs
+slope_sd                              5.0
+tune_method              prior_from_idata
+uniform_constant                    False
+use_smp500                    with_smp500
+window_size                          1460
+"""
+
 import argparse
 from pathlib import Path
 
@@ -120,7 +138,6 @@ plot_dfs(
 def create_smp_model():
     return LinearTrend(
         n_changepoints=25,
-        changepoint_range=1,
         slope_sd=5.0,
         intercept_sd=5.0,
         delta_side="right",
@@ -128,10 +145,10 @@ def create_smp_model():
         delta_pool_type="complete",
     ) ** (
         FourierSeasonality(
-            period=365.25, series_order=6, beta_sd=5.0, pool_type="complete"
+            period=365.25, series_order=6, beta_sd=1.0, pool_type="complete"
         )
         + FourierSeasonality(
-            period=7, series_order=3, beta_sd=5.0, pool_type="complete"
+            period=7, series_order=3, beta_sd=1.0, pool_type="complete"
         )
     )
 
@@ -188,30 +205,31 @@ PLOT_IDX += 1
 def create_stocks_model():
     return LinearTrend(
         n_changepoints=25,
-        # changepoint_range=1,
         slope_sd=5.0,
         intercept_sd=5.0,
         delta_side="right",
-        pool_type="individual",
+        pool_type="partial",
         delta_pool_type="complete",
-        tune_method="parametric",
-        shrinkage_strength=0,
+        tune_method="prior_from_idata",
+        shrinkage_strength=100,
+        loss_factor_for_tune=1,
     ) ** (
-        UniformConstant(lower=-1, upper=1, pool_type="individual")
-        ** FourierSeasonality(
+        FourierSeasonality(
             period=365.25,
             series_order=6,
-            beta_sd=5.0,
-            pool_type="individual",
-            tune_method="parametric",
-            shrinkage_strength=0,
-            loss_factor_for_tune=1,
+            beta_sd=1.0,
+            pool_type="partial",
+            tune_method="prior_from_idata",
+            shrinkage_strength=10000,
+            loss_factor_for_tune=0,
         )
-        + FourierSeasonality(
-            period=7, series_order=3, beta_sd=5.0, pool_type="individual"
-        )
+        + FourierSeasonality(period=7, series_order=3, beta_sd=1.0, pool_type="partial")
     )
 
+
+# concat the stocks and smp data for joint modeling
+stocks_train = pd.concat([stocks_train, smp_train], ignore_index=True)
+stocks_test = pd.concat([stocks_test, smp_test], ignore_index=True)
 
 stocks_model = create_stocks_model()
 stocks_model.fit(
