@@ -97,6 +97,19 @@ def seasonal_naive(train_y: np.ndarray, horizon: int, period: int = 7) -> np.nda
     return np.tile(last, horizon // period + 1)[:horizon]
 
 
+def seasonal_naive_mean(
+    train_y: np.ndarray, horizon: int, period: int = 7
+) -> np.ndarray:
+    """Average of all observed seasonal cycles."""
+    n = len(train_y)
+    n_cycles = n // period
+    if n_cycles < 1:
+        return np.full(horizon, train_y.mean())
+    mat = train_y[-(n_cycles * period) :].reshape(n_cycles, period)
+    avg_cycle = mat.mean(axis=0)
+    return np.tile(avg_cycle, horizon // period + 1)[:horizon]
+
+
 # 2. Rolling window mean
 def rolling_mean_forecast(
     train_y: np.ndarray, horizon: int, window: int = 7
@@ -108,6 +121,66 @@ def rolling_mean_forecast(
 
 
 # 3. Fixed ARIMA orders
+def fit_arima_best(train_y: np.ndarray, horizon: int) -> tuple[np.ndarray, float, str]:
+    """Try a set of ARIMA orders and pick the one with best AIC.
+
+    Returns (forecast, elapsed_seconds, best_order_string).
+    """
+    orders_to_try = [
+        ((1, 0, 0), (0, 0, 0, 0)),
+        ((1, 1, 0), (0, 0, 0, 0)),
+        ((1, 1, 1), (0, 0, 0, 0)),
+        ((2, 1, 1), (0, 0, 0, 0)),
+        ((1, 1, 1), (1, 0, 0, 7)),
+        ((1, 1, 1), (1, 0, 1, 7)),
+        ((2, 1, 2), (0, 0, 0, 0)),
+        ((0, 1, 1), (0, 0, 0, 0)),
+        ((1, 0, 1), (0, 0, 0, 0)),
+    ]
+
+    best_aic = np.inf
+    best_result = None
+    best_label = "ARIMA(1,0,0)"
+
+    t0 = time.time()
+    for order, seasonal_order in orders_to_try:
+        try:
+            if seasonal_order == (0, 0, 0, 0):
+                model = ARIMA(
+                    train_y,
+                    order=order,
+                    enforce_stationarity=False,
+                    enforce_invertibility=False,
+                )
+            else:
+                model = ARIMA(
+                    train_y,
+                    order=order,
+                    seasonal_order=seasonal_order,
+                    enforce_stationarity=False,
+                    enforce_invertibility=False,
+                )
+            result = model.fit(method_kwargs={"maxiter": 300})
+            if result.aic < best_aic:
+                best_aic = result.aic
+                best_result = result
+                best_label = f"ARIMA{order}" + (
+                    f"x{seasonal_order}" if seasonal_order != (0, 0, 0, 0) else ""
+                )
+        except Exception:
+            continue
+
+    elapsed = time.time() - t0
+
+    if best_result is not None:
+        forecast = best_result.forecast(steps=horizon)
+    else:
+        forecast = np.full(horizon, train_y.mean())
+        best_label = "fallback_mean"
+
+    return forecast, elapsed, best_label
+
+
 def fit_arima_fixed(
     train_y: np.ndarray,
     horizon: int,
@@ -282,17 +355,26 @@ def main() -> pd.DataFrame:
     )
 
     # Models to run
-    # Note: Stock dataset loops through thousands of time series overall,
-    # so slower Auto-ARIMA baselines are omitted in favor of predefined fast approximations.
     model_configs = [
-        ("Naive (Last Value)", "naive"),
+        # Naive / simple
         ("Seasonal Naive (7d)", "snaive_7"),
+        ("Seasonal Naive (30d)", "snaive_30"),
+        ("Seasonal Naive Mean (7d)", "snaive_mean_7"),
         ("Rolling Mean (7d)", "rolling_7"),
+        ("Rolling Mean (14d)", "rolling_14"),
         ("Rolling Mean (30d)", "rolling_30"),
-        ("ARIMA(1,1,0)", "arima_110"),
+        ("Global Mean", "global_mean"),
+        # ARIMA
         ("ARIMA(1,1,1)", "arima_111"),
         ("ARIMA(2,1,1)", "arima_211"),
-        ("HW (add, no seasonal)", "hw_a"),
+        ("SARIMA(1,1,1)(1,0,1,7)", "sarima_7"),
+        ("Auto-ARIMA (best AIC)", "auto_arima"),
+        # Exponential Smoothing
+        ("HW (add, add, 7d)", "hw_aa_7"),
+        ("HW (add, mul, 7d)", "hw_am_7"),
+        ("HW (add_damped, add, 7d)", "hw_da_7"),
+        ("HW (add, add, 30d)", "hw_aa_30"),
+        # SMP-informed
         ("SMP Regression (linear+dow+month)", "smp_reg"),
         ("SMP Only Regression", "smp_only_reg"),
     ]
@@ -356,20 +438,48 @@ def main() -> pd.DataFrame:
                     forecast = naive_forecast(train_y, horizon)
                 elif model_code == "snaive_7":
                     forecast = seasonal_naive(train_y, horizon, 7)
+                elif model_code == "snaive_30":
+                    forecast = seasonal_naive(train_y, horizon, 30)
+                elif model_code == "snaive_mean_7":
+                    forecast = seasonal_naive_mean(train_y, horizon, 7)
                 elif model_code == "rolling_7":
                     forecast = rolling_mean_forecast(train_y, horizon, 7)
+                elif model_code == "rolling_14":
+                    forecast = rolling_mean_forecast(train_y, horizon, 14)
                 elif model_code == "rolling_30":
                     forecast = rolling_mean_forecast(train_y, horizon, 30)
-                elif model_code == "arima_110":
-                    forecast, _ = fit_arima_fixed(train_y, horizon, (1, 1, 0))
+                elif model_code == "global_mean":
+                    forecast = np.full(horizon, train_y.mean())
                 elif model_code == "arima_111":
                     forecast, _ = fit_arima_fixed(train_y, horizon, (1, 1, 1))
                 elif model_code == "arima_211":
                     forecast, _ = fit_arima_fixed(train_y, horizon, (2, 1, 1))
-                elif model_code == "hw_a":
-                    # Exponential Smoothing without seasonality
+                elif model_code == "sarima_7":
+                    forecast, _ = fit_arima_fixed(
+                        train_y, horizon, (1, 1, 1), (1, 0, 1, 7)
+                    )
+                elif model_code == "auto_arima":
+                    forecast, _, _ = fit_arima_best(train_y, horizon)
+                elif model_code == "hw_aa_7":
                     forecast, _ = fit_holt_winters(
-                        train_y, horizon, trend="add", seasonal=None
+                        train_y, horizon, 7, trend="add", seasonal="add"
+                    )
+                elif model_code == "hw_am_7":
+                    forecast, _ = fit_holt_winters(
+                        train_y, horizon, 7, trend="add", seasonal="mul"
+                    )
+                elif model_code == "hw_da_7":
+                    forecast, _ = fit_holt_winters(
+                        train_y,
+                        horizon,
+                        7,
+                        trend="add",
+                        seasonal="add",
+                        damped_trend=True,
+                    )
+                elif model_code == "hw_aa_30":
+                    forecast, _ = fit_holt_winters(
+                        train_y, horizon, 30, trend="add", seasonal="add"
                     )
                 elif model_code == "smp_reg":
                     forecast, _ = fit_smp_regression(

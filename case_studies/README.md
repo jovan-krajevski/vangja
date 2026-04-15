@@ -6,14 +6,18 @@ This directory contains infrastructure for running vangja ablation studies on Hi
 
 ```
 case_studies/
-├── README.md                # This file
-├── singularity.def          # Container definition (Miniconda + PyMC + vangja)
-├── submit_ablation.slurm    # Generic SLURM batch script for any case study
-├── <case_study_1>/          # Case study
-│   ├── run_vangja.py        # Full hyperparameter sweep (~hours)
-│   ├── run_baselines.py     # Classical baselines (~minutes)
-│   └── results/             # Output directory for results and plots
-└── <other_case_studies>/    # Additional case studies follow the same layout
+├── README.md                       # This file
+├── singularity.def                 # Container definition (Miniconda + PyMC + vangja)
+├── singularity_gpu.def             # GPU-enabled container definition (optional)
+├── submit_ablation.slurm           # Generic SLURM batch script for any case study
+├── submit_ablation_gpu.slurm       # SLURM script for GPU-enabled ablation studies (optional)
+├── <case_study_1>/                 # Case study
+│   ├── run_vangja.py               # Full hyperparameter sweep (~hours)
+│   ├── run_baselines.py            # Classical baselines (~minutes)
+|   ├── run_bayesian_workflow.py    # Bayesian workflow (~minutes)
+|   ├── run_prophet.py              # Prophet baseline (~minutes)
+│   └── results/                    # Output directory for results and plots
+└── <other_case_studies>/           # Additional case studies follow the same layout
 ```
 
 ## Prerequisites
@@ -114,7 +118,7 @@ git ls-remote git@github.com:jovan-krajevski/vangja.git
 
 ### 4. Run Ablation Studies
 
-You can run the ablation studies by submitting SLURM jobs using the provided `submit_ablation.slurm` script. This script is designed to run any of the case studies. You need to specify the case study name (e.g., `smart_home`) and the pipeline type (`vangja`, for running the Vangja ablation pipeline, or `baselines`, for running the classical baselines):
+You can run the ablation studies by submitting SLURM jobs using the provided `submit_ablation.slurm` script. This script is designed to run any of the case studies. You need to specify the case study name (e.g., `smart_home`) and the pipeline type (`vangja`, for running the Vangja ablation pipeline, `baselines`, for running the classical baselines, `workflow` for running the Bayesian workflow, or `prophet` for running the Prophet baseline).
 
 ```bash
 cd <work_dir>/vangja
@@ -134,6 +138,8 @@ As for running the classical baselines for the same case study:
 cd <work_dir>/vangja
 sbatch case_studies/submit_ablation.slurm smart_home baselines
 ```
+
+Similarly, you can run the other pipelines.
 
 #### Monitoring Jobs
 
@@ -178,9 +184,15 @@ case_studies/<case_study_1>/results/
 ├── vangja/                         # Vangja ablation results
     ├── metrics_<start_date>.csv    # Metrics for all configurations on a given start date in the dataset
     └── ...                         # Other Vangja-specific outputs for analysis
-└── baselines/                      # Classical baselines results
+├── baselines/                      # Classical baselines results
     ├── metrics_<start_date>.csv    # Metrics for all baselines on a given start date in the dataset
     └── ...                         # Other baseline-specific outputs for analysis
+├── workflow/                       # Bayesian workflow results
+    ├── <artifact>                  # Artifacts from the Bayesian workflow
+    └── ...                         # Other workflow-specific outputs for analysis
+└── prophet/                        # Prophet baseline results
+    ├── metrics_<start_date>.csv    # Metrics for the Prophet baseline on a given start date in the dataset
+    └── ...                         # Other Prophet-specific outputs for analysis
 ```
 
 ## Adding New Case Studies
@@ -193,6 +205,8 @@ mkdir case_studies/my_dataset
 # Create the pipelines
 touch case_studies/my_dataset/run_vangja.py
 touch case_studies/my_dataset/run_baselines.py
+touch case_studies/my_dataset/run_bayesian_workflow.py
+touch case_studies/my_dataset/run_prophet.py
 ```
 
 Then create the data loading section, hyperparameter grid, and train/test split. See the other case studies for a detailed template.
@@ -202,6 +216,8 @@ Run the new case study using the same SLURM script:
 ```bash
 sbatch case_studies/submit_ablation.slurm my_dataset vangja
 sbatch case_studies/submit_ablation.slurm my_dataset baselines
+sbatch case_studies/submit_ablation.slurm my_dataset workflow
+sbatch case_studies/submit_ablation.slurm my_dataset prophet
 ```
 
 ## Reproducibility Checklist
