@@ -249,6 +249,7 @@ for start_date in start_dates:
             "intercept_sd": experiment.intercept_sd,
             "beta_sd": experiment.beta_sd,
             "scaler": experiment.scaler,
+            "delta_side": experiment.delta_side,
             **model_metrics.mean().to_dict(),
         }
         mean_result_df = pd.DataFrame([mean_result_row])
