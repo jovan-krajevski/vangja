@@ -19,13 +19,14 @@
 #
 # Arguments:
 #   <case_study>  Directory name under case_studies/ (e.g. "smart_home")
-#   <pipeline>    One of: vangja, baselines, workflow, prophet (default: vangja)
+#   <pipeline>    One of: vangja, baselines, workflow, prophet, timeseers (default: vangja)
 #
 # Examples:
 #   sbatch case_studies/submit_ablation.slurm smart_home vangja
 #   sbatch case_studies/submit_ablation.slurm smart_home baselines
 #   sbatch case_studies/submit_ablation.slurm smart_home workflow
 #   sbatch case_studies/submit_ablation.slurm smart_home prophet
+#   sbatch case_studies/submit_ablation.slurm smart_home timeseers
 # =========================================================================
 
 set -euo pipefail
@@ -62,8 +63,9 @@ case "${PIPELINE}" in
     baselines) SCRIPT="run_baselines.py" ;;
     workflow)  SCRIPT="run_bayesian_workflow.py" ;;
     prophet)   SCRIPT="run_prophet.py" ;;
+    timeseers) SCRIPT="run_timeseers.py" ;;
     *)
-        echo "ERROR: Unknown pipeline '${PIPELINE}'. Use: vangja, baselines, workflow or prophet." >&2
+        echo "ERROR: Unknown pipeline '${PIPELINE}'. Use: vangja, baselines, workflow, prophet or timeseers." >&2
         exit 1
         ;;
 esac

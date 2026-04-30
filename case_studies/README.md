@@ -16,6 +16,7 @@ case_studies/
 │   ├── run_baselines.py            # Classical baselines (~minutes)
 |   ├── run_bayesian_workflow.py    # Bayesian workflow (~minutes)
 |   ├── run_prophet.py              # Prophet baseline (~minutes)
+|   ├── run_timeseers.py            # TimeSeers baseline (~minutes)
 │   └── results/                    # Output directory for results and plots
 └── <other_case_studies>/           # Additional case studies follow the same layout
 ```
@@ -193,6 +194,9 @@ case_studies/<case_study_1>/results/
 └── prophet/                        # Prophet baseline results
     ├── metrics_<start_date>.csv    # Metrics for the Prophet baseline on a given start date in the dataset
     └── ...                         # Other Prophet-specific outputs for analysis
+└── timeseers/                      # TimeSeers baseline results
+    ├── metrics_<start_date>.csv    # Metrics for the TimeSeers baseline on a given start date in the dataset
+    └── ...                         # Other TimeSeers-specific outputs for analysis
 ```
 
 ## Adding New Case Studies
@@ -207,6 +211,7 @@ touch case_studies/my_dataset/run_vangja.py
 touch case_studies/my_dataset/run_baselines.py
 touch case_studies/my_dataset/run_bayesian_workflow.py
 touch case_studies/my_dataset/run_prophet.py
+touch case_studies/my_dataset/run_timeseers.py
 ```
 
 Then create the data loading section, hyperparameter grid, and train/test split. See the other case studies for a detailed template.
@@ -218,6 +223,7 @@ sbatch case_studies/submit_ablation.slurm my_dataset vangja
 sbatch case_studies/submit_ablation.slurm my_dataset baselines
 sbatch case_studies/submit_ablation.slurm my_dataset workflow
 sbatch case_studies/submit_ablation.slurm my_dataset prophet
+sbatch case_studies/submit_ablation.slurm my_dataset timeseers
 ```
 
 ## Reproducibility Checklist
