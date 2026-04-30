@@ -8,6 +8,7 @@ from vangja.datasets import load_kaggle_temperature, load_smart_home_readings
 from vangja.utils import metrics
 
 RESULTS_FILE = Path(__file__).parent / "results/vangja/metrics.csv"
+RESULTS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 # Define hyperparameter search space
 uniform_constant = [True, False]
