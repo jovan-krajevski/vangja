@@ -24,7 +24,7 @@ from vangja.datasets import load_kaggle_temperature, load_smart_home_readings
 
 warnings.filterwarnings("ignore")
 
-OUTPUT_DIR = Path(__file__).parent / "results_classical"
+OUTPUT_DIR = Path(__file__).parent / "results/baselines"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 SMART_HOME_COLUMNS = [

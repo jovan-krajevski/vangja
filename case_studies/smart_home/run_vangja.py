@@ -7,7 +7,7 @@ from vangja import FlatTrend, FourierSeasonality, UniformConstant
 from vangja.datasets import load_kaggle_temperature, load_smart_home_readings
 from vangja.utils import metrics
 
-RESULTS_FILE = Path(__file__).parent / "metrics.csv"
+RESULTS_FILE = Path(__file__).parent / "results/vangja/metrics.csv"
 
 # Define hyperparameter search space
 uniform_constant = [True, False]
