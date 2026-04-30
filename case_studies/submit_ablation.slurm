@@ -4,7 +4,7 @@
 #SBATCH --output=logs/ablation_%j.out
 #SBATCH --error=logs/ablation_%j.err
 #SBATCH --nodes=1
-#SBATCH --nodelist=gpgpu01
+#SBATCH --nodelist=gpgpu02
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --partition=openlab-queue
@@ -13,16 +13,18 @@
 # Vangja Ablation Study — SLURM Submission Script
 #
 # Usage:
-#   sbatch case_studies/submit_ablation.slurm <case_study> [mode]
+#   sbatch case_studies/submit_ablation.slurm <case_study> <pipeline>
 #
 # Arguments:
 #   <case_study>  Directory name under case_studies/ (e.g. "smart_home")
-#   [mode]        One of: fast, full, classical (default: full)
+#   <pipeline>    One of: vangja, baselines, workflow, prophet, timeseers (default: vangja)
 #
 # Examples:
-#   sbatch case_studies/submit_ablation.slurm smart_home fast
-#   sbatch case_studies/submit_ablation.slurm smart_home full
-#   sbatch case_studies/submit_ablation.slurm smart_home classical
+#   sbatch case_studies/submit_ablation.slurm smart_home vangja
+#   sbatch case_studies/submit_ablation.slurm smart_home baselines
+#   sbatch case_studies/submit_ablation.slurm smart_home workflow
+#   sbatch case_studies/submit_ablation.slurm smart_home prophet
+#   sbatch case_studies/submit_ablation.slurm smart_home timeseers
 # =========================================================================
 
 set -euo pipefail
@@ -30,8 +32,8 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Parse arguments
 # ---------------------------------------------------------------------------
-CASE_STUDY="${1:?Usage: sbatch submit_ablation.slurm <case_study> [fast|full|classical]}"
-MODE="${2:-full}"
+CASE_STUDY="${1:?Usage: sbatch submit_ablation.slurm <case_study> <pipeline>}"
+PIPELINE="${2:-vangja}"
 
 REPO_ROOT="$(pwd)"
 echo "${REPO_ROOT}"
@@ -54,12 +56,14 @@ if [[ ! -f "${SIF}" ]]; then
     exit 1
 fi
 
-case "${MODE}" in
-    fast)      SCRIPT="ablation_fast.py" ;;
-    full)      SCRIPT="ablation_full.py" ;;
-    classical) SCRIPT="classical_baselines.py" ;;
+case "${PIPELINE}" in
+    vangja)    SCRIPT="run_vangja.py" ;;
+    baselines) SCRIPT="run_baselines.py" ;;
+    workflow)  SCRIPT="run_bayesian_workflow.py" ;;
+    prophet)   SCRIPT="run_prophet.py" ;;
+    timeseers) SCRIPT="run_timeseers.py" ;;
     *)
-        echo "ERROR: Unknown mode '${MODE}'. Use: fast, full, or classical." >&2
+        echo "ERROR: Unknown pipeline '${PIPELINE}'. Use: vangja, baselines, workflow, prophet or timeseers." >&2
         exit 1
         ;;
 esac
@@ -80,7 +84,7 @@ echo "Job ID:        ${SLURM_JOB_ID}"
 echo "Node:          $(hostname)"
 echo "CPUs:          ${SLURM_CPUS_PER_TASK:-N/A}"
 echo "Case study:    ${CASE_STUDY}"
-echo "Mode:          ${MODE}"
+echo "Pipeline:      ${PIPELINE}"
 echo "Script:        ${SCRIPT}"
 echo "Started at:    $(date --iso-8601=seconds)"
 echo "========================================"
