@@ -372,7 +372,7 @@ for start_date in start_dates:
         )
         model = (
             (trend ** (constant**yearly + weekly))
-            if experiment.uniform_constant == "uniform_constant"
+            if experiment.uniform_constant
             else (trend ** (yearly + weekly))
         )
         print(model)

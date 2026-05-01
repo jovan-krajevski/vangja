@@ -199,7 +199,7 @@ for start_date in start_dates:
         constant = UniformConstant(lower=-1, upper=1, pool_type="partial")
         model = (
             (trend ** (constant**yearly + weekly))
-            if experiment.uniform_constant == "uniform_constant"
+            if experiment.uniform_constant
             else (trend ** (yearly + weekly))
         )
         print(model)
