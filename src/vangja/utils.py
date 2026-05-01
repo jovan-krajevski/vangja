@@ -288,7 +288,12 @@ def metrics(
     future = future.copy()
     future["ds"] = pd.to_datetime(future["ds"])
 
-    metrics_dict = {"mse": {}, "rmse": {}, "mae": {}, "mape": {}}
+    metrics_dict: dict[str, dict[str, float]] = {
+        "mse": {},
+        "rmse": {},
+        "mae": {},
+        "mape": {},
+    }
     test_group, _, test_groups_ = get_group_definition(processed_y_true, pool_type)
     for group_code, group_name in test_groups_.items():
         group_idx = test_group == group_code
@@ -445,7 +450,7 @@ def plot_prior_predictive(
     group: np.ndarray | None = None,
     data: pd.DataFrame | None = None,
     n_samples: int = 50,
-    ax=None,
+    ax: plt.Axes | None = None,
     title: str = "Prior Predictive Check",
     show_hdi: bool = False,
     hdi_prob: float = 0.9,
@@ -605,7 +610,7 @@ def plot_posterior_predictive(
     group: np.ndarray | None = None,
     data: pd.DataFrame | None = None,
     n_samples: int = 50,
-    ax=None,
+    ax: plt.Axes | None = None,
     title: str = "Posterior Predictive Check",
     show_hdi: bool = False,
     hdi_prob: float = 0.9,
