@@ -4,10 +4,12 @@
 #SBATCH --output=logs/ablation_%j.out
 #SBATCH --error=logs/ablation_%j.err
 #SBATCH --nodes=1
-#SBATCH --nodelist=gpgpu02
+#SBATCH --nodelist=gpgpu01
+#SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --partition=openlab-queue
+#SBATCH --gres=gpu:2
 
 # =========================================================================
 # Vangja Ablation Study — SLURM Submission Script
@@ -38,7 +40,7 @@ PIPELINE="${2:-vangja}"
 REPO_ROOT="$(pwd)"
 echo "${REPO_ROOT}"
 CASE_DIR="${REPO_ROOT}/case_studies/${CASE_STUDY}"
-SIF="${REPO_ROOT}/case_studies/vangja.sif"
+SIF="${REPO_ROOT}/case_studies/vangja_gpu.sif"
 
 ls "${REPO_ROOT}"
 
@@ -52,7 +54,7 @@ fi
 
 if [[ ! -f "${SIF}" ]]; then
     echo "ERROR: Singularity image not found: ${SIF}" >&2
-    echo "Build it first: singularity build case_studies/vangja.sif case_studies/singularity.def" >&2
+    echo "Build it first: singularity build case_studies/vangja_gpu.sif case_studies/singularity.def" >&2
     exit 1
 fi
 
@@ -100,7 +102,7 @@ mkdir -p "${REPO_ROOT}/logs"
 singularity exec \
     --bind "${REPO_ROOT}:${REPO_ROOT}" \
     --pwd "${REPO_ROOT}" \
-    "${SIF}" \
+    --nv "${SIF}" \
     python "${SCRIPT_PATH}"
 
 EXIT_CODE=$?

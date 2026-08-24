@@ -197,26 +197,16 @@ class LinearTrend(TimeSeriesModel):
             Sample from a posterior.
         """
         slope_key = f"lt_{self.model_idx} - slope"
-        delta_key = f"lt_{self.model_idx} - delta"
-
-        delta = (
-            (idata["posterior"][delta_key].to_numpy().sum(axis=2))
-            # self.delta_side == "right" check because of how the model was pre-trained
-            # with the old implementation
-            # TODO change this on release
-            if delta_key in idata["posterior"] and self.delta_side == "right"
-            else 0
-        )
 
         if self.override_slope_mean_for_tune is not None:
             slope_mean = self.override_slope_mean_for_tune
         else:
-            slope_mean = (idata["posterior"][slope_key].to_numpy() + delta).mean()
+            slope_mean = (idata["posterior"][slope_key].to_numpy()).mean()
 
         if self.override_slope_sd_for_tune is not None:
             slope_sd = self.override_slope_sd_for_tune
         else:
-            slope_sd = (idata["posterior"][slope_key].to_numpy() + delta).std()
+            slope_sd = (idata["posterior"][slope_key].to_numpy()).std()
 
         return slope_mean, slope_sd
 
@@ -460,7 +450,7 @@ class LinearTrend(TimeSeriesModel):
 
             if self.delta_pool_type == "partial":
                 delta_shared = 0
-                if idata is not None and self.tune_method == "parametric":
+                if idata is not None and self.delta_tune_method == "parametric":
                     delta_loc, delta_scale = self._get_delta_params_from_idata(idata)
                     delta_shared = pm.Normal(
                         f"lt_{self.model_idx} - delta_shared", delta_loc, delta_scale
@@ -469,7 +459,9 @@ class LinearTrend(TimeSeriesModel):
                         f"lt_{self.model_idx} - delta_sigma",
                         beta=delta_scale / self.shrinkage_strength,
                     )
-                elif priors is not None and self.tune_method == "prior_from_idata":
+                elif (
+                    priors is not None and self.delta_tune_method == "prior_from_idata"
+                ):
                     delta_loc, delta_scale = self._get_delta_params_from_idata(idata)
                     delta_shared = pm.Deterministic(
                         f"lt_{self.model_idx} - delta_shared",
@@ -494,7 +486,7 @@ class LinearTrend(TimeSeriesModel):
                     delta_key, delta_shared + delta_z_offset * delta_sigma
                 )
             elif self.delta_pool_type == "individual":
-                if idata is not None and self.tune_method == "parametric":
+                if idata is not None and self.delta_tune_method == "parametric":
                     delta_loc, delta_scale = self._get_delta_params_from_idata(idata)
                     delta = pm.Laplace(
                         delta_key,
@@ -502,7 +494,9 @@ class LinearTrend(TimeSeriesModel):
                         delta_scale,
                         shape=(self.n_groups, self.n_changepoints),
                     )
-                elif priors is not None and self.tune_method == "prior_from_idata":
+                elif (
+                    priors is not None and self.delta_tune_method == "prior_from_idata"
+                ):
                     delta_loc, delta_scale = self._get_delta_params_from_idata(idata)
                     delta = pm.Deterministic(delta_key, priors[f"prior_{delta_key}"])
                 else:
@@ -513,12 +507,14 @@ class LinearTrend(TimeSeriesModel):
                         shape=(self.n_groups, self.n_changepoints),
                     )
             else:
-                if idata is not None and self.tune_method == "parametric":
+                if idata is not None and self.delta_tune_method == "parametric":
                     delta_loc, delta_scale = self._get_delta_params_from_idata(idata)
                     delta = pm.Laplace(
                         delta_key, delta_loc, delta_scale, shape=self.n_changepoints
                     )
-                elif priors is not None and self.tune_method == "prior_from_idata":
+                elif (
+                    priors is not None and self.delta_tune_method == "prior_from_idata"
+                ):
                     delta_loc, delta_scale = self._get_delta_params_from_idata(idata)
                     delta = pm.Deterministic(delta_key, priors[f"prior_{delta_key}"])
                 else:
@@ -902,4 +898,4 @@ class LinearTrend(TimeSeriesModel):
         return self.pool_type == "individual"
 
     def __str__(self):
-        return f"LT(n={self.n_changepoints},r={self.changepoint_range},tm={self.tune_method})"
+        return f"LT(n={self.n_changepoints},r={self.changepoint_range},pt={self.pool_type},tm={self.tune_method})"

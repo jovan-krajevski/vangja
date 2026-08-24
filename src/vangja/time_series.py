@@ -17,7 +17,10 @@ CombinedTimeSeries
     Base class for combined time series models.
 """
 
+from pathlib import Path
+
 import arviz as az
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -36,6 +39,8 @@ from vangja.types import (
     YScaleParams,
 )
 from vangja.utils import get_group_definition
+
+matplotlib.use("Agg")
 
 
 class TimeSeriesModel:
@@ -291,6 +296,7 @@ class TimeSeriesModel:
         maxiter: int = 10000,
         n: int = 10000,
         samples: int = 1000,
+        tune: int = 1000,
         chains: int = 4,
         cores: int = 4,
         nuts_sampler: NutsSampler = "pymc",
@@ -331,6 +337,9 @@ class TimeSeriesModel:
         samples: int
             Denotes the number of samples to be drawn from the posterior for MCMC and
             VI methods.
+        tune: int
+            The number of tuning steps for MCMC methods. These samples are discarded
+            and not included in the trace. Only applicable to the MCMC methods.
         chains: int
             Denotes the number of independent chains drawn from the posterior. Only
             applicable to the MCMC methods.
@@ -439,6 +448,7 @@ class TimeSeriesModel:
 
                 self.trace = pm.sample(
                     self.samples,
+                    tune=tune,
                     chains=chains,
                     cores=cores,
                     nuts_sampler=nuts_sampler,
@@ -774,6 +784,7 @@ class TimeSeriesModel:
         series: str = "series",
         y_true: pd.DataFrame | None = None,
         clip_to_data: bool = True,
+        file_path: Path | None = None,
     ):
         """
         Plot the inference results for a given series.
@@ -892,6 +903,11 @@ class TimeSeriesModel:
             processed_y_true,
             group_code,
         )
+
+        if file_path is not None:
+            plt.savefig(file_path, bbox_inches="tight")
+        else:
+            plt.show()
 
     def sample_prior_predictive(self, samples: int = 500) -> az.InferenceData:
         """Sample from the prior predictive distribution.

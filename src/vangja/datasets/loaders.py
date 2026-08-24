@@ -331,6 +331,11 @@ def load_stock_data(
         .reset_index(drop=True)
     )
 
+    # Remove stocks that are missing from either train or test to avoid issues during modeling
+    valid_series = set(train_df["series"]).intersection(set(test_df["series"]))
+    train_df = train_df[train_df["series"].isin(valid_series)].reset_index(drop=True)
+    test_df = test_df[test_df["series"].isin(valid_series)].reset_index(drop=True)
+
     return train_df, test_df
 
 
