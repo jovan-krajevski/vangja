@@ -216,6 +216,47 @@ def load_nyc_temperature(return_daily_average: bool = True) -> pd.DataFrame:
     return df[["ds", "y"]]
 
 
+def _interpolate_gaps_within_split(df: pd.DataFrame) -> pd.DataFrame:
+    """Fill calendar-day gaps inside each series' own observed range.
+
+    Interpolates linearly on a daily calendar between the first and last
+    observation of each series **within one split**. Only rows of ``df``
+    (which must already belong to a single train/test split) are used, so
+    the result is independent of observations on the other side of the
+    split boundary. No synthetic rows are created outside each series'
+    observed range.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Long-format frame with columns ``ds``, ``y``, ``series``, containing
+        observations from a single split only.
+
+    Returns
+    -------
+    pd.DataFrame
+        The input frame extended with interpolated calendar-day rows.
+    """
+    if df.empty:
+        return df.copy()
+
+    interpolated: list[pd.DataFrame] = []
+    for ticker in df["series"].unique():
+        ticker_data = df[df["series"] == ticker].sort_values("ds").copy()
+        if ticker_data.shape[0] < 2:
+            interpolated.append(ticker_data)
+            continue
+        cal_range = pd.date_range(
+            ticker_data["ds"].min(), ticker_data["ds"].max(), freq="D"
+        )
+        ticker_data = ticker_data.set_index("ds").reindex(cal_range)
+        ticker_data["y"] = ticker_data["y"].interpolate(method="linear")
+        ticker_data["series"] = ticker
+        interpolated.append(ticker_data.reset_index().rename(columns={"index": "ds"}))
+
+    return pd.concat(interpolated, ignore_index=True)
+
+
 def load_stock_data(
     tickers: list[str],
     split_date: str | pd.Timestamp,
@@ -251,9 +292,15 @@ def load_stock_data(
         If provided, parent directories are created if they do not
         exist.
     interpolate : bool, default False
-        If True, missing days (weekends, holidays) within each series
-        are filled using linear interpolation after reindexing to a
-        daily calendar.
+        If True, calendar-day gaps *inside* each series' observed range are
+        filled with linear interpolation **separately within the training
+        window and the test window**. Only observations from the same split
+        are ever used, so no value in the training set can depend on the
+        test set (no cross-split leakage), and no synthetic calendar-day
+        rows are created outside each series' own observed range (e.g. at
+        weekend window edges). When False (the default and the recommended
+        setting for modelling), the data is kept on **trading days** as
+        reported by the provider.
 
     Returns
     -------
@@ -303,23 +350,8 @@ def load_stock_data(
         (result["ds"] >= extended_start) & (result["ds"] <= extended_end)
     ].copy()
 
-    if interpolate:
-        interpolated: list[pd.DataFrame] = []
-        for ticker in result["series"].unique():
-            ticker_data = result[result["series"] == ticker].copy()
-            full_range = pd.date_range(start=extended_start, end=extended_end, freq="D")
-            ticker_data = ticker_data.set_index("ds").reindex(full_range)
-            ticker_data["y"] = ticker_data["y"].interpolate(method="linear")
-            ticker_data["series"] = ticker
-            ticker_data = ticker_data.reset_index().rename(
-                columns={"index": "ds"},
-            )
-            # Drop edges where forward/backward fill didn't reach
-            ticker_data = ticker_data.dropna(subset=["y"])
-            interpolated.append(ticker_data)
-        result = pd.concat(interpolated, ignore_index=True)
-
-    # Split into train and test
+    # Split on the raw (trading-day) observations FIRST, so that no
+    # interpolation can ever cross the train/test boundary (review F-9).
     train_df = (
         result[(result["ds"] >= start) & (result["ds"] <= split)]
         .copy()
@@ -330,6 +362,10 @@ def load_stock_data(
         .copy()
         .reset_index(drop=True)
     )
+
+    if interpolate:
+        train_df = _interpolate_gaps_within_split(train_df)
+        test_df = _interpolate_gaps_within_split(test_df)
 
     # Remove stocks that are missing from either train or test to avoid issues during modeling
     valid_series = set(train_df["series"]).intersection(set(test_df["series"]))

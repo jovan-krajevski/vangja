@@ -174,3 +174,7 @@ cython_debug/
 *.sif
 
 data/
+
+# Fixed case-study outputs (reproducible artifacts, not sources)
+fixed_case_studies/**/results/
+fixed_case_studies/**/data/

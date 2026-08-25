@@ -729,6 +729,131 @@ class TestLoadStockData:
         # Interpolated should have more rows (weekends filled too)
         assert len(train_interp) >= len(train_no_interp)
 
+    def test_no_cross_split_leak_with_gap_straddling_split(self):
+        """Train values must be independent of test truth (review F-9).
+
+        Remove the last training trading days so that the gap straddles the
+        split boundary, then perturb the test values and verify the training
+        frame (including interpolated rows) is unchanged.
+        """
+        dates = pd.bdate_range("2020-01-02", periods=40)
+        data = pd.DataFrame(
+            {
+                "ds": dates,
+                "ticker": "AAPL",
+                "Open": np.arange(100, 140, dtype=float),
+                "High": np.arange(102, 142, dtype=float),
+                "Low": np.arange(98, 138, dtype=float),
+                "Close": np.arange(101, 141, dtype=float),
+                "Volume": [1_000_000] * 40,
+                "typical_price": (
+                    np.arange(100, 140)
+                    + np.arange(102, 142)
+                    + np.arange(98, 138)
+                    + np.arange(101, 141)
+                )
+                / 4.0,
+            }
+        )
+        split = pd.Timestamp("2020-02-03")
+        # Drop the two trading days right before the split so the gap spans it
+        last_train_days = dates[(dates <= split)][-2:]
+        gapped = data[~data["ds"].isin(last_train_days)].copy()
+
+        with patch(
+            "vangja.datasets.stocks._download_stock_data",
+            return_value=gapped,
+        ):
+            train_a, _ = load_stock_data(
+                ["AAPL"],
+                split_date=split,
+                window_size=45,
+                horizon_size=30,
+                interpolate=True,
+            )
+
+        perturbed = gapped.copy()
+        after_split = perturbed["ds"] > split
+        for col in ["Open", "High", "Low", "Close", "typical_price"]:
+            perturbed.loc[after_split, col] *= 100.0
+
+        with patch(
+            "vangja.datasets.stocks._download_stock_data",
+            return_value=perturbed,
+        ):
+            train_b, _ = load_stock_data(
+                ["AAPL"],
+                split_date=split,
+                window_size=45,
+                horizon_size=30,
+                interpolate=True,
+            )
+
+        pd.testing.assert_frame_equal(train_a, train_b)
+        # The gap was straddling the split: train must not extend to the
+        # calendar split date via test-side observations.
+        assert train_a["ds"].max() < split
+
+    def test_no_synthetic_non_trading_days_at_window_edges(self):
+        """Interpolation must not create calendar rows outside each series'
+        own observed range within a split (no invented weekend rows at the
+        window boundaries)."""
+        dates = pd.bdate_range("2020-01-02", periods=40)
+        data = pd.DataFrame(
+            {
+                "ds": dates,
+                "ticker": "AAPL",
+                "Open": np.arange(100, 140, dtype=float),
+                "High": np.arange(102, 142, dtype=float),
+                "Low": np.arange(98, 138, dtype=float),
+                "Close": np.arange(101, 141, dtype=float),
+                "Volume": [1_000_000] * 40,
+                "typical_price": (
+                    np.arange(100, 140)
+                    + np.arange(102, 142)
+                    + np.arange(98, 138)
+                    + np.arange(101, 141)
+                )
+                / 4.0,
+            }
+        )
+        split = pd.Timestamp("2020-02-03")
+        with patch(
+            "vangja.datasets.stocks._download_stock_data", return_value=data
+        ):
+            train, test = load_stock_data(
+                ["AAPL"],
+                split_date=split,
+                window_size=45,
+                horizon_size=30,
+                interpolate=True,
+            )
+
+        for frame in (train, test):
+            assert not frame.empty
+            # Interpolated calendar rows must lie between the first and last
+            # observed trading day of the series within the split.
+            first_obs = frame["ds"].min()
+            last_obs = frame["ds"].max()
+            expected_start = data["ds"].min() if frame is train else data[
+                data["ds"] > split
+            ]["ds"].min()
+            assert first_obs == expected_start
+
+        # With interpolate=False the data stays on trading days only.
+        with patch(
+            "vangja.datasets.stocks._download_stock_data", return_value=data
+        ):
+            train_raw, test_raw = load_stock_data(
+                ["AAPL"],
+                split_date=split,
+                window_size=45,
+                horizon_size=30,
+                interpolate=False,
+            )
+        assert train_raw["ds"].isin(pd.bdate_range("2019-12-01", "2020-03-01")).all()
+        assert test_raw["ds"].isin(pd.bdate_range("2020-02-01", "2020-04-01")).all()
+
     def test_ds_is_datetime(self, mock_download_data):
         with patch(
             "vangja.datasets.stocks._download_stock_data",

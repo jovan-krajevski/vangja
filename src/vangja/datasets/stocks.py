@@ -438,6 +438,37 @@ def _get_sp500_constituents_at_date(
     return result
 
 
+def get_sp500_tickers_at_date(
+    target_date: str | datetime | pd.Timestamp,
+    cache_path: Path | None = None,
+) -> list[str]:
+    """Get the S&P 500 constituents on a specific historical date.
+
+    Reconstructs the index membership for ``target_date`` from the
+    Wikipedia historical changes table (accurate from approximately 1997
+    onwards) and returns the ticker symbols normalised for Yahoo Finance
+    (dots replaced with dashes).
+
+    This is the universe rule used by the revised study protocol for
+    confirmation origins: membership is fixed at the forecast origin date
+    and is not conditioned on survival through the forecast horizon.
+
+    Parameters
+    ----------
+    target_date : str, datetime, or pd.Timestamp
+        The date to determine S&P 500 composition for.
+    cache_path : Path or None, default None
+        Directory for caching Wikipedia data as CSV files.
+
+    Returns
+    -------
+    list[str]
+        Sorted list of ticker symbols in the S&P 500 on the target date.
+    """
+    tickers = _get_sp500_constituents_at_date(target_date, cache_path=cache_path)
+    return sorted([ticker.replace(".", "-") for ticker in tickers])
+
+
 def get_sp500_tickers_for_range(
     start_date: str | datetime | pd.Timestamp,
     end_date: str | datetime | pd.Timestamp,

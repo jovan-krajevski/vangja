@@ -322,6 +322,115 @@ def metrics(
     return pd.DataFrame(metrics_dict)
 
 
+def relative_mae(
+    y_true,
+    y_pred,
+    y_persistence,
+    epsilon: float | None = None,
+) -> float:
+    """Relative MAE of a forecast against the persistence forecast.
+
+    Computes ``MAE(y_true, y_pred) / MAE(y_true, y_persistence)`` for one
+    forecast unit (one target series over one forecast origin). Values
+    below 1 mean the model beats persistence; values above 1 mean it is
+    worse.
+
+    Parameters
+    ----------
+    y_true : array-like
+        True target values of the unit.
+    y_pred : array-like
+        Forecast of the model being evaluated (aligned with ``y_true``).
+    y_persistence : array-like
+        Persistence forecast (last observed value carried forward) aligned
+        with ``y_true``.
+    epsilon : float or None, default None
+        Denominator safeguard: units whose persistence MAE is strictly
+        below ``epsilon`` are excluded from the relative-MAE aggregate and
+        this function returns ``np.nan`` for them. The threshold should be
+        defined on the *scaled* target used for fitting/forecasting. When
+        ``None`` no safeguard is applied.
+
+    Returns
+    -------
+    float
+        ``mae(model) / mae(persistence)``, or ``np.nan`` when the unit is
+        excluded by the denominator rule or has no aligned observations.
+
+    Notes
+    -----
+    This is the primary metric of the revised study protocol: it is
+    scale-invariant, well-defined for near-zero series when combined with
+    the denominator rule, and its aggregate (median across units) is the
+    selection *and* reporting metric.
+    """
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+    y_persistence = np.asarray(y_persistence, dtype=float)
+
+    if y_true.size == 0:
+        return float("nan")
+
+    denom = mean_absolute_error(y_true, y_persistence)
+    if epsilon is not None and denom < epsilon:
+        return float("nan")
+    if denom == 0.0:
+        return float("nan")
+
+    return float(mean_absolute_error(y_true, y_pred) / denom)
+
+
+def persistence_forecast(train_df: pd.DataFrame, test_df: pd.DataFrame) -> pd.DataFrame:
+    """Build the persistence forecast (last observed value carried forward).
+
+    The persistence forecast for each series is its last training value
+    repeated over the test horizon. This is the denominator of the Relative
+    MAE metric and the primary study baseline.
+
+    Parameters
+    ----------
+    train_df : pd.DataFrame
+        Training data with at least columns ``ds``, ``y`` and ``series``.
+    test_df : pd.DataFrame
+        Test data with at least columns ``ds`` and ``series``. The
+        persistence forecast is aligned to the test dates of each series.
+
+    Returns
+    -------
+    pd.DataFrame
+        Long-format frame with columns ``ds``, ``series`` and ``yhat``,
+        containing the per-series persistence forecast on the test dates.
+
+    Examples
+    --------
+    >>> rel_mae = relative_mae(
+    ...     test["y"], yhat, persistence_forecast(train, test)["yhat"]
+    ... )
+    """
+    last_values = (
+        train_df.sort_values("ds")
+        .groupby("series")["y"]
+        .last()
+        .to_dict()
+    )
+    rows = []
+    for series_name, test_group in test_df.groupby("series"):
+        if series_name not in last_values:
+            continue
+        rows.append(
+            pd.DataFrame(
+                {
+                    "ds": test_group["ds"].values,
+                    "series": series_name,
+                    "yhat": np.full(len(test_group), last_values[series_name]),
+                }
+            )
+        )
+    if not rows:
+        return pd.DataFrame(columns=["ds", "series", "yhat"])
+    return pd.concat(rows, ignore_index=True)
+
+
 def _compare_waic_table(resolved: dict[str, az.InferenceData]) -> pd.DataFrame:
     """Compute a WAIC comparison table for arviz >= 1.x (which removed ``ic``).
 

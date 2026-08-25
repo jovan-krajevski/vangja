@@ -94,6 +94,8 @@ For series with non-overlapping date ranges, consider fitting them separately or
 - `remove_random_gaps(df, n_gaps=4, gap_fraction=0.2)` — Remove random contiguous intervals from a time series to simulate missing data. Call this **per-series in notebooks**, not inside data generation functions. The default removes 4 gaps of 20% each.
 - `filter_predictions_by_series(future, series_data, yhat_col, horizon)` — Filter predictions to a specific series' date range. **Always use this** when series have different date ranges.
 - `metrics(y_true, future, pool_type)` — Calculates metrics by merging on `ds` column (handles different data frequencies)
+- `relative_mae(y_true, y_pred, y_persistence, epsilon=None)` — the primary study metric: MAE vs persistence, with a denominator threshold `epsilon` applied on the scaled target (returns `nan` for excluded units)
+- `persistence_forecast(train_df, test_df)` — persistence baseline aligned to test dates (long format `ds`, `series`, `yhat`)
 
 ### Transfer Learning
 
@@ -137,12 +139,15 @@ The `datasets` module provides functions for loading real-world datasets and gen
 - `load_kaggle_temperature(city, start_date, end_date, freq)` — Hourly temperature data for 36 cities (2012-2017) from Kaggle. Returns Celsius. Supports temporal aggregation via `freq` (e.g. `"D"`, `"W"`, `"h"`). The `city` parameter is typed as `KaggleTemperatureCity` (a `Literal`). Requires `kagglehub` (install with `pip install vangja[datasets]`)
 - `load_smart_home_readings(column, start_date, end_date, freq)` — Smart home appliance energy readings at 1-minute resolution (~2016). Column can be a single `SmartHomeColumn` (returns `ds`/`y`) or a list of them (returns `ds`/`y`/`series` in long format). Supports temporal aggregation via `freq`. Requires `kagglehub` (install with `pip install vangja[datasets]`)
 - `get_sp500_tickers_for_range(start_date, end_date, cache_path)` — Return tickers consistently in S&P 500 during a date range by scraping Wikipedia's historical changes table. Accurate from ~1997 onwards.
+- `get_sp500_tickers_at_date(target_date, cache_path)` — Return S&P 500 membership **at** a specific historical date (the confirmation-universe rule of the fixed case studies).
 - `generate_multi_store_data()` — 5 synthetic store series with same time range
 - `generate_hierarchical_products(include_all_year=True)` — 5-6 synthetic product series with opposite seasonality (summer/winter groups). Default time range is 2 years (2018–2019). **Does not introduce gaps** — use `remove_random_gaps()` per-series in notebooks to simulate missing data.
 
 **Adding new datasets:** Create functions in `datasets/loaders.py` (real data), `datasets/synthetic.py` (generated data), or `datasets/stocks.py` (stock/financial data), then export in `datasets/__init__.py`.
 
-**Stock data helpers (`datasets/stocks.py`):** Private functions for downloading OHLCV data via yfinance, parsing S&P 500 constituents/changes from Wikipedia, and reconstructing historical S&P 500 membership. All download functions support a `cache_path: Path | None` parameter for filesystem caching (creates parent directories automatically). The only public function is `get_sp500_tickers_for_range()`.
+**Stock data helpers (`datasets/stocks.py`):** Private functions for downloading OHLCV data via yfinance, parsing S&P 500 constituents/changes from Wikipedia, and reconstructing historical S&P 500 membership. All download functions support a `cache_path: Path | None` parameter for filesystem caching (creates parent directories automatically). Public: `get_sp500_tickers_for_range()` and `get_sp500_tickers_at_date()`.
+
+**Stock loader rule (review F-9):** `load_stock_data(..., interpolate=False)` (default) returns trading days only. With `interpolate=True`, gaps are filled **within each train/test split separately** — never across the split boundary, and never outside each series' own observed range.
 
 **Timeseers modeling pattern:** For series with opposite seasonality (like summer vs winter products), use `UniformConstant(-1, 1)` as a scaling factor:
 
@@ -230,7 +235,7 @@ The `plot()` method supports `clip_to_data=True` (default) which clips predictio
 
 ### Include Source in Target (Ablation Option)
 
-When performing transfer learning ablation studies, the source time series can be included as an additional series in the target model's training data via `include_source_in_target=True`. This transforms the problem into hierarchical co-learning. **Only meaningful with `pool_type="partial"`** since individual pooling means series don't share information.
+When performing transfer learning ablation studies, the source time series can be included as an additional series in the target model's training data via `fit(..., include_source_in_target=True, source_data=source_df)`. `source_data` (columns `ds`, `y`) is appended as a `"source"` series **before** scaling/processing, and is required when the flag is set (the source idata does not carry the observed data). This transforms the problem into hierarchical co-learning. **Only meaningful with `pool_type="partial"`** since individual pooling means series don't share information.
 
 ## Development Workflow
 
@@ -287,6 +292,8 @@ uv run pytest tests/test_components.py  # Test specific module
 - **Fast**: `"mapx"` (recommended, uses JAX), `"map"`
 - **VI**: `"advi"`, `"fullrank_advi"`, `"svgd"`, `"asvgd"`
 - **MCMC**: `"nuts"`, `"metropolis"`, `"demetropolisz"`
+
+**Reproducibility (review P0-8):** `fit()` accepts `random_seed` (threaded to `pmx.find_MAP` / `pm.fit` / `pm.sample` / prior & posterior predictive sampling / `predict_uncertainty` sub-sampling) and `target_accept` (only for `method="nuts"`, forwarded through `nuts_sampler_kwargs`). Never pass an explicit `step` alongside `nuts_sampler` — the explicit step silently overrides the advertised backend. `model.fit_info` records seeds, package versions and MAP optimizer diagnostics (`optimizer_result` group: `fun`, `success`, `jac_l2`, `nit`, ...).
 
 ## Testing Patterns
 
@@ -427,6 +434,16 @@ Case studies live in `case_studies/<dataset_name>/`. Each case study directory f
 A reusable template is available at `case_studies/smart_home/general_ablations.md`.
 
 **Classical baselines use statsmodels** (not sktime) because sktime requires scikit-learn < 1.6.0, conflicting with vangja's scikit-learn ~= 1.8.0. Install with `pip install vangja[reproducibility]`.
+
+### Revised experiment suite (`fixed_case_studies/`)
+
+`fixed_case_studies/` is the audit-compliant rerun suite (read its README first). Conventions:
+
+- **No grid, no test-horizon selection.** Each study has one frozen configuration + a small frozen ablation list in `<study>/config.py`; runners (`02_*`, `03_*`) iterate the registry with checkpointing.
+- `common.py` implements the protocol: Relative MAE vs persistence (`REL_MAE_EPSILON = 1e-3` on the scaled target), context-series exclusion (`CONTEXT_SERIES`), provenance recording, seed policy (`BASE_SEED`, `FINALIST_SEEDS`), two-way block bootstrap for the paired comparison, and the hash-verified freeze check of `protocol/CONFIRMATION_ORIGINS.csv`.
+- The stocks confirmation stage fits the context with **NUTS** (covariance-capable transfer); ADVI is development-screening only. Source fits are cached per (origin, method, seed) as **zarr + JSON** (`load_or_fit_source` / `load_or_fit_temp_model`) — use `idata.to_zarr`/`az.from_zarr`, not netCDF (netCDF4/h5netcdf are not dependencies).
+- Entry scripts bootstrap `sys.path` with the repo root (`sys.path.insert(0, str(Path(__file__).resolve().parents[2]))`) so they run directly from anywhere.
+- Smart-home tests monkeypatch the loaders on the `vangja.datasets` module (the config module imports them lazily inside functions).
 
 ## Self-Updating Instructions
 
