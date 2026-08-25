@@ -189,9 +189,7 @@ class TestDownloadStockData:
     def test_single_ticker(self, sample_ohlcv):
         ctx, mock_yf = self._mock_yf(sample_ohlcv)
         with ctx:
-            result = _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15"
-            )
+            result = _download_stock_data(["AAPL"])
 
         assert "ds" in result.columns
         assert "ticker" in result.columns
@@ -202,9 +200,7 @@ class TestDownloadStockData:
     def test_typical_price_values(self, sample_ohlcv):
         ctx, _ = self._mock_yf(sample_ohlcv)
         with ctx:
-            result = _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15"
-            )
+            result = _download_stock_data(["AAPL"])
 
         expected = (
             sample_ohlcv["Open"]
@@ -220,9 +216,7 @@ class TestDownloadStockData:
         cache = tmp_path / "cache"
         ctx, _ = self._mock_yf(sample_ohlcv)
         with ctx:
-            _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15", cache_path=cache
-            )
+            _download_stock_data(["AAPL"], cache_path=cache)
 
         assert (cache / "AAPL.csv").exists()
 
@@ -230,23 +224,17 @@ class TestDownloadStockData:
         cache = tmp_path / "cache"
         ctx, mock_yf = self._mock_yf(sample_ohlcv)
         with ctx:
-            _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15", cache_path=cache
-            )
+            _download_stock_data(["AAPL"], cache_path=cache)
             assert mock_yf.download.call_count == 1
 
-            _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15", cache_path=cache
-            )
+            _download_stock_data(["AAPL"], cache_path=cache)
             # Should NOT have called download again
             assert mock_yf.download.call_count == 1
 
     def test_multi_ticker(self, multi_ohlcv):
         ctx, _ = self._mock_yf(multi_ohlcv)
         with ctx:
-            result = _download_stock_data(
-                ["AAPL", "MSFT"], "2020-01-01", "2020-01-10"
-            )
+            result = _download_stock_data(["AAPL", "MSFT"])
 
         assert set(result["ticker"].unique()) == {"AAPL", "MSFT"}
         aapl = result[result["ticker"] == "AAPL"]
@@ -257,9 +245,7 @@ class TestDownloadStockData:
     def test_empty_result(self):
         ctx, _ = self._mock_yf(pd.DataFrame())
         with ctx:
-            result = _download_stock_data(
-                ["INVALID"], "2020-01-01", "2020-01-10"
-            )
+            result = _download_stock_data(["INVALID"])
 
         assert result.empty
         assert "ds" in result.columns
@@ -269,9 +255,7 @@ class TestDownloadStockData:
         cache = tmp_path / "deeply" / "nested" / "cache"
         ctx, _ = self._mock_yf(sample_ohlcv)
         with ctx:
-            _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15", cache_path=cache
-            )
+            _download_stock_data(["AAPL"], cache_path=cache)
 
         assert cache.exists()
         assert (cache / "AAPL.csv").exists()
@@ -281,7 +265,7 @@ class TestDownloadStockData:
         ctx, _ = self._mock_yf(sample_ohlcv)
         with ctx:
             result = _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15", cache_path=None
+                ["AAPL"], cache_path=None
             )
 
         assert not result.empty
@@ -289,20 +273,19 @@ class TestDownloadStockData:
     def test_ds_column_is_datetime(self, sample_ohlcv):
         ctx, _ = self._mock_yf(sample_ohlcv)
         with ctx:
-            result = _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15"
-            )
+            result = _download_stock_data(["AAPL"])
 
         assert pd.api.types.is_datetime64_any_dtype(result["ds"])
 
     def test_ds_is_tz_naive(self, sample_ohlcv):
         tz_ohlcv = sample_ohlcv.copy()
-        tz_ohlcv.index = tz_ohlcv.index.tz_localize("US/Eastern")
+        # Fixed-offset timezone avoids requiring system tzdata (e.g. in CI)
+        from dateutil.tz import tzoffset
+
+        tz_ohlcv.index = tz_ohlcv.index.tz_localize(tzoffset("EST", -5 * 3600))
         ctx, _ = self._mock_yf(tz_ohlcv)
         with ctx:
-            result = _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15"
-            )
+            result = _download_stock_data(["AAPL"])
 
         assert result["ds"].dt.tz is None
 
@@ -663,8 +646,8 @@ class TestLoadStockData:
                 horizon_size=30,
             )
 
-        assert all(train["ds"] < pd.Timestamp("2020-01-20"))
-        assert all(test["ds"] >= pd.Timestamp("2020-01-20"))
+        assert all(train["ds"] <= pd.Timestamp("2020-01-20"))
+        assert all(test["ds"] > pd.Timestamp("2020-01-20"))
 
     def test_output_columns(self, mock_download_data):
         with patch(

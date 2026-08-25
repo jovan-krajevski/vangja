@@ -158,6 +158,20 @@ This allows the model to learn +1 (peak in summer), -1 (peak in winter), or 0 (n
 
 **Shrinkage strength caveat:** `shrinkage_strength` is a hyperparameter that must be tuned per problem. Higher values pull series toward the shared mean more strongly. With opposite seasonality and high shrinkage, the shared Fourier mean is pulled to ~0, weakening seasonal patterns — this is where `UniformConstant` helps by separating seasonal shape from direction.
 
+### Transfer-Learning Regularization Conventions (Potentials)
+
+`loss_factor_for_tune` controls regularization Potentials added during transfer learning (`idata is not None and tune_method is not None`). The forms are fixed and tested in `tests/test_regularization.py`:
+
+- **Trend (`LinearTrend`), all pooling modes**: negative quadratic pulling the slope toward the transferred end-of-history slope (manuscript `-phi (w - w_MAP)^2`):
+  `-loss_factor * sum_g (slope_g - slope_transferred)^2` (scalar for complete pooling). Never use `+|slope - mu|` or a positive sign — a regularizer must penalize, not reward, deviation.
+- **Seasonality (`FourierSeasonality`), all pooling modes**: one-sided amplitude cap, with a **per-grid-point** normalization that is identical across pooling modes:
+  `-loss_factor * sum_g min(0, (1/n_t) * (||f_old||^2 - ||f_new,g||^2))` where `n_t = ceil(period)` grid points over one full period and `f_old` is the curve implied by the transferred coefficients. Gated per series on `period > 2 * n_obs` (for complete pooling use the minimum per-series observation count). The `1/n_t` scale makes the penalty independent of grid density and training size — do not reintroduce `2*period/n_total` or `2*n_group` scaling.
+- **Changepoint transfer dispatch**: the changepoint branch must read `delta_tune_method` (never `tune_method`) in all pooling modes. `_get_prior_var_names()` includes `lt_... - delta` only when `delta_tune_method == "prior_from_idata"`. With `delta_tune_method="prior_from_idata"`, delta is a Deterministic for complete/partial pooling and a free per-group Laplace centered at the prior for individual pooling.
+- **Slope transfer definition**: the transferred slope quantity is the **end-of-history slope** of the source model. Under `delta_side="right"` the raw `slope` posterior already equals the end slope. Under `delta_side="left"` `_get_slope_params_from_idata` adds `sum(delta)` to the posterior before computing the prior mean/std. Assumes source and target share the same `delta_side` convention.
+- Only `LinearTrend` and `FourierSeasonality` have transfer Potentials; the constant components (`FlatTrend`, `NormalConstant`, `UniformConstant`, `BetaConstant`) intentionally have none.
+
+**Testing pattern for Potentials**: compile the Potential expression directly with `pytensor.function([param], loss_expr)` from `model.named_vars` (passing a Deterministic as the input cuts the graph) — this evaluates signs, scaling and gating numerically without sampling. See `tests/test_regularization.py`.
+
 ### Prior Predictive Checks (PPC) Workflow
 
 Vangja scales data so that `y ≈ [-1, 1]` and `t ∈ [0, 1]`. This makes prior predictive checks (PPC) especially useful for tuning prior standard deviations. The default Prophet priors (`N(0, 5)` for slope/intercept, `N(0, 10)` for Fourier beta) are intentionally very diffuse — most prior predictive samples will fall far outside the plausible data range.
@@ -223,25 +237,35 @@ When performing transfer learning ablation studies, the source time series can b
 ### Environment Setup
 
 ```bash
-conda create -c conda-forge -n pymc_env python=3.13 "pymc>=5.27.1"
-conda activate pymc_env
-pip install -e ".[test]"
+# uv is the package manager for this project (uv.lock is committed)
+uv sync --extra test --extra datasets
+uv run pytest
 ```
 
 ### Running Tests
 
 ```bash
-pytest                    # Run all tests
-pytest -v --tb=short      # Verbose with short tracebacks (default)
-pytest tests/test_components.py  # Test specific module
+uv run pytest                       # Run all tests
+uv run pytest -v --tb=short         # Verbose with short tracebacks (default)
+uv run pytest tests/test_components.py  # Test specific module
 ```
 
 ### Key Dependencies
 
-- `pymc>=5.27.1` — Probabilistic programming
-- `pymc-extras==0.7.0` — Additional PyMC utilities (MAP with JAX)
-- `blackjax==1.3` — JAX-based MCMC sampler
-- `scikit-learn~=1.8.0` — Metrics
+- `pymc~=6.2` — Probabilistic programming
+- `pymc-extras~=0.14.0` — Additional PyMC utilities (MAP with JAX)
+- `blackjax~=1.6.2` — JAX-based MCMC sampler
+- `scikit-learn~=1.9.0` — Metrics
+
+### Dependency Compatibility Pins (important!)
+
+- `numba` is a transitive dependency via preliz. `numba 0.63.0b1` crashes on import with numpy>=2.0 (it overloads the removed `np.trapz`), and `numba<=0.66` crashes with numpy>=2.5 (it overloads the removed `np.row_stack`). pytensor caps numba at `<=0.66`. Therefore pyproject pins `numba>=0.66.0` and `numpy>=2.0,<2.5`. Do not relax these without verifying imports of `pytensor.link.numba.dispatch`.
+- `np.row_stack` was removed in numpy 2.5 — do not use it.
+- ArviZ 1.x (installed via pymc 6) is DataTree-based:
+  - `az.InferenceData(**{group: ds})` no longer works. Build test fixtures with `az.InferenceData(xr.Dataset(), children={group: xr.DataTree(ds)})` or `az.from_dict({"group": {"var": array}})`.
+  - `az.compare` has no `ic` argument and `az.waic` is gone. `compare_models()` in `utils.py` handles both arviz generations (manual WAIC fallback for arviz>=1).
+- `pt.as_tensor_variable` / `pt.constant` are gone in pytensor 3 — use `pt.tensor.as_tensor`.
+- Tests avoid system timezones (no tzdata in CI); use `dateutil.tz.tzoffset`.
 
 ## Code Conventions
 

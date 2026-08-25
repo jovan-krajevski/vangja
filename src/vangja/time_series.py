@@ -1127,13 +1127,19 @@ class TimeSeriesModel:
             with self.model:
                 pm.compute_log_likelihood(self.trace)
 
-    def waic(self) -> az.ELPDData:
+    def waic(self):
         """Compute the Widely Applicable Information Criterion.
+
+        Requires pointwise log-likelihood; call :meth:`compute_log_likelihood`
+        first if the trace does not contain it.  ArviZ 1.x removed
+        ``az.waic``, so WAIC is computed directly from the pointwise
+        log-likelihood group.
 
         Returns
         -------
-        az.ELPDData
-            WAIC result object.
+        collections.namedtuple
+            Result with fields ``waic``, ``elpd_waic``, ``p_waic``, ``se``
+            (standard error) and ``waic_i`` (pointwise contributions).
 
         Raises
         ------
@@ -1144,15 +1150,44 @@ class TimeSeriesModel:
             raise ValueError("WAIC requires posterior samples.")
 
         self.compute_log_likelihood()
-        return az.waic(self.trace)
 
-    def loo(self) -> az.ELPDData:
+        if hasattr(az, "waic"):
+            result = az.waic(self.trace)
+            return result
+
+        ll_group = self.trace.log_likelihood
+        if not ll_group.data_vars:
+            raise ValueError(
+                "WAIC requires the log_likelihood group; "
+                "call model.compute_log_likelihood() first."
+            )
+        ll = ll_group[list(ll_group.data_vars)[0]].values
+        pointwise = ll.reshape(-1, ll.shape[-1])
+        with np.errstate(divide="ignore", invalid="ignore"):
+            lppd_i = np.log(np.nanmean(np.exp(pointwise), axis=0))
+        p_waic_i = np.nanvar(pointwise, axis=0, ddof=1)
+        waic_i = -2.0 * lppd_i + 2.0 * p_waic_i
+        waic = float(np.nansum(waic_i))
+        elpd_waic = float(np.nansum(lppd_i - p_waic_i))
+        p_waic = float(np.nansum(p_waic_i))
+        se = float(np.sqrt(len(waic_i)) * np.nanstd(waic_i))
+
+        from collections import namedtuple
+
+        WaicResult = namedtuple(
+            "WaicResult", ["waic", "elpd_waic", "p_waic", "se", "waic_i"]
+        )
+        return WaicResult(
+            waic=waic, elpd_waic=elpd_waic, p_waic=p_waic, se=se, waic_i=waic_i
+        )
+
+    def loo(self):
         """Compute LOO-CV via Pareto-Smoothed Importance Sampling.
 
         Returns
         -------
-        az.ELPDData
-            LOO result object.
+        object
+            LOO result object (``ELPDData`` from ``arviz.loo``).
 
         Raises
         ------

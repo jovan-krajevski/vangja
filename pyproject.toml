@@ -12,11 +12,17 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 readme = "README.md"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12"
 dependencies = [
- "scikit-learn~=1.8.0",
- "pymc-extras==0.7.0",
- "blackjax==1.3",
+ "pymc[nutpie]~=6.2",
+ "scikit-learn~=1.9.0",
+ "pymc-extras~=0.14.0",
+ "blackjax~=1.6.2",
+ # numba is a transitive dependency (via preliz); 0.63.0b1 crashes on import
+ # with numpy>=2.0 (np.trapz) and <=0.66 crash with numpy>=2.5 (np.row_stack).
+ # pytensor caps numba at <=0.66, so pin numba>=0.66 and numpy<2.5.
+ "numba>=0.66.0",
+ "numpy>=2.0,<2.5",
 ]
 
 [project.urls]
@@ -25,31 +31,32 @@ Documentation = "https://vangja.readthedocs.io"
 
 [project.optional-dependencies]
 datasets = [
-    "pyreadr>=0.5",
-    "yfinance>=0.2.0",
-    "lxml>=4.9",
-    "kagglehub>=0.3",
+    "pyreadr>=0.5.6",
+    "yfinance>=1.6.0",
+    "lxml>=6.1.2",
+    "kagglehub>=1.0.2",
+    "requests>=2.31.0",
 ]
 test = [
-    "pytest>=8.0",
-    "pytest-cov>=4.0",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
 ]
 docs = [
-    "sphinx>=7.0",
-    "sphinx-book-theme>=1.0",
-    "myst-parser>=2.0",
-    "nbsphinx>=0.9",
-    "pandoc>=2.3",
-    "ipykernel>=6.0",
+    "sphinx>=9.1.0",
+    "sphinx-book-theme>=1.4.0",
+    "myst-parser>=5.1.0",
+    "nbsphinx>=0.9.8",
+    "pandoc>=2.4",
+    "ipykernel>=7.3.0",
 ]
 dev = [
     "vangja[test,docs]",
 ]
 reproducibility = [
     "vangja[datasets]",
-    "statsmodels>=0.14",
-    "matplotlib>=3.7",
-    "seaborn>=0.12",
+    "statsmodels>=0.14.6",
+    "matplotlib>=3.11.1",
+    "seaborn>=0.13.2",
 ]
 
 [tool.pytest.ini_options]

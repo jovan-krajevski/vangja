@@ -5,7 +5,12 @@ import pandas as pd
 import pymc as pm
 import pytest
 
-from vangja.components import FourierSeasonality, LinearTrend, NormalConstant
+from vangja.components import (
+    FlatTrend,
+    FourierSeasonality,
+    LinearTrend,
+    NormalConstant,
+)
 from vangja.time_series import (
     AdditiveTimeSeries,
     CombinedTimeSeries,
@@ -460,3 +465,67 @@ class TestMakeFutureDataframe:
         # t should be 0 at ds_min and 1 at ds_max
         # Values beyond should be > 1
         assert future["t"].max() > 1
+
+
+class TestMcmcPostFitMethods:
+    """Tests for the MCMC/VI-dependent post-fit methods.
+
+    Covers ``compute_log_likelihood``, ``waic`` (which computes WAIC
+    manually since arviz 1.x removed ``az.waic``), ``loo``,
+    ``convergence_summary`` and ``predict_uncertainty`` for MCMC fits.
+    """
+
+    @pytest.fixture(scope="class")
+    def fitted_model(self):
+        rng = np.random.default_rng(0)
+        dates = pd.date_range("2020-01-01", periods=90)
+        y = 50 + 5 * np.sin(2 * np.pi * np.arange(90) / 7) + rng.standard_normal(90)
+        data = pd.DataFrame({"ds": dates, "y": y, "series": "s"})
+
+        model = FlatTrend() + FourierSeasonality(7, 3)
+        model.fit(
+            data,
+            method="nuts",
+            samples=100,
+            tune=100,
+            chains=2,
+            cores=1,
+            progressbar=False,
+        )
+        return model
+
+    def test_compute_log_likelihood_adds_group(self, fitted_model):
+        fitted_model.compute_log_likelihood()
+        assert hasattr(fitted_model.trace, "log_likelihood")
+
+    def test_waic_returns_finite_criteria(self, fitted_model):
+        result = fitted_model.waic()
+        assert np.isfinite(result.waic)
+        assert np.isfinite(result.elpd_waic)
+        assert np.isfinite(result.p_waic)
+        assert np.isfinite(result.se)
+        # WAIC = -2 * elpd_waic
+        assert result.waic == pytest.approx(-2.0 * result.elpd_waic)
+        # p_waic (effective number of parameters) is non-negative
+        assert result.p_waic >= 0
+        assert result.se >= 0
+
+    def test_loo_returns_elpd_data(self, fitted_model):
+        result = fitted_model.loo()
+        # arviz < 1.x exposes ``elpd_loo``; arviz >= 1.x exposes ``elpd``
+        elpd = getattr(result, "elpd_loo", None)
+        if elpd is None:
+            elpd = result.elpd
+        assert np.isfinite(float(elpd))
+
+    def test_convergence_summary_has_diagnostics(self, fitted_model):
+        summary = fitted_model.convergence_summary()
+        assert "r_hat" in summary.columns
+        assert "ess_bulk" in summary.columns
+
+    def test_predict_uncertainty_mcmc_columns(self, fitted_model):
+        future = fitted_model.predict_uncertainty(horizon=14, interval_width=0.95)
+        assert "yhat_lower_0" in future.columns
+        assert "yhat_upper_0" in future.columns
+        assert (future["yhat_lower_0"] <= future["yhat_0"]).all()
+        assert (future["yhat_0"] <= future["yhat_upper_0"]).all()

@@ -67,7 +67,10 @@ class TestLoadKaggleTemperature:
             mock_csv.return_value = _make_temperature_csv_df("New York")
             df = load_kaggle_temperature("New York")
 
-        assert list(df.columns) == ["ds", "y"]
+        # The loader adds a `series` column for compatibility with
+        # multi-series datasets (e.g. load_smart_home_readings).
+        assert list(df.columns) == ["ds", "y", "series"]
+        assert (df["series"] == "New York").all()
 
     def test_kelvin_to_celsius(self, mock_kagglehub, tmp_path):
         """Temperature should be converted from Kelvin to Celsius."""

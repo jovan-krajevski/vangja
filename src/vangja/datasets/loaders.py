@@ -237,8 +237,8 @@ def load_stock_data(
         List of ticker symbols to download (e.g., ``["AAPL", "MSFT"]``).
     split_date : str or pd.Timestamp
         The date separating training and test data. Training data
-        covers ``[split_date - window_size, split_date)`` and test
-        data covers ``[split_date, split_date + horizon_size]``.
+        covers ``[split_date - window_size, split_date]`` and test
+        data covers ``(split_date, split_date + horizon_size]``.
     window_size : int
         Number of calendar days for the training window (before
         ``split_date``).

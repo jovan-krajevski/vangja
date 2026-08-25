@@ -17,7 +17,6 @@ from io import StringIO
 from pathlib import Path
 
 import pandas as pd
-import requests
 
 logger = logging.getLogger(__name__)
 
@@ -352,6 +351,14 @@ def _fetch_sp500_wiki_tables(
             if "date" in changes_df.columns:
                 changes_df["date"] = pd.to_datetime(changes_df["date"])
             return const_df, changes_df
+
+    try:
+        import requests
+    except ImportError as e:
+        raise ImportError(
+            "requests is required to fetch S&P 500 data from Wikipedia. "
+            "Install with: pip install vangja[datasets]"
+        ) from e
 
     resp = requests.get(_SP500_WIKI_URL, headers=_HEADERS)
     resp.raise_for_status()

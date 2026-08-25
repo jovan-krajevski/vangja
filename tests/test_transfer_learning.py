@@ -101,10 +101,24 @@ class TestAssignModelIdx:
         idxs: dict[str, int] = {}
         model._assign_model_idx(idxs)
         names = model._get_prior_var_names()
-        # LinearTrend declares slope + delta, FourierSeasonality returns nothing
+        # LinearTrend declares slope only — deltas are NOT transferred when
+        # delta_tune_method is None (independent of the slope's tune_method).
+        # FourierSeasonality returns nothing.
         assert "lt_0 - slope" in names
-        assert "lt_0 - delta" in names
+        assert "lt_0 - delta" not in names
         assert not any("fs_" in n for n in names)
+
+    def test_prior_var_names_delta_only_with_delta_tune_method(self):
+        """Changepoint deltas are declared only when delta_tune_method requests them."""
+        lt = LinearTrend(
+            tune_method="prior_from_idata",
+            delta_tune_method="prior_from_idata",
+            n_changepoints=5,
+        )
+        idxs: dict[str, int] = {}
+        lt._assign_model_idx(idxs)
+        names = lt._get_prior_var_names()
+        assert names == ["lt_0 - slope", "lt_0 - delta"]
 
     def test_prior_var_names_fourier(self):
         fs = FourierSeasonality(365.25, 5, tune_method="prior_from_idata")

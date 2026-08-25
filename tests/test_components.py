@@ -82,7 +82,7 @@ class TestFourierSeasonalityInit:
         assert fs.series_order == 3
         assert fs.beta_mean == 0
         assert fs.beta_sd == 10
-        assert fs.pool_type == "partial"
+        assert fs.pool_type == "complete"
 
     def test_yearly_seasonality(self):
         """Test FourierSeasonality for yearly pattern."""

@@ -22,16 +22,26 @@ The package has been inspired by:
 
 ## Installation
 
-You need to create a conda PyMC environment before installing `vangja`. The recommended way of installing PyMC is by running:
+Vangja requires Python 3.12+ and PyMC 6. The recommended way to install it is
+with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-conda create -c conda-forge -n pymc_env python=3.13 "pymc>=5.27.1"
+uv pip install vangja
 ```
 
-Install `vangja` with pip:
+or with pip inside a virtual environment:
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install vangja
+```
+
+To use the optional dataset loaders (Citi Bike, stock data, Kaggle datasets),
+install the `datasets` extra:
+
+```bash
+uv pip install "vangja[datasets]"
 ```
 
 ## Usage
@@ -318,15 +328,21 @@ predictions = target_model.predict(horizon=365)
 
 #### Regularization for Transfer Learning
 
-To prevent overfitting when transferring knowledge, vangja supports regularization via the `loss_factor_for_tune` parameter. This adds a penalty term that constrains parameters to stay close to the values learned from the long time series:
+To prevent overfitting when transferring knowledge, vangja supports regularization via the `loss_factor_for_tune` parameter. This adds a negative quadratic penalty that pulls transferred parameters toward the values learned from the long time series (trend), or caps the seasonal amplitude at the transferred level (seasonality):
 
 ```python
+# Trend: -loss_factor * (slope - slope_transferred)^2  (manuscript: -phi (w - w_MAP)^2)
+LinearTrend(tune_method="parametric", loss_factor_for_tune=1.0)
+
+# Seasonality: cap the per-period amplitude at the transferred seasonal curve
 FourierSeasonality(
-    365.25, 10, 
+    365.25, 10,
     tune_method="parametric",
     loss_factor_for_tune=1.0  # Higher = stronger regularization toward context series
 )
 ```
+
+The penalty is `0` by default (regularization disabled).
 
 ### Plotting
 
@@ -368,7 +384,7 @@ results = metrics(test_data, predictions, pool_type="complete")
 | Parametric prior transfer | ❌ | ❌ | ✅ |
 | Multivariate Gaussian prior | ❌ | ❌ | ✅ |
 | Regularization for transfer | ❌ | ❌ | ✅ |
-| Modern PyMC (5.x) | ❌ | ❌ | ✅ |
+| Modern PyMC (6.x) | ❌ | ❌ | ✅ |
 
 ### Inference Methods
 
