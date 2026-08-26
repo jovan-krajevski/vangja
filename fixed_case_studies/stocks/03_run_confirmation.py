@@ -73,7 +73,8 @@ def main() -> None:
             cell_cfg = cfg.CONFIGS[name]
             seeds = (
                 list(common.FINALIST_SEEDS)
-                if args.seed_mode == "finalists" and name in {"main", "no_transfer"}
+                if args.seed_mode == "finalists"
+                and name in {"main", "no_transfer", "transfer_only", "target_only"}
                 else [seed_for(oi, ci)]
             )
             for seed in seeds:

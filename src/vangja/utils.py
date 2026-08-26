@@ -963,7 +963,7 @@ def plot_prior_posterior(
     >>> plot_prior_posterior(
     ...     model.trace,
     ...     {
-    ...         "fs_0 - beta(p=365.25,n=6)": {"dist": "normal", "mu": 0, "sigma": 10},
+    ...         "fs_0 - beta": {"dist": "normal", "mu": 0, "sigma": 10},
     ...     },
     ... )
     """

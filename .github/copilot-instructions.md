@@ -271,6 +271,8 @@ uv run pytest tests/test_components.py  # Test specific module
   - `az.compare` has no `ic` argument and `az.waic` is gone. `compare_models()` in `utils.py` handles both arviz generations (manual WAIC fallback for arviz>=1).
 - `pt.as_tensor_variable` / `pt.constant` are gone in pytensor 3 — use `pt.tensor.as_tensor`.
 - Tests avoid system timezones (no tzdata in CI); use `dateutil.tz.tzoffset`.
+- **`nuts_sampler="nutpie"` requires comma-free variable names**: nutpie parses variable names into dims (splitting on `,`/`.`/`[`/`]`), so names like `fs_0 - beta(p=365.25,n=5)` crash arviz with "more dims (N) given than existing ones". All vangja variable names follow the safe `{type}_{idx} - {param}` scheme (no config suffixes), so nutpie and zarr trace round-trips work. The default `nuts_sampler="pymc"` remains the conservative choice for study fits.
+- **Wikipedia S&P 500 page**: the live page no longer embeds the historical changes table (a navbox is parsed as table 2). `datasets/stocks.py` fetches a **frozen revision** (`oldid=1306326561`) and selects tables by column content; if the revision ever breaks, pick a newer revision that still has both tables and update the constant + tests.
 
 ## Code Conventions
 
@@ -285,7 +287,7 @@ uv run pytest tests/test_components.py  # Test specific module
 ### Parameter Naming
 
 - Priors use `{param}_mean`, `{param}_sd` pattern (e.g., `slope_mean`, `slope_sd`)
-- PyMC variable names: `{component_type}_{model_idx} - {param_name}` (e.g., `lt_0 - slope`)
+- **PyMC variable names must not contain commas, brackets or dots** (nutpie parses variable names as dimension specs — commas/brackets crash it with arviz "more dims (N) given than existing ones", dots are split too). Convention: `{component_type}_{model_idx} - {param_name}` (e.g., `lt_0 - slope`, `fs_0 - beta`, `nc_0 - c`). Do **not** embed configuration values (period, order, prior hyperparameters, bounds) in variable names — the index already disambiguates components, and config lives in `__str__`/plots. Changing a prior must not rename a variable (breaks idata continuity and zarr caches). All samplers (`pymc`, `nutpie`) and zarr round-trips work with this scheme.
 
 ### Inference Methods (`Method` type)
 

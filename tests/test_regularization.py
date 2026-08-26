@@ -234,7 +234,7 @@ class TestSeasonalRegularizationScale:
 
     @pytest.fixture()
     def fs_idata(self):
-        beta_key = f"fs_0 - beta(p={self.PERIOD},n={self.ORDER})"
+        beta_key = "fs_0 - beta"
         samples = np.tile(self.BETA_MEAN, (1, 10, 1))
         return _make_idata({beta_key: samples})
 
@@ -263,7 +263,7 @@ class TestSeasonalRegularizationScale:
             loss_factor_for_tune=1.0,
             pool_type=pool_type,
         )
-        beta_key = f"fs_0 - beta(p={self.PERIOD},n={self.ORDER})"
+        beta_key = "fs_0 - beta"
         model = pm.Model()
         with model:
             fs.definition(model, data, {}, priors=None, idata=_make_idata(

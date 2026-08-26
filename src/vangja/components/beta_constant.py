@@ -136,7 +136,7 @@ class BetaConstant(TimeSeriesModel):
         tuple[float, float]
             The alpha and beta parameters derived from the posterior.
         """
-        c_key = f"bc_{self.model_idx} - c(l={self.lower},u={self.upper})"
+        c_key = f"bc_{self.model_idx} - c"
 
         # Get scaled values and convert back to [0, 1]
         c_samples = idata["posterior"][c_key].to_numpy()
@@ -181,8 +181,8 @@ class BetaConstant(TimeSeriesModel):
             The constant term to add to the model.
         """
         with model:
-            c_key = f"bc_{self.model_idx} - c(l={self.lower},u={self.upper})"
-            beta_key = f"bc_{self.model_idx} - beta(a={self.alpha},b={self.beta})"
+            c_key = f"bc_{self.model_idx} - c"
+            beta_key = f"bc_{self.model_idx} - beta"
 
             if idata is not None and self.tune_method == "parametric":
                 alpha, beta = self._get_params_from_idata(idata)
@@ -230,8 +230,8 @@ class BetaConstant(TimeSeriesModel):
             The constant terms indexed by group.
         """
         with model:
-            c_key = f"bc_{self.model_idx} - c(l={self.lower},u={self.upper})"
-            beta_key = f"bc_{self.model_idx} - beta(a={self.alpha},b={self.beta})"
+            c_key = f"bc_{self.model_idx} - c"
+            beta_key = f"bc_{self.model_idx} - beta"
 
             if idata is not None and self.tune_method == "parametric":
                 alpha, beta = self._get_params_from_idata(idata)
@@ -297,8 +297,8 @@ class BetaConstant(TimeSeriesModel):
             The constant terms indexed by group.
         """
         with model:
-            c_key = f"bc_{self.model_idx} - c(l={self.lower},u={self.upper})"
-            beta_key = f"bc_{self.model_idx} - beta(a={self.alpha},b={self.beta})"
+            c_key = f"bc_{self.model_idx} - c"
+            beta_key = f"bc_{self.model_idx} - beta"
 
             if idata is not None and self.tune_method == "parametric":
                 alpha, beta = self._get_params_from_idata(idata)
@@ -401,7 +401,7 @@ class BetaConstant(TimeSeriesModel):
         """
         forecasts = []
         self._predict_columns = {}
-        c_key = f"bc_{self.model_idx} - c(l={self.lower},u={self.upper})"
+        c_key = f"bc_{self.model_idx} - c"
 
         for group_code in self.groups_.keys():
             c_value = map_approx[c_key]
@@ -434,7 +434,7 @@ class BetaConstant(TimeSeriesModel):
         """
         forecasts = []
         self._predict_columns = {}
-        c_key = f"bc_{self.model_idx} - c(l={self.lower},u={self.upper})"
+        c_key = f"bc_{self.model_idx} - c"
 
         for group_code in self.groups_.keys():
             c_samples = trace["posterior"][c_key].to_numpy()
@@ -508,7 +508,7 @@ class BetaConstant(TimeSeriesModel):
     def _get_prior_var_names(self) -> list[str]:
         if self.tune_method != "prior_from_idata":
             return []
-        return [f"bc_{self.model_idx} - c(l={self.lower},u={self.upper})"]
+        return [f"bc_{self.model_idx} - c"]
 
     def needs_priors(self, *args, **kwargs) -> bool:
         """Check if this component needs priors from idata.
@@ -529,6 +529,7 @@ class BetaConstant(TimeSeriesModel):
             String representation.
         """
         return (
-            f"BC(a={self.alpha},b={self.beta},l={self.lower},u={self.upper},"
-            f"pt={self.pool_type},tm={self.tune_method})"
+            f"BetaConstant(lower={self.lower}, upper={self.upper}, "
+            f"alpha={self.alpha}, beta={self.beta}, "
+            f"pool={self.pool_type}, tune={self.tune_method})"
         )

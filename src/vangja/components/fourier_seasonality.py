@@ -197,7 +197,7 @@ class FourierSeasonality(TimeSeriesModel):
         idata: az.InferenceData
             Sample from a posterior.
         """
-        beta_key = f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"
+        beta_key = f"fs_{self.model_idx} - beta"
 
         if self.override_beta_mean_for_tune is not None:
             beta_mean = self.override_beta_mean_for_tune
@@ -239,9 +239,7 @@ class FourierSeasonality(TimeSeriesModel):
         """
         with model:
             x = self._fourier_series(data)
-            beta_key = (
-                f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"
-            )
+            beta_key = f"fs_{self.model_idx} - beta"
 
             if idata is not None and self.tune_method == "parametric":
                 beta_mean, beta_sd = self._get_beta_params_from_idata(idata)
@@ -314,9 +312,7 @@ class FourierSeasonality(TimeSeriesModel):
         """
         with model:
             x = self._fourier_series(data)
-            beta_key = (
-                f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"
-            )
+            beta_key = f"fs_{self.model_idx} - beta"
 
             beta_sd = self.beta_sd
             if idata is not None and self.tune_method == "parametric":
@@ -341,12 +337,12 @@ class FourierSeasonality(TimeSeriesModel):
                 )
 
             beta_sigma = pm.HalfNormal(
-                f"fs_{self.model_idx} - beta_sigma(p={self.period},n={self.series_order})",
+                f"fs_{self.model_idx} - beta_sigma",
                 sigma=beta_sd / self.shrinkage_strength,
                 shape=2 * self.series_order,
             )
             beta_z_offset = pm.Normal(
-                f"fs_{self.model_idx} - beta_z_offset(p={self.period},n={self.series_order})",
+                f"fs_{self.model_idx} - beta_z_offset",
                 mu=0,
                 sigma=1,
                 shape=(self.n_groups, 2 * self.series_order),
@@ -423,9 +419,7 @@ class FourierSeasonality(TimeSeriesModel):
         """
         with model:
             x = self._fourier_series(data)
-            beta_key = (
-                f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"
-            )
+            beta_key = f"fs_{self.model_idx} - beta"
 
             if idata is not None and self.tune_method == "parametric":
                 beta_mean, beta_sd = self._get_beta_params_from_idata(idata)
@@ -554,9 +548,7 @@ class FourierSeasonality(TimeSeriesModel):
         forecasts = []
         self._predict_columns = {}
         for group_code in self.groups_.keys():
-            beta_key = (
-                f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"
-            )
+            beta_key = f"fs_{self.model_idx} - beta"
             if beta_key in map_approx:
                 beta = map_approx[beta_key]
             else:
@@ -576,7 +568,7 @@ class FourierSeasonality(TimeSeriesModel):
         if shift is not None:
             shift = shift.mean()
 
-        beta_key = f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"
+        beta_key = f"fs_{self.model_idx} - beta"
 
         forecasts = []
         self._predict_columns = {}
@@ -628,7 +620,7 @@ class FourierSeasonality(TimeSeriesModel):
     def _get_prior_var_names(self) -> list[str]:
         if self.tune_method != "prior_from_idata":
             return []
-        return [f"fs_{self.model_idx} - beta(p={self.period},n={self.series_order})"]
+        return [f"fs_{self.model_idx} - beta"]
 
     def needs_priors(self, *args, **kwargs):
         return self.tune_method == "prior_from_idata"
@@ -637,4 +629,7 @@ class FourierSeasonality(TimeSeriesModel):
         return self.pool_type == "individual"
 
     def __str__(self):
-        return f"FS(p={self.period},n={self.series_order},pt={self.pool_type},tm={self.tune_method})"
+        return (
+            f"FourierSeasonality(period={self.period}, series_order={self.series_order}, "
+            f"pool={self.pool_type}, tune={self.tune_method})"
+        )

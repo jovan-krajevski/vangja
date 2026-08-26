@@ -276,6 +276,11 @@ def add_origin_block(unit_df: pd.DataFrame, block_by: str = "half_year") -> pd.D
     two-way block bootstrap resamples whole blocks (PROTOCOL.md §9).
     """
     out = unit_df.copy()
+    if not out["origin"].astype(str).str.match(r"^\d{4}-\d{2}-\d{2}$").all():
+        # Non-date origin labels (e.g. the smart-home splits): each origin
+        # is its own block.
+        out["origin_block"] = out["origin"].astype(str)
+        return out
     origins = pd.to_datetime(out["origin"])
     if block_by == "half_year":
         out["origin_block"] = (

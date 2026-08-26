@@ -511,4 +511,4 @@ class FlatTrend(TimeSeriesModel):
         return self.pool_type == "individual"
 
     def __str__(self):
-        return f"FT(pt={self.pool_type},tm={self.tune_method})"
+        return f"FlatTrend(pool={self.pool_type}, tune={self.tune_method})"

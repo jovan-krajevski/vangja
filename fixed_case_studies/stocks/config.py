@@ -72,6 +72,10 @@ class StockConfig:
     negative_control: bool = False
     # Restrict to the high-weight subset (targeted sensitivity only).
     high_weight_subset: bool = False
+    # Number of trend changepoints for the *target* model. The source model
+    # keeps the Prophet default of 25 (it has ~1000 observations); on a
+    # ~63-observation target window fewer changepoints are defensible.
+    n_changepoints: int = 25
 
 
 # The frozen main configuration. Every value is justified in the README.
@@ -91,10 +95,25 @@ CONFIGS: dict[str, StockConfig] = {
         fs_shrinkage=100,
     ),
     # --- The reduced transfer x hierarchy design (PROTOCOL.md §7) ----------
+    "transfer_only": StockConfig(
+        name="transfer_only",
+        description=(
+            "Arm 2 (protocol): transfer prior from the S&P 500 posterior "
+            "+ individual pooling; no hierarchical pooling, no context "
+            "group. Isolates the pure effect of the informed prior."
+        ),
+        tune_method="prior_from_idata",
+        lt_loss_factor=1.0,
+        fs_loss_factor=0.0,
+        lt_pool="individual",
+        fs_pool="individual",
+        lt_shrinkage=100,
+        fs_shrinkage=100,
+    ),
     "no_transfer": StockConfig(
         name="no_transfer",
         description=(
-            "Arm 2: hierarchical pooling only, no transfer. Honest relabel of "
+            "Arm 3: hierarchical pooling only, no transfer. Honest relabel of "
             "the former 'TimeSeers' arm (it is a Vangja configuration, not "
             "the TimeSeers package)."
         ),
@@ -229,11 +248,18 @@ CONFIGS: dict[str, StockConfig] = {
 
 # The frozen finalists used for the paired dependence-aware comparison
 # (PROTOCOL.md §9): transfer vs no-transfer on the same pooling structure.
-FINALIST_PAIRS = [("main", "no_transfer")]
+# `seasonal_reg_on` is the SELECTED configuration (see RUN_NOTES: chosen on
+# development evidence only, before any confirmation analysis).
+SELECTED_CONFIG = "seasonal_reg_on"
+FINALIST_PAIRS = [
+    ("seasonal_reg_on", "no_transfer"),
+    ("transfer_only", "target_only"),
+]
 
 # Configs run on every origin of the main matrix (development + confirmation).
 MAIN_MATRIX = [
     "main",
+    "transfer_only",
     "no_transfer",
     "target_only",
     "context_group",

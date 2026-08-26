@@ -125,7 +125,7 @@ class TestAssignModelIdx:
         idxs: dict[str, int] = {}
         fs._assign_model_idx(idxs)
         names = fs._get_prior_var_names()
-        assert names == ["fs_0 - beta(p=365.25,n=5)"]
+        assert names == ["fs_0 - beta"]
 
     def test_prior_var_names_flat_trend(self):
         ft = FlatTrend(tune_method="prior_from_idata")
@@ -139,14 +139,14 @@ class TestAssignModelIdx:
         idxs: dict[str, int] = {}
         nc._assign_model_idx(idxs)
         names = nc._get_prior_var_names()
-        assert names == ["nc_0 - c(mu=0,sd=1)"]
+        assert names == ["nc_0 - c"]
 
     def test_prior_var_names_uniform_constant(self):
         uc = UniformConstant(-1, 1, tune_method="prior_from_idata")
         idxs: dict[str, int] = {}
         uc._assign_model_idx(idxs)
         names = uc._get_prior_var_names()
-        assert names == ["uc_0 - c(l=-1,u=1)"]
+        assert names == ["uc_0 - c"]
 
 
 # ---------------------------------------------------------------------------
@@ -209,7 +209,7 @@ class TestIndividualPoolingPriorFromIdata:
         ) + FourierSeasonality(365.25, 3, tune_method="prior_from_idata", pool_type="individual")
         model.fit(short_multi_data, method="map", idata=base_trace, progressbar=False)
 
-        beta_var = model.model.named_vars["fs_0 - beta(p=365.25,n=3)"]
+        beta_var = model.model.named_vars["fs_0 - beta"]
         assert beta_var in model.model.free_RVs, (
             "beta should be a free RV for individual pooling with prior_from_idata"
         )

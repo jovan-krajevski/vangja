@@ -115,29 +115,37 @@ def main() -> None:
     aggregates = pd.DataFrame(rows).sort_values(["stage", "config"])
     aggregates.to_csv(out_dir / "aggregates.csv", index=False)
 
-    # Frozen paired comparison: transfer vs no-transfer on confirmation.
-    paired, summary = common.paired_transfer_comparison(
-        units, "main", "no_transfer", stage_filter="confirmation",
-        n_iter=args.n_bootstrap,
-    )
-    paired.to_csv(out_dir / "paired_transfer_vs_no_transfer.csv", index=False)
-    common.save_json(out_dir / "paired_bootstrap.json", summary)
+    # Frozen paired comparisons on confirmation: transfer vs no-transfer on
+    # the same pooling structure (PROTOCOL §9).
+    for a_name, b_name in cfg.FINALIST_PAIRS:
+        paired, summary = common.paired_transfer_comparison(
+            units, a_name, b_name, stage_filter="confirmation",
+            n_iter=args.n_bootstrap,
+        )
+        paired.to_csv(
+            out_dir / f"paired_{a_name}_vs_{b_name}.csv", index=False
+        )
+        common.save_json(out_dir / f"paired_{a_name}_vs_{b_name}.json", summary)
 
     # LaTeX table snippets.
     tex_dir = out_dir / "tables"
     tex_dir.mkdir(parents=True, exist_ok=True)
     _write_latex(aggregates, tex_dir)
 
-    print("=== Aggregates (primary metric: Relative MAE vs persistence) ===")
+    print("=== Aggregates (primary metric: Relative MAE vs persistence) ===\n"
+          f"(selected configuration: {cfg.SELECTED_CONFIG})")
     print(
         aggregates[
             ["stage", "config", "median", "mean", "q1", "q3",
              "prop_below_1", "n_units", "n_excluded", "n_failures", "mean_mape"]
         ].to_string(index=False)
     )
-    print("\n=== Transfer vs no-transfer (confirmation, block bootstrap) ===")
-    for k, v in summary.items():
-        print(f"  {k}: {v}")
+    print("\n=== Paired comparisons (confirmation, block bootstrap) ===")
+    for a_name, b_name in cfg.FINALIST_PAIRS:
+        summary = common.load_json(out_dir / f"paired_{a_name}_vs_{b_name}.json")
+        print(f"--- {a_name} vs {b_name} ---")
+        for k, v in summary.items():
+            print(f"  {k}: {v}")
     print(f"\nReport written to {out_dir}")
 
 

@@ -8,6 +8,7 @@ artifact records its provenance (see ``fixed_case_studies/common.py``).
 from __future__ import annotations
 
 import json
+import pickle
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,20 +48,25 @@ def load_origin_data(
     negative_control: bool = False,
     max_stocks: int | None = None,
     seed: int = common.BASE_SEED,
+    horizon_days: int | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
     """Load context + targets for one origin on trading days (no
     interpolation; review F-9/P0-7).
 
+    ``horizon_days`` overrides the frozen 365-day horizon (used by the fast
+    iteration harness only; the frozen study always uses 365).
+
     Returns ``(smp_train, smp_test, stocks_train, stocks_test, availability)``.
     ``availability`` records the universe rule outcome for provenance.
     """
+    horizon = HORIZON_DAYS if horizon_days is None else horizon_days
     context_ticker = NEGATIVE_CONTROL_TICKER if negative_control else CONTEXT_TICKER
 
     smp_train, smp_test = load_stock_data(
         [context_ticker],
         split_date=origin,
         window_size=CONTEXT_WINDOW_DAYS,
-        horizon_size=HORIZON_DAYS,
+        horizon_size=horizon,
         cache_path=TICKERS_PATH,
         interpolate=False,
     )
@@ -69,7 +75,7 @@ def load_origin_data(
         tickers,
         split_date=origin,
         window_size=TARGET_WINDOW_DAYS,
-        horizon_size=HORIZON_DAYS,
+        horizon_size=horizon,
         cache_path=TICKERS_PATH,
         interpolate=False,
     )
@@ -214,7 +220,7 @@ def fit_source(
 
 def build_target_model(cfg: StockConfig):
     trend = LinearTrend(
-        n_changepoints=25,
+        n_changepoints=cfg.n_changepoints,
         slope_sd=5.0,
         intercept_sd=5.0,
         delta_side="right",
@@ -287,11 +293,17 @@ def run_cell(
     out_dir: Path,
     max_stocks: int | None = None,
     progressbar: bool = False,
+    horizon_days: int | None = None,
 ) -> pd.DataFrame:
     """Fit source + target for one (origin, config) cell and record the
-    full artifact bundle. Returns the per-unit metric rows."""
+    full artifact bundle. Returns the per-unit metric rows.
+
+    ``horizon_days`` overrides the frozen horizon (fast iteration only).
+    """
+    horizon = HORIZON_DAYS if horizon_days is None else horizon_days
     out_dir.mkdir(parents=True, exist_ok=True)
-    tag = f"{cfg.name}__{origin}__seed{seed}".replace("/", "_")
+    htag = f"__h{horizon}" if horizon_days is not None else ""
+    tag = f"{cfg.name}__{origin}__seed{seed}{htag}".replace("/", "_")
     if (out_dir / f"manifest_{tag}.json").exists():
         units_path = out_dir / f"units_{tag}.csv"
         if units_path.exists():
@@ -303,6 +315,7 @@ def run_cell(
         negative_control=cfg.negative_control,
         max_stocks=max_stocks,
         seed=seed,
+        horizon_days=horizon,
     )
     stocks_train, stocks_test = rescale_dataset(smp_train, stocks_train, stocks_test)
 
@@ -319,7 +332,7 @@ def run_cell(
             cfg, stocks_train, source_model, smp_train, seed=seed,
             progressbar=progressbar,
         )
-        yhat = model.predict(horizon=HORIZON_DAYS)
+        yhat = model.predict(horizon=horizon)
         unit_df = common.unit_metrics(
             model, stocks_test, yhat, origin=origin, config=cfg.name, stage=stage
         )
@@ -437,16 +450,19 @@ def load_or_fit_source(
 ) -> SourceRef:
     cache_dir.mkdir(parents=True, exist_ok=True)
     tag = f"source__{origin}__{method}__seed{seed}".replace("/", "_")
-    zarr_path = cache_dir / f"{tag}.zarr"
+    pkl_path = cache_dir / f"{tag}.pkl"
     json_path = cache_dir / f"{tag}.json"
-    if zarr_path.exists() and json_path.exists():
+    if pkl_path.exists() and json_path.exists():
+        with open(pkl_path, "rb") as fh:
+            trace = pickle.load(fh)
         return SourceRef(
-            trace=az.from_zarr(zarr_path),
+            trace=trace,
             t_scale_params=_load_t_scale(json_path.read_text()),
         )
     model = fit_source(
         smp_train, method=method, seed=seed, progressbar=progressbar
     )
-    model.trace.to_zarr(zarr_path)
+    with open(pkl_path, "wb") as fh:
+        pickle.dump(model.trace, fh)
     json_path.write_text(_dump_t_scale(model.t_scale_params))
     return SourceRef(trace=model.trace, t_scale_params=model.t_scale_params)

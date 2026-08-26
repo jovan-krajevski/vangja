@@ -128,7 +128,7 @@ class NormalConstant(TimeSeriesModel):
         tuple[float, float]
             The mean and standard deviation derived from the posterior.
         """
-        c_key = f"nc_{self.model_idx} - c(mu={self.mu},sd={self.sd})"
+        c_key = f"nc_{self.model_idx} - c"
 
         if self.override_mu_for_tune is not None:
             mu = self.override_mu_for_tune
@@ -170,7 +170,7 @@ class NormalConstant(TimeSeriesModel):
             The constant term to add to the model.
         """
         with model:
-            c_key = f"nc_{self.model_idx} - c(mu={self.mu},sd={self.sd})"
+            c_key = f"nc_{self.model_idx} - c"
 
             if idata is not None and self.tune_method == "parametric":
                 mu, sd = self._get_params_from_idata(idata)
@@ -210,7 +210,7 @@ class NormalConstant(TimeSeriesModel):
             The constant terms indexed by group.
         """
         with model:
-            c_key = f"nc_{self.model_idx} - c(mu={self.mu},sd={self.sd})"
+            c_key = f"nc_{self.model_idx} - c"
 
             sd = self.sd
             if idata is not None and self.tune_method == "parametric":
@@ -268,7 +268,7 @@ class NormalConstant(TimeSeriesModel):
             The constant terms indexed by group.
         """
         with model:
-            c_key = f"nc_{self.model_idx} - c(mu={self.mu},sd={self.sd})"
+            c_key = f"nc_{self.model_idx} - c"
 
             if idata is not None and self.tune_method == "parametric":
                 mu, sd = self._get_params_from_idata(idata)
@@ -370,7 +370,7 @@ class NormalConstant(TimeSeriesModel):
         """
         forecasts = []
         self._predict_columns = {}
-        c_key = f"nc_{self.model_idx} - c(mu={self.mu},sd={self.sd})"
+        c_key = f"nc_{self.model_idx} - c"
 
         for group_code in self.groups_.keys():
             c_value = map_approx[c_key]
@@ -403,7 +403,7 @@ class NormalConstant(TimeSeriesModel):
         """
         forecasts = []
         self._predict_columns = {}
-        c_key = f"nc_{self.model_idx} - c(mu={self.mu},sd={self.sd})"
+        c_key = f"nc_{self.model_idx} - c"
 
         for group_code in self.groups_.keys():
             c_samples = trace["posterior"][c_key].to_numpy()
@@ -473,7 +473,7 @@ class NormalConstant(TimeSeriesModel):
     def _get_prior_var_names(self) -> list[str]:
         if self.tune_method != "prior_from_idata":
             return []
-        return [f"nc_{self.model_idx} - c(mu={self.mu},sd={self.sd})"]
+        return [f"nc_{self.model_idx} - c"]
 
     def needs_priors(self, *args, **kwargs) -> bool:
         """Check if this component needs priors from idata.
@@ -494,5 +494,6 @@ class NormalConstant(TimeSeriesModel):
             String representation.
         """
         return (
-            f"NC(mu={self.mu},sd={self.sd},pt={self.pool_type},tm={self.tune_method})"
+            f"NormalConstant(mu={self.mu}, sd={self.sd}, "
+            f"pool={self.pool_type}, tune={self.tune_method})"
         )

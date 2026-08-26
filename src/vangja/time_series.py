@@ -1484,7 +1484,7 @@ class AdditiveTimeSeries(CombinedTimeSeries):
     >>> # Create an additive model with trend + seasonality
     >>> model = LinearTrend() + FourierSeasonality(period=365.25, series_order=10)
     >>> print(model)
-    LT(n=25,r=0.8,tm=None) + FS(p=365.25,n=10,tm=None)
+    LinearTrend(n_changepoints=25, changepoint_range=0.8, pool=complete, tune=None) + FourierSeasonality(period=365.25, series_order=10, pool=complete, tune=None)
     """
 
     def definition(self, *args, **kwargs):
@@ -1536,7 +1536,7 @@ class MultiplicativeTimeSeries(CombinedTimeSeries):
     >>> # Create a model with multiplicative seasonality
     >>> model = LinearTrend() ** FourierSeasonality(period=365.25, series_order=10)
     >>> print(model)
-    LT(n=25,r=0.8,tm=None) * (1 + FS(p=365.25,n=10,tm=None))
+    LinearTrend(n_changepoints=25, changepoint_range=0.8, pool=complete, tune=None) * (1 + FourierSeasonality(period=365.25, series_order=10, pool=complete, tune=None))
 
     Notes
     -----
@@ -1597,7 +1597,7 @@ class SimpleMultiplicativeTimeSeries(CombinedTimeSeries):
     >>> # Create a model with a scaling factor
     >>> model = LinearTrend() * UniformConstant(lower=0.8, upper=1.2)
     >>> print(model)
-    LT(n=25,r=0.8,tm=None) * UC(l=0.8,u=1.2,tm=None)
+    LinearTrend(n_changepoints=25, changepoint_range=0.8, pool=complete, tune=None) * UniformConstant(lower=0.8, upper=1.2, pool=complete, tune=None)
     """
 
     def definition(self, *args, **kwargs):

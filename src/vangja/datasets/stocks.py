@@ -20,8 +20,32 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-_SP500_WIKI_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+_SP500_WIKI_URL = (
+    "https://en.wikipedia.org/w/index.php?title=List_of_S%26P_500_companies"
+    "&oldid=1306326561"
+)
+"""Frozen revision of the S&P 500 companies page.
+
+The live page no longer embeds the historical changes table (it now
+returns a navbox as its second table), and freezing a specific revision
+also makes the universe reconstruction reproducible (review P0-16).
+Revision 1306326561 is the last version before 2025-08-25 that still
+contains both the constituents table and the changes table.
+"""
 _HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+
+
+def _table_has_columns(
+    table: pd.DataFrame, needles: list[str], require_all: bool = True
+) -> bool:
+    """True if the (possibly MultiIndex) column names contain the needles.
+
+    With ``require_all=True`` every needle must appear; otherwise a single
+    match suffices.
+    """
+    flat = " ".join(str(c).lower() for c in table.columns)
+    hits = [n.lower() in flat for n in needles]
+    return all(hits) if require_all else any(hits)
 
 
 def _compute_typical_price(df: pd.DataFrame) -> pd.Series:
@@ -363,8 +387,33 @@ def _fetch_sp500_wiki_tables(
     resp = requests.get(_SP500_WIKI_URL, headers=_HEADERS)
     resp.raise_for_status()
     tables = pd.read_html(StringIO(resp.text))
-    const_df = _parse_constituents_table(tables[0])
-    changes_df = _parse_changes_table(tables[1])
+
+    # Select tables by content, not position: the live page layout changes
+    # (e.g. a navbox was once parsed as the "second table").
+    const_candidates = [
+        t for t in tables
+        if _table_has_columns(t, ["symbol", "security", "date added"], require_all=True)
+    ]
+    changes_candidates = [
+        t for t in tables
+        if _table_has_columns(t, ["added", "removed"], require_all=True)
+        and not _table_has_columns(t, ["vte"], require_all=False)
+    ]
+    if not const_candidates or not changes_candidates:
+        raise RuntimeError(
+            "Could not locate the S&P 500 constituents/changes tables in the "
+            f"frozen Wikipedia revision ({_SP500_WIKI_URL})."
+        )
+    const_df = _parse_constituents_table(const_candidates[0])
+    changes_df = _parse_changes_table(changes_candidates[0])
+
+    # Never cache empty parses: an empty cached frame is both useless and
+    # crashes pd.read_csv on the next load.
+    if const_df.empty or changes_df.empty:
+        raise RuntimeError(
+            "Parsed S&P 500 tables are empty; refusing to cache them. "
+            f"Source: {_SP500_WIKI_URL}"
+        )
 
     if cache_path is not None:
         const_df.to_csv(const_file, index=False)

@@ -83,7 +83,9 @@ class TestModelStringRepresentations:
         model = lt + nc
         result = str(model)
 
-        assert "+" in result
+        assert "LinearTrend(n_changepoints=25, changepoint_range=0.8, pool=complete" in result
+        assert "NormalConstant(mu=0, sd=1, pool=complete" in result
+        assert " + " in result
 
     def test_multiplicative_model_str(self):
         """Test string representation of multiplicative model."""
@@ -94,6 +96,7 @@ class TestModelStringRepresentations:
         result = str(model)
 
         assert "(1 +" in result
+        assert "FourierSeasonality(period=7, series_order=3, pool=complete" in result
 
     def test_nested_model_str(self):
         """Test string representation of nested model."""

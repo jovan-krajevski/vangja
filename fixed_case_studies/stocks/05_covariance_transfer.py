@@ -103,10 +103,10 @@ def main() -> None:
         smp_train, method="nuts", seed=common.BASE_SEED,
         progressbar=args.progressbar,
     )
-    source_model.trace.to_zarr(out_dir / "source_posterior.zarr")
+    import pickle as _pkl; open(out_dir / "source_posterior.pkl", "wb").write(_pkl.dumps(source_model.trace))
     var_names = [
         "lt_0 - slope",
-        "fs_0 - beta(p=365.25,n=6)",
+        "fs_0 - beta",
     ]
     cov_summary = covariance_summary(source_model.trace, var_names)
     cov_summary.update({"origin": args.origin, "availability": availability})

@@ -68,8 +68,8 @@ def load_or_fit_temp_model(
 
     All configs of one split transfer the identical temperature posterior.
     """
-    import arviz as az
     import json
+    import pickle
 
     def _dump(params: dict) -> str:
         out = dict(params)
@@ -87,18 +87,20 @@ def load_or_fit_temp_model(
 
     cache_dir.mkdir(parents=True, exist_ok=True)
     tag = f"temp__{split_label}__seed{seed}"
-    zarr_path = cache_dir / f"{tag}.zarr"
+    pkl_path = cache_dir / f"{tag}.pkl"
     json_path = cache_dir / f"{tag}.json"
-    if zarr_path.exists() and json_path.exists():
+    if pkl_path.exists() and json_path.exists():
         model = build_temp_model()
         # Rehydrate only the attributes the target fit consumes.
-        model.trace = az.from_zarr(zarr_path)
+        with open(pkl_path, "rb") as fh:
+            model.trace = pickle.load(fh)
         model.t_scale_params = _load(json_path.read_text())
         return model
     model = fit_temp_model(
         temp_train, scaler=scaler, seed=seed, progressbar=progressbar
     )
-    model.trace.to_zarr(zarr_path)
+    with open(pkl_path, "wb") as fh:
+        pickle.dump(model.trace, fh)
     json_path.write_text(_dump(model.t_scale_params))
     return model
 

@@ -1,5 +1,8 @@
 """Tests for vangja.components module."""
 
+import re
+
+import pymc as pm
 import pytest
 
 from vangja.components import (
@@ -139,9 +142,11 @@ class TestUniformConstantInit:
         """Test string representation of UniformConstant."""
         uc = UniformConstant(lower=0, upper=1)
 
-        assert "UC" in str(uc)
-        assert "l=0" in str(uc)
-        assert "u=1" in str(uc)
+        assert "UniformConstant" in str(uc)
+        assert "lower=0" in str(uc)
+        assert "upper=1" in str(uc)
+        assert "pool=complete" in str(uc)
+        assert "tune=None" in str(uc)
 
 
 class TestNormalConstantInit:
@@ -167,9 +172,10 @@ class TestNormalConstantInit:
         """Test string representation of NormalConstant."""
         nc = NormalConstant(mu=10, sd=3, tune_method="parametric")
 
-        assert "NC" in str(nc)
+        assert "NormalConstant" in str(nc)
         assert "mu=10" in str(nc)
         assert "sd=3" in str(nc)
+        assert "tune=parametric" in str(nc)
 
 
 class TestBetaConstantInit:
@@ -362,7 +368,8 @@ class TestFlatTrendInit:
         """Test string representation of FlatTrend."""
         ft = FlatTrend()
         result = str(ft)
-        assert "FT" in result
+        assert "FlatTrend" in result
+        assert "pool=complete" in result
 
     def test_combined_with_seasonality(self):
         """Test FlatTrend combined with FourierSeasonality."""
@@ -386,3 +393,72 @@ class TestFlatTrendInit:
 
         assert hasattr(combined, "left")
         assert hasattr(combined, "right")
+
+
+class TestVariableNameSafety:
+    """PyMC variable names must be safe for every sampler backend.
+
+    nutpie parses variable names as dimension specs (splitting on `,`, `.`,
+    `[`, `]`), so names like ``fs_0 - beta(p=365.25,n=5)`` crash arviz with
+    "more dims (N) given than existing ones". All vangja variable names must
+    follow ``{type}_{idx} - {param}`` and must never embed configuration
+    values (period, order, prior hyperparameters, bounds).
+    """
+
+    UNSAFE = re.compile(r"[,.[\]]")
+
+    def _assert_safe_names(self, model):
+        names = [v.name for v in model.free_RVs]
+        names += [d.name for d in model.deterministics]
+        assert names, "model defines no random variables"
+        for name in names:
+            assert not self.UNSAFE.search(name), f"unsafe variable name: {name!r}"
+
+    @pytest.mark.parametrize(
+        "component",
+        [
+            lambda: FourierSeasonality(30.4375, 3),
+            lambda: FourierSeasonality(7, 2),
+            lambda: NormalConstant(mu=0, sd=1),
+            lambda: UniformConstant(-1, 1),
+            lambda: BetaConstant(0.5, 1.5, alpha=2, beta=2),
+            lambda: FlatTrend(),
+            lambda: LinearTrend(n_changepoints=3),
+        ],
+        ids=["fs_yearly", "fs_weekly", "nc", "uc", "bc", "ft", "lt"],
+    )
+    def test_leaf_component_names_are_safe(self, sample_data, component):
+        data = sample_data.copy()
+        data["t"] = (data["ds"] - data["ds"].min()) / (
+            data["ds"].max() - data["ds"].min()
+        )
+        model = pm.Model()
+        with model:
+            component().definition(model, data, {}, None, None)
+        self._assert_safe_names(model)
+
+    def test_partial_pooling_names_are_safe(self, multi_series_data):
+        model = pm.Model()
+        with model:
+            model_idxs: dict[str, int] = {}
+            (
+                FlatTrend(pool_type="partial")
+                + FourierSeasonality(30.4375, 2, pool_type="partial")
+                + NormalConstant(pool_type="partial")
+                + UniformConstant(-1, 1, pool_type="partial")
+                + BetaConstant(0.5, 1.5, pool_type="partial")
+            ).definition(model, multi_series_data, model_idxs, None, None)
+        self._assert_safe_names(model)
+
+    def test_multiple_fourier_components_get_distinct_names(self, sample_data):
+        model = pm.Model()
+        with model:
+            model_idxs: dict[str, int] = {}
+            (
+                FourierSeasonality(365.25, 3)
+                + FourierSeasonality(7, 2)
+            ).definition(model, sample_data, model_idxs, None, None)
+        names = [v.name for v in model.free_RVs]
+        assert "fs_0 - beta" in names
+        assert "fs_1 - beta" in names
+        assert len(set(names)) == len(names)
