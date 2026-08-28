@@ -245,6 +245,98 @@ def unit_metrics(
     return pd.DataFrame(rows)
 
 
+def baseline_unit_metrics(
+    train_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    yhat_df: pd.DataFrame,
+    origin: str,
+    baseline: str,
+    stage: str,
+    scale_mode: str = "minmax_individual",
+    epsilon: float = REL_MAE_EPSILON,
+    exclude_series: set[str] | None = None,
+    seed: int = BASE_SEED,
+) -> pd.DataFrame:
+    """Per-series metrics for one model-free baseline forecast.
+
+    Schema-identical to :func:`unit_metrics` (``config`` = baseline code) so
+    the report scripts can aggregate the classical baselines together with
+    the vangja arms. ``yhat_df`` is long format (``ds``, ``series``,
+    ``yhat``) for a single baseline.
+
+    Relative MAE is computed in the **same scaled space the vangja models
+    use**, so the denominators are directly comparable:
+
+    - ``minmax_individual`` (smart home): per-series min-max on the training
+      window (matches ``scaler="minmax", scale_mode="individual"``);
+    - ``maxabs_complete`` (stocks): one global scale on the (rescaled)
+      training data, ``y_min = 0``, ``y_max = max|y|`` (matches
+      ``scaler="maxabs", scale_mode="complete"``).
+
+    Persistence = the last training value in that space (the denominator,
+    PROTOCOL.md §4). Context series are never scored.
+    """
+    exclude = set(CONTEXT_SERIES)
+    if exclude_series:
+        exclude |= set(exclude_series)
+
+    if scale_mode == "maxabs_complete":
+        y_max_global = float(np.abs(train_df["y"]).max()) if len(train_df) else 1.0
+        if not np.isfinite(y_max_global) or y_max_global == 0:
+            y_max_global = 1.0
+
+    rows = []
+    for name in sorted(train_df["series"].unique()):
+        if name in exclude:
+            continue
+        tr = train_df[train_df["series"] == name].sort_values("ds")
+        te = test_df[test_df["series"] == name].sort_values("ds")
+        fh = yhat_df[yhat_df["series"] == name].sort_values("ds")
+        if tr.empty or te.empty or fh.empty:
+            continue
+        merged = te[["ds", "y"]].merge(fh[["ds", "yhat"]], on="ds", how="inner").dropna()
+        if merged.empty:
+            continue
+        y = merged["y"].values
+        yhat = merged["yhat"].values
+        if scale_mode == "maxabs_complete":
+            y_min, y_max = 0.0, y_max_global
+        else:
+            y_min = float(tr["y"].min())
+            y_max = float(tr["y"].max())
+            if y_max <= y_min:
+                y_max = y_min + 1.0  # flat series: avoid division by zero
+
+        y_s = scale_y(y, y_min, y_max)
+        yhat_s = scale_y(yhat, y_min, y_max)
+        last_s = scale_y(float(tr["y"].iloc[-1]), y_min, y_max)
+        pers_s = np.full(len(y), last_s)
+
+        mae_s = mean_absolute_error(y_s, yhat_s)
+        pers_mae_s = mean_absolute_error(y_s, pers_s)
+        excluded = bool(pers_mae_s < epsilon)
+        rel_mae = float("nan") if excluded else float(mae_s / pers_mae_s)
+
+        rows.append(
+            {
+                "series": name,
+                "origin": origin,
+                "config": baseline,
+                "stage": stage,
+                "n": int(len(y)),
+                "mae": float(mean_absolute_error(y, yhat)),
+                "rmse": float(root_mean_squared_error(y, yhat)),
+                "mape": safeguarded_mape(y, yhat),
+                "mae_scaled": float(mae_s),
+                "persistence_mae_scaled": float(pers_mae_s),
+                "rel_mae": rel_mae,
+                "excluded": excluded,
+                "seed": seed,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def aggregate_rel_mae(unit_df: pd.DataFrame) -> dict:
     """Primary aggregate: median Relative MAE across target x origin units."""
     vals = unit_df["rel_mae"].dropna()

@@ -22,7 +22,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from fixed_case_studies import common  # noqa: E402
+from fixed_case_studies import baselines, common  # noqa: E402
 from fixed_case_studies.stocks import config as stock_cfg  # noqa: E402
 from fixed_case_studies.smart_home import config as home_cfg  # noqa: E402
 
@@ -342,3 +342,171 @@ def test_smart_home_run_cell_offline(monkeypatch, tmp_path):
     assert set(unit_df["series"]) == set(home_cfg.SMART_HOME_COLUMNS)
     assert set(unit_df["origin"]) == {"primary"}
     assert {"rel_mae", "excluded"} <= set(unit_df.columns)
+
+
+# ---------------------------------------------------------------------------
+# Classical baselines (fixed_case_studies/baselines.py)
+# ---------------------------------------------------------------------------
+
+
+class TestBaselineModels:
+
+    def _series(self, n=40, trend=0.1, period=7, seed=0):
+        rng = np.random.default_rng(seed)
+        t = np.arange(n)
+        y = 5 + trend * t + np.sin(2 * np.pi * t / period) + rng.normal(0, 0.1, n)
+        return y
+
+    def test_persistence_and_drift_shapes(self):
+        y = self._series()
+        assert baselines.persistence(y, 10).shape == (10,)
+        assert np.allclose(baselines.persistence(y, 10), y[-1])
+        d = baselines.drift(y, 10)
+        assert d.shape == (10,)
+        slope = (y[-1] - y[0]) / (len(y) - 1)
+        assert d[0] == pytest.approx(y[-1] + slope)
+        # Short-series guards never raise.
+        assert np.all(np.isfinite(baselines.drift(np.array([3.0]), 5)))
+        # Empty series -> NaN persistence (defensive; callers skip empties).
+        assert np.all(np.isnan(baselines.persistence(np.array([]), 3)))
+
+    def test_seasonal_naive(self):
+        y = self._series(period=7)
+        f = baselines.seasonal_naive(y, 20, 7)
+        assert f.shape == (20,)
+        assert np.allclose(f[:7], y[-7:])
+        assert np.allclose(f[7:14], y[-7:])
+        # Too-short series falls back to persistence (last of the *given* window).
+        assert np.allclose(baselines.seasonal_naive(y[:3], 5, 7), y[2])
+
+    def test_rolling_and_global_mean(self):
+        y = self._series()
+        r = baselines.rolling_mean(y, 8, 7)
+        assert np.allclose(r, y[-7:].mean())
+        g = baselines.global_mean(y, 8)
+        assert np.allclose(g, y.mean())
+
+    def test_arima_and_hw_forecast(self):
+        if baselines.ARIMA is None:
+            pytest.skip("statsmodels not installed")
+        y = self._series(n=60, period=7)
+        for f in (
+            baselines.fit_arima(y, 10, order=(1, 1, 1)),
+            baselines.fit_arima_best(y, 10, seasonal_period=7),
+            baselines.fit_holt_winters(y, 10, seasonal_periods=7),
+            baselines.fit_holt_winters(y, 10, seasonal_periods=7, seasonal="mul"),
+        ):
+            assert f.shape == (10,)
+            assert np.all(np.isfinite(f))
+
+
+class TestBaselineUnitMetrics:
+
+    def _frames(self, n_train=30, n_test=7):
+        ds = pd.date_range("2020-01-01", periods=n_train + n_test, freq="D")
+        train = pd.DataFrame(
+            {"ds": ds[:n_train], "y": np.arange(n_train, dtype=float), "series": "s"}
+        )
+        test = pd.DataFrame(
+            {"ds": ds[n_train:], "y": np.arange(n_train, n_train + n_test, dtype=float),
+             "series": "s"}
+        )
+        # persistence forecast: last training value on the test dates
+        yhat = pd.DataFrame(
+            {"ds": test["ds"], "series": "s",
+             "yhat": float(train["y"].iloc[-1])}
+        )
+        return train, test, yhat
+
+    def test_schema_matches_unit_metrics(self):
+        train, test, yhat = self._frames()
+        df = common.baseline_unit_metrics(
+            train, test, yhat, origin="o1", baseline="persistence",
+            stage="retrospective", scale_mode="minmax_individual",
+        )
+        assert set(df.columns) == {
+            "series", "origin", "config", "stage", "n", "mae", "rmse", "mape",
+            "mae_scaled", "persistence_mae_scaled", "rel_mae", "excluded", "seed",
+        }
+        assert len(df) == 1
+        assert df["config"].iloc[0] == "persistence"
+        # Persistence baseline -> relative MAE exactly 1 in scaled space.
+        assert df["rel_mae"].iloc[0] == pytest.approx(1.0, abs=1e-9)
+        assert not df["excluded"].iloc[0]
+
+    def test_excludes_context_series(self):
+        train, test, yhat = self._frames()
+        train = pd.concat(
+            [train, train.assign(series="source")], ignore_index=True
+        )
+        test = pd.concat([test, test.assign(series="source")], ignore_index=True)
+        yhat = pd.concat([yhat, yhat.assign(series="source")], ignore_index=True)
+        df = common.baseline_unit_metrics(
+            train, test, yhat, origin="o1", baseline="p",
+            stage="retrospective", scale_mode="minmax_individual",
+        )
+        assert set(df["series"]) == {"s"}
+
+    def test_near_zero_persistence_excluded(self):
+        train, test, yhat = self._frames()
+        # Make the series flat -> persistence MAE in scaled space ~ 0 < eps.
+        train["y"] = 1.0
+        test["y"] = 1.0 + 1e-9
+        yhat["yhat"] = 1.0
+        df = common.baseline_unit_metrics(
+            train, test, yhat, origin="o1", baseline="p",
+            stage="retrospective", scale_mode="minmax_individual",
+        )
+        assert df["excluded"].iloc[0]
+        assert np.isnan(df["rel_mae"].iloc[0])
+
+    def test_maxabs_complete_scale_mode(self):
+        train, test, yhat = self._frames()
+        df = common.baseline_unit_metrics(
+            train, test, yhat, origin="o1", baseline="p",
+            stage="confirmation", scale_mode="maxabs_complete",
+        )
+        y_max = float(np.abs(train["y"]).max())
+        # yhat == persistence in scaled space -> rel MAE == 1.
+        assert df["rel_mae"].iloc[0] == pytest.approx(1.0, abs=1e-9)
+        assert df["mae_scaled"].iloc[0] == pytest.approx(
+            np.abs(test["y"].values - train["y"].iloc[-1]).mean() / y_max
+        )
+
+
+class TestBaselineEvaluate:
+
+    def test_evaluate_baselines_and_checkpoint(self, tmp_path):
+        n_train, n_test = 30, 7
+        ds = pd.date_range("2020-01-01", periods=n_train + n_test, freq="D")
+        train = pd.DataFrame(
+            {"ds": ds[:n_train], "y": np.arange(n_train, dtype=float), "series": "s"}
+        )
+        test = pd.DataFrame(
+            {"ds": ds[n_train:], "y": np.arange(n_train, n_train + n_test, dtype=float),
+             "series": "s"}
+        )
+        specs = [
+            ("persistence", "Persistence", baselines.persistence),
+            ("drift", "Drift", baselines.drift),
+            ("snaive_7", "Seasonal naive (7d)",
+             lambda y, h: baselines.seasonal_naive(y, h, 7)),
+        ]
+        unit_df, forecasts_df, elapsed = baselines.evaluate_baselines(
+            train, test, specs, origin="o1", stage="retrospective",
+            scale_mode="minmax_individual",
+        )
+        assert len(unit_df) == 3  # 3 baselines x 1 series
+        assert set(unit_df["config"]) == {"persistence", "drift", "snaive_7"}
+        assert set(forecasts_df["baseline"]) == {"persistence", "drift", "snaive_7"}
+        assert set(elapsed) == {"persistence", "drift", "snaive_7"}
+
+        # Checkpointing: second call loads instead of recomputing.
+        unit2 = baselines.run_baselines_origin(
+            train, test, specs, origin="o1", stage="retrospective",
+            scale_mode="minmax_individual", study="test", out_dir=tmp_path,
+        )
+        assert len(unit2) == 3
+        manifest = common.load_json(tmp_path / "manifest_baselines__o1__seed42.json")
+        assert manifest["study"] == "test"
+        assert manifest["n_units"] == 3

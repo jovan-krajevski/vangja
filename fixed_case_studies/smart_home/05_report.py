@@ -1,10 +1,14 @@
 """Report for the smart-home case study (retrospective).
 
-    python fixed_case_studies/smart_home/04_report.py
+    python fixed_case_studies/smart_home/05_report.py
 
 Aggregates the artifact bundles: per config x split, the primary aggregate
 (median Relative MAE vs persistence) plus mean/IQR/proportion-below-1,
 secondary MAE/RMSE/safeguarded MAPE, exclusion and failure counts.
+Both the vangja arms (``03_run_main.py``) and the classical baselines
+(``04_run_baselines.py``) are aggregated — they share the same per-unit
+schema — and the best classical baseline is compared with the main
+configuration.
 For the frozen finalists (main vs no_transfer) on the primary split it also
 reports per-appliance effects and the negative-transfer rate.
 
@@ -20,11 +24,19 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+import numpy as np
 import pandas as pd
 
-from fixed_case_studies import common
+from fixed_case_studies import baselines, common
 from fixed_case_studies.smart_home import config as cfg
 from fixed_case_studies.smart_home.runner import RESULTS_ROOT
+
+
+def config_description(name: str) -> str:
+    """Human-readable description for vangja configs and baselines."""
+    if name in cfg.CONFIGS:
+        return cfg.CONFIGS[name].description
+    return baselines.BASELINE_DESCRIPTIONS.get(name, "")
 
 
 def collect_units(results_root: Path) -> pd.DataFrame:
@@ -75,11 +87,31 @@ def main() -> None:
                 "mean_rmse": float(g["rmse"].mean()),
                 "mean_mape": float(g["mape"].mean()),
                 "n_failures": n_fail,
-                "description": cfg.CONFIGS[config_name].description,
+                "description": config_description(config_name),
             }
         )
     aggregates = pd.DataFrame(rows).sort_values(["origin", "config"])
     aggregates.to_csv(out_dir / "aggregates.csv", index=False)
+
+    # Baseline comparison on the primary split: main vs the classical
+    # baselines (primary metric: median Relative MAE).
+    primary = units[units["origin"] == "primary"]
+    # Baselines = any config that is not a vangja registry config.
+    baseline_codes = sorted(set(primary["config"].unique()) - set(cfg.CONFIGS))
+    main_med = primary.loc[primary["config"] == "main", "rel_mae"].median()
+    base_med = (
+        primary[primary["config"].isin(baseline_codes)]
+        .groupby("config")["rel_mae"]
+        .median()
+        .dropna()
+        .sort_values()
+    )
+    baseline_cmp = pd.DataFrame(
+        {"baseline": base_med.index, "median_rel_mae": base_med.values}
+    )
+    baseline_cmp["main_median_rel_mae"] = main_med
+    baseline_cmp["beats_main"] = baseline_cmp["median_rel_mae"] < main_med
+    baseline_cmp.to_csv(out_dir / "baseline_comparison_primary.csv", index=False)
 
     # Per-appliance finalist comparison on the primary split.
     primary = units[(units["origin"] == "primary") & (units["config"].isin(["main", "no_transfer"]))]
@@ -105,6 +137,18 @@ def main() -> None:
     )
     print("\n=== Per-appliance, primary split ===")
     print(per_app.to_string(index=False))
+    print("\n=== Best classical baseline vs main (primary split) ===")
+    if baseline_cmp.empty:
+        print("  no baseline units found; run 04_run_baselines.py first")
+    else:
+        best = baseline_cmp.iloc[0]
+        print(
+            f"  main (median Rel.MAE): {main_med:.3f}; "
+            f"best baseline: {best['baseline']} ({best['median_rel_mae']:.3f}); "
+            f"{int(baseline_cmp['beats_main'].sum())} of "
+            f"{len(baseline_cmp)} baselines beat main."
+        )
+        print(baseline_cmp.to_string(index=False))
     print("\n=== Paired main vs no_transfer (descriptive) ===")
     for k, v in summary.items():
         print(f"  {k}: {v}")

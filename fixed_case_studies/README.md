@@ -155,8 +155,16 @@ sensitivity of §3.6, confirmation origins, high-weight subset only).
 ### 3.5 Baselines (P0-14)
 
 - **Persistence** is the primary-metric denominator and the first baseline.
-- **Drift** and **seasonal-naïve (7-day)** baselines are computed in
-  `common.py`/report scripts on the identical processed data.
+- **Drift**, **seasonal-naïve**, **ARIMA** and **Holt-Winters** are computed
+  by the classical-baseline scripts (`smart_home/04_run_baselines.py`,
+  `stocks/05_run_baselines.py`, shared model code in
+  `fixed_case_studies/baselines.py`) on the identical processed data — the
+  same frozen splits, trading days only for stocks (no calendar
+  interpolation, review F-9), and the same Relative-MAE evaluation
+  (``common.baseline_unit_metrics``). The temperature-/S&P-informed
+  regressions of the legacy scripts are dropped: their test-period features
+  would require context values beyond the training cutoff, i.e. the future
+  leak the protocol forbids.
 - The former "Prophet" and "TimeSeers" arms are **relabelled** as
   Prophet-like / TimeSeers-like *Vangja configurations* (F-14). The official
   Prophet package is **not** claimed as beaten; if such a claim is ever
@@ -307,6 +315,8 @@ Setup (same environment as the rest of the repo):
 
 ```bash
 uv sync --extra test --extra datasets
+# the classical baselines additionally need statsmodels:
+uv sync --extra reproducibility
 ```
 
 ### 5.1 Stocks
@@ -326,18 +336,24 @@ python fixed_case_studies/stocks/03_run_development.py
 #    hash-verified origins; repeated seeds for main & no_transfer)
 python fixed_case_studies/stocks/04_run_confirmation.py
 
-# 5. Targeted analyses: former-headline reproduction (dev only) and the
+# 5. Classical baselines (persistence, drift, seasonal naive, ARIMA,
+#    Holt-Winters) on the same dev + confirmation origins; trading days
+#    only, no interpolation. --max-stocks N for a screening subset.
+python fixed_case_studies/stocks/05_run_baselines.py
+
+# 6. Targeted analyses: former-headline reproduction (dev only) and the
 #    gold negative-control sensitivity (confirmation, high-weight subset)
-python fixed_case_studies/stocks/05_run_ablations.py
+python fixed_case_studies/stocks/06_run_ablations.py
 
-# 6. Covariance transfer: joint vs marginal on a NUTS-fitted source
-python fixed_case_studies/stocks/06_covariance_transfer.py --origin 2023-01-01
+# 7. Covariance transfer: joint vs marginal on a NUTS-fitted source
+python fixed_case_studies/stocks/07_covariance_transfer.py --origin 2023-01-01
 
-# 7. Calibration + MAP diagnostics for the finalists
-python fixed_case_studies/stocks/07_calibration.py --origin 2023-01-01
+# 8. Calibration + MAP diagnostics for the finalists
+python fixed_case_studies/stocks/08_calibration.py --origin 2023-01-01
 
-# 8. Aggregates, tables, block-bootstrap paired comparison
-python fixed_case_studies/stocks/08_report.py
+# 9. Aggregates (vangja arms + baselines), tables, block-bootstrap paired
+#    comparison
+python fixed_case_studies/stocks/09_report.py
 ```
 
 Every script supports `--origins` / `--configs` subsets for testing, and
@@ -350,13 +366,16 @@ all runs checkpoint (resubmit to continue). Outputs go to
 python fixed_case_studies/smart_home/01_fetch_data.py
 python fixed_case_studies/smart_home/02_select_hyperparams.py
 python fixed_case_studies/smart_home/03_run_main.py
-python fixed_case_studies/smart_home/04_report.py
+python fixed_case_studies/smart_home/04_run_baselines.py
+python fixed_case_studies/smart_home/05_report.py
 ```
 
 All outputs are labelled `retrospective`. The hyperparameter selection
 (`02_select_hyperparams.py`) runs on training windows only; its chosen
 values are then frozen deliberately into `smart_home/config.py` (see
-`smart_home/best_hyperparams.md` for the evidence and defence).
+`smart_home/best_hyperparams.md` for the evidence and defence). The
+classical baselines (`04_run_baselines.py`) run on the identical frozen
+splits and are aggregated by the report together with the vangja arms.
 
 ### 5.3 Bayesian hyperparameter selection (both studies)
 
