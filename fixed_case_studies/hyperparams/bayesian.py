@@ -119,7 +119,9 @@ def prior_predictive_sweep(
             verdict = "too tight"
         else:
             verdict = "target"
-        rows.append({param: value, "coverage": round(float(coverage), 4), "verdict": verdict})
+        rows.append(
+            {param: value, "coverage": round(float(coverage), 4), "verdict": verdict}
+        )
     return pd.DataFrame(rows)
 
 
@@ -458,7 +460,12 @@ def write_selection_report(
             _table_md(ppc_table),
         ]
     if verification_table is not None and not verification_table.empty:
-        lines += ["", "## Verification (small NUTS + PSIS-LOO)", "", _table_md(verification_table)]
+        lines += [
+            "",
+            "## Verification (small NUTS + PSIS-LOO)",
+            "",
+            _table_md(verification_table),
+        ]
     if extra:
         lines += ["", "## Notes", ""]
         for k, v in extra.items():
@@ -474,7 +481,16 @@ def _table_md(df: pd.DataFrame) -> str:
     """Markdown table without requiring ``tabulate`` (optional dep)."""
     if df is None or df.empty:
         return "_no fits succeeded_"
-    known = ["name", "elpd", "se", "elpd_diff", "dse", "weight", "wall_time_s", "n_params"]
+    known = [
+        "name",
+        "elpd",
+        "se",
+        "elpd_diff",
+        "dse",
+        "weight",
+        "wall_time_s",
+        "n_params",
+    ]
     if "name" in df.columns:
         cols = [c for c in known if c in df.columns]
     else:

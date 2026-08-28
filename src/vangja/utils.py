@@ -91,7 +91,7 @@ def remove_random_gaps(
 
     if total_gap_size >= n:
         raise ValueError(
-            f"Cannot remove {n_gaps} gaps of {gap_fraction*100}% each from data"
+            f"Cannot remove {n_gaps} gaps of {gap_fraction * 100}% each from data"
         )
 
     # Generate non-overlapping gap start positions
@@ -407,12 +407,7 @@ def persistence_forecast(train_df: pd.DataFrame, test_df: pd.DataFrame) -> pd.Da
     ...     test["y"], yhat, persistence_forecast(train, test)["yhat"]
     ... )
     """
-    last_values = (
-        train_df.sort_values("ds")
-        .groupby("series")["y"]
-        .last()
-        .to_dict()
-    )
+    last_values = train_df.sort_values("ds").groupby("series")["y"].last().to_dict()
     rows = []
     for series_name, test_group in test_df.groupby("series"):
         if series_name not in last_values:
@@ -461,9 +456,7 @@ def _compare_waic_table(resolved: dict[str, az.InferenceData]) -> pd.DataFrame:
             )
         ll_group = idt.log_likelihood
         if not ll_group.data_vars:
-            raise ValueError(
-                f"Model '{name}' has an empty log_likelihood group."
-            )
+            raise ValueError(f"Model '{name}' has an empty log_likelihood group.")
         # Use the first data variable in the log_likelihood group
         ll = ll_group[list(ll_group.data_vars)[0]].values
         # Pointwise log-likelihood: shape (..., n_obs)

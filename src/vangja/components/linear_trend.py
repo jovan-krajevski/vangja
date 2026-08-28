@@ -171,8 +171,13 @@ class LinearTrend(TimeSeriesModel):
         self.n_changepoints = n_changepoints
         # ``n_changepoints`` is a count (shape/``np.linspace`` argument):
         # coerce integral floats, reject genuinely fractional values.
-        if isinstance(n_changepoints, (float, np.floating)) and not float(n_changepoints).is_integer():
-            raise ValueError(f"n_changepoints must be an integer, got {n_changepoints!r}")
+        if (
+            isinstance(n_changepoints, (float, np.floating))
+            and not float(n_changepoints).is_integer()
+        ):
+            raise ValueError(
+                f"n_changepoints must be an integer, got {n_changepoints!r}"
+            )
         self.n_changepoints = int(n_changepoints)
         self.changepoint_range = changepoint_range
         self.slope_mean = slope_mean
@@ -349,8 +354,7 @@ class LinearTrend(TimeSeriesModel):
                         delta_key, delta_loc, delta_scale, shape=self.n_changepoints
                     )
                 elif (
-                    priors is not None
-                    and self.delta_tune_method == "prior_from_idata"
+                    priors is not None and self.delta_tune_method == "prior_from_idata"
                 ):
                     delta_loc, delta_scale = self._get_delta_params_from_idata(idata)
                     delta = pm.Deterministic(delta_key, priors[f"prior_{delta_key}"])
@@ -390,8 +394,7 @@ class LinearTrend(TimeSeriesModel):
                 # (manuscript: -phi * (w - w_MAP)^2).
                 pm.Potential(
                     f"{slope_key} - loss",
-                    -self.loss_factor_for_tune
-                    * pm.math.sqr(slope - slope_mean),
+                    -self.loss_factor_for_tune * pm.math.sqr(slope - slope_mean),
                 )
 
             return trend
@@ -666,8 +669,7 @@ class LinearTrend(TimeSeriesModel):
                         shape=(self.n_groups, self.n_changepoints),
                     )
                 elif (
-                    priors is not None
-                    and self.delta_tune_method == "prior_from_idata"
+                    priors is not None and self.delta_tune_method == "prior_from_idata"
                 ):
                     delta_loc, delta_scale = self._get_delta_params_from_idata(idata)
                     delta = pm.Laplace(
@@ -815,12 +817,9 @@ class LinearTrend(TimeSeriesModel):
                 else:
                     delta = map_approx[f"prior_{delta_key}"]
 
-                if (
-                    self.pool_type == "individual"
-                    or (
-                        self.pool_type == "partial"
-                        and self.delta_pool_type in ["partial", "individual"]
-                    )
+                if self.pool_type == "individual" or (
+                    self.pool_type == "partial"
+                    and self.delta_pool_type in ["partial", "individual"]
                 ):
                     delta = delta[group_code]
 
@@ -896,12 +895,9 @@ class LinearTrend(TimeSeriesModel):
                 delta = trace["posterior"][delta_key].to_numpy().mean(axis=(0, 1))
 
                 # Handle per-group delta parameters
-                if (
-                    self.pool_type == "individual"
-                    or (
-                        self.pool_type == "partial"
-                        and self.delta_pool_type in ["partial", "individual"]
-                    )
+                if self.pool_type == "individual" or (
+                    self.pool_type == "partial"
+                    and self.delta_pool_type in ["partial", "individual"]
                 ):
                     delta = delta[group_code]
 

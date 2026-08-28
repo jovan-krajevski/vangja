@@ -77,7 +77,9 @@ def main() -> None:
     rows = []
     for (origin, config_name), g in units.groupby(["origin", "config"]):
         agg = common.aggregate_rel_mae(g)
-        n_fail = int(((failures["origin"] == origin) & (failures["config"] == config_name)).sum())
+        n_fail = int(
+            ((failures["origin"] == origin) & (failures["config"] == config_name)).sum()
+        )
         rows.append(
             {
                 "origin": origin,
@@ -114,11 +116,12 @@ def main() -> None:
     baseline_cmp.to_csv(out_dir / "baseline_comparison_primary.csv", index=False)
 
     # Per-appliance finalist comparison on the primary split.
-    primary = units[(units["origin"] == "primary") & (units["config"].isin(["main", "no_transfer"]))]
-    per_app = (
-        primary.pivot_table(index="series", columns="config", values="rel_mae")
-        .reset_index()
-    )
+    primary = units[
+        (units["origin"] == "primary") & (units["config"].isin(["main", "no_transfer"]))
+    ]
+    per_app = primary.pivot_table(
+        index="series", columns="config", values="rel_mae"
+    ).reset_index()
     per_app["transfer_wins"] = per_app["main"] < per_app["no_transfer"]
     per_app.to_csv(out_dir / "per_appliance.csv", index=False)
 
@@ -131,8 +134,19 @@ def main() -> None:
     print("=== Smart-home aggregates (retrospective; Relative MAE) ===")
     print(
         aggregates[
-            ["origin", "config", "median", "mean", "q1", "q3",
-             "prop_below_1", "n_units", "n_excluded", "n_failures", "mean_mape"]
+            [
+                "origin",
+                "config",
+                "median",
+                "mean",
+                "q1",
+                "q3",
+                "prop_below_1",
+                "n_units",
+                "n_excluded",
+                "n_failures",
+                "mean_mape",
+            ]
         ].to_string(index=False)
     )
     print("\n=== Per-appliance, primary split ===")

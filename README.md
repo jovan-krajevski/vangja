@@ -65,14 +65,18 @@ Unlike Facebook Prophet, which fits time series one at a time, vangja can fit mu
 ```python
 # Data must have a 'series' column identifying each time series
 # Example: sales data from multiple stores
-multi_series_data = pd.DataFrame({
-    'ds': [...],  # timestamps
-    'y': [...],   # values
-    'series': ['store_A', 'store_A', ..., 'store_B', 'store_B', ...]
-})
+multi_series_data = pd.DataFrame(
+    {
+        "ds": [...],  # timestamps
+        "y": [...],  # values
+        "series": ["store_A", "store_A", ..., "store_B", "store_B", ...],
+    }
+)
 
 # Fit all series at once with independent parameters (no pooling)
-model = LinearTrend(pool_type="individual") + FourierSeasonality(365.25, 10, pool_type="individual")
+model = LinearTrend(pool_type="individual") + FourierSeasonality(
+    365.25, 10, pool_type="individual"
+)
 model.fit(multi_series_data)
 ```
 
@@ -100,18 +104,18 @@ A piecewise linear trend with changepoints. Vangja extends Prophet's trend compo
 
 ```python
 LinearTrend(
-    n_changepoints=25,       # Number of potential changepoints
-    changepoint_range=0.8,   # Proportion of data for changepoint placement
-    slope_mean=0,            # Prior mean for initial slope
-    slope_sd=5,              # Prior std for initial slope
-    intercept_mean=0,        # Prior mean for intercept
-    intercept_sd=5,          # Prior std for intercept
-    delta_mean=0,            # Prior mean for changepoint adjustments
-    delta_sd=0.05,           # Prior std for changepoint adjustments
-    delta_side="left",       # "left" or "right" - direction for changepoint interpretation
-    pool_type="complete",    # Pooling: "complete", "partial", or "individual"
+    n_changepoints=25,  # Number of potential changepoints
+    changepoint_range=0.8,  # Proportion of data for changepoint placement
+    slope_mean=0,  # Prior mean for initial slope
+    slope_sd=5,  # Prior std for initial slope
+    intercept_mean=0,  # Prior mean for intercept
+    intercept_sd=5,  # Prior std for intercept
+    delta_mean=0,  # Prior mean for changepoint adjustments
+    delta_sd=0.05,  # Prior std for changepoint adjustments
+    delta_side="left",  # "left" or "right" - direction for changepoint interpretation
+    pool_type="complete",  # Pooling: "complete", "partial", or "individual"
     delta_pool_type="complete",  # Separate pooling strategy for changepoints
-    tune_method=None         # Transfer learning: "parametric" or "prior_from_idata"
+    tune_method=None,  # Transfer learning: "parametric" or "prior_from_idata"
 )
 ```
 
@@ -132,12 +136,12 @@ Seasonal patterns modeled using Fourier series.
 
 ```python
 FourierSeasonality(
-    period,                  # Period in days (e.g., 365.25 for yearly)
-    series_order,            # Number of Fourier terms (higher = more flexible)
-    beta_mean=0,             # Prior mean for Fourier coefficients
-    beta_sd=10,              # Prior std for Fourier coefficients
-    pool_type="complete",    # Pooling: "complete", "partial", or "individual"
-    tune_method=None         # Transfer learning: "parametric" or "prior_from_idata"
+    period,  # Period in days (e.g., 365.25 for yearly)
+    series_order,  # Number of Fourier terms (higher = more flexible)
+    beta_mean=0,  # Prior mean for Fourier coefficients
+    beta_sd=10,  # Prior std for Fourier coefficients
+    pool_type="complete",  # Pooling: "complete", "partial", or "individual"
+    tune_method=None,  # Transfer learning: "parametric" or "prior_from_idata"
 )
 ```
 
@@ -147,10 +151,10 @@ A constant term with a Normal prior, useful for baseline offsets.
 
 ```python
 NormalConstant(
-    mu=0,                    # Prior mean
-    sigma=1,                 # Prior standard deviation
-    pool_type="complete",    # Pooling: "complete", "partial", or "individual"
-    tune_method=None         # Transfer learning: "parametric" or "prior_from_idata"
+    mu=0,  # Prior mean
+    sigma=1,  # Prior standard deviation
+    pool_type="complete",  # Pooling: "complete", "partial", or "individual"
+    tune_method=None,  # Transfer learning: "parametric" or "prior_from_idata"
 )
 ```
 
@@ -160,10 +164,10 @@ A constant term with a Uniform prior.
 
 ```python
 UniformConstant(
-    lower=0,                 # Lower bound
-    upper=1,                 # Upper bound
-    pool_type="complete",    # Pooling: "complete", "partial", or "individual"
-    tune_method=None         # Transfer learning: "parametric" or "prior_from_idata"
+    lower=0,  # Lower bound
+    upper=1,  # Upper bound
+    pool_type="complete",  # Pooling: "complete", "partial", or "individual"
+    tune_method=None,  # Transfer learning: "parametric" or "prior_from_idata"
 )
 ```
 
@@ -173,10 +177,10 @@ A constant-level baseline (intercept only, no slope, no changepoints). Useful wh
 
 ```python
 FlatTrend(
-    intercept_mean=0,        # Prior mean for intercept
-    intercept_sd=5,          # Prior std for intercept
-    pool_type="complete",    # Pooling: "complete", "partial", or "individual"
-    tune_method=None         # Transfer learning: "parametric" or "prior_from_idata"
+    intercept_mean=0,  # Prior mean for intercept
+    intercept_sd=5,  # Prior std for intercept
+    pool_type="complete",  # Pooling: "complete", "partial", or "individual"
+    tune_method=None,  # Transfer learning: "parametric" or "prior_from_idata"
 )
 ```
 
@@ -186,12 +190,12 @@ A constant term with a scaled Beta prior, bounded between [lower, upper].
 
 ```python
 BetaConstant(
-    lower=0,                 # Lower bound for scaling
-    upper=1,                 # Upper bound for scaling
-    alpha=2,                 # Beta distribution alpha parameter
-    beta=2,                  # Beta distribution beta parameter
-    pool_type="complete",    # Pooling: "complete", "partial", or "individual"
-    tune_method=None         # Transfer learning: "parametric" or "prior_from_idata"
+    lower=0,  # Lower bound for scaling
+    upper=1,  # Upper bound for scaling
+    alpha=2,  # Beta distribution alpha parameter
+    beta=2,  # Beta distribution beta parameter
+    pool_type="complete",  # Pooling: "complete", "partial", or "individual"
+    tune_method=None,  # Transfer learning: "parametric" or "prior_from_idata"
 )
 ```
 
@@ -213,7 +217,7 @@ Note: The pandas dataframe must have a `series` column that identifies which row
 # - Weekly seasonality: partial pooling (similar weekly patterns)
 
 model = (
-    LinearTrend(pool_type="partial", delta_pool_type="complete") 
+    LinearTrend(pool_type="partial", delta_pool_type="complete")
     + FourierSeasonality(365.25, 10, pool_type="complete")
     + FourierSeasonality(7, 3, pool_type="partial")
 )
@@ -255,22 +259,22 @@ Uses the posterior mean (you can also set the mode, or any other value that you 
 
 ```python
 # Step 1: Fit on long time series
-base_model = (
-    LinearTrend(tune_method="parametric") 
-    + FourierSeasonality(365.25, 10, tune_method="parametric")
+base_model = LinearTrend(tune_method="parametric") + FourierSeasonality(
+    365.25, 10, tune_method="parametric"
 )
 base_model.fit(long_time_series, method="nuts", samples=1000, chains=4)
 
 # Step 2: Transfer to short time series
 # The posterior from step 1 becomes the prior for step 2
-target_model = (
-    LinearTrend(tune_method="parametric") 
-    + FourierSeasonality(365.25, 10, tune_method="parametric")
+target_model = LinearTrend(tune_method="parametric") + FourierSeasonality(
+    365.25, 10, tune_method="parametric"
 )
 target_model.fit(short_time_series, idata=base_model.trace)
 
 # Step 3: Forecast with confidence
-predictions = target_model.predict(horizon=365)  # Can forecast beyond the short series length!
+predictions = target_model.predict(
+    horizon=365
+)  # Can forecast beyond the short series length!
 ```
 
 ##### 2. Prior from InferenceData (`"prior_from_idata"`)
@@ -278,15 +282,13 @@ predictions = target_model.predict(horizon=365)  # Can forecast beyond the short
 Uses the full posterior samples via **multivariate normal approximation**, preserving correlations between parameters:
 
 ```python
-base_model = (
-    LinearTrend(tune_method="prior_from_idata") 
-    + FourierSeasonality(365.25, 10, tune_method="prior_from_idata")
+base_model = LinearTrend(tune_method="prior_from_idata") + FourierSeasonality(
+    365.25, 10, tune_method="prior_from_idata"
 )
 base_model.fit(long_time_series, method="nuts", samples=1000, chains=4)
 
-target_model = (
-    LinearTrend(tune_method="prior_from_idata") 
-    + FourierSeasonality(365.25, 10, tune_method="prior_from_idata")
+target_model = LinearTrend(tune_method="prior_from_idata") + FourierSeasonality(
+    365.25, 10, tune_method="prior_from_idata"
 )
 target_model.fit(short_time_series, idata=base_model.trace)
 ```
@@ -299,27 +301,25 @@ Vangja uniquely allows you to combine both approaches:
 
 ```python
 # Step 1: Fit base model on long "context" time series
-base_model = (
-    LinearTrend(tune_method="parametric") 
-    + FourierSeasonality(365.25, 10, tune_method="parametric")
+base_model = LinearTrend(tune_method="parametric") + FourierSeasonality(
+    365.25, 10, tune_method="parametric"
 )
 base_model.fit(long_context_series, method="nuts", samples=1000, chains=4)
 
 # Step 2: Combine short target time series
-target_data = pd.concat([
-    short_series_1.assign(series='target_1'),
-    short_series_2.assign(series='target_2'),
-])
+target_data = pd.concat(
+    [
+        short_series_1.assign(series="target_1"),
+        short_series_2.assign(series="target_2"),
+    ]
+)
 
 # Step 3: Hierarchical model with transfer learning on targets
-target_model = (
-    LinearTrend(
-        pool_type="partial",           # Hierarchical pooling
-        delta_side="right",            # Slope parameter informed by all series
-        tune_method="parametric"       # Transfer from context to targets
-    ) 
-    + FourierSeasonality(365.25, 10, pool_type="complete", tune_method="parametric")
-)
+target_model = LinearTrend(
+    pool_type="partial",  # Hierarchical pooling
+    delta_side="right",  # Slope parameter informed by all series
+    tune_method="parametric",  # Transfer from context to targets
+) + FourierSeasonality(365.25, 10, pool_type="complete", tune_method="parametric")
 
 # Fit targets using posterior from context as priors
 target_model.fit(target_data, idata=base_model.trace)
@@ -336,9 +336,10 @@ LinearTrend(tune_method="parametric", loss_factor_for_tune=1.0)
 
 # Seasonality: cap the per-period amplitude at the transferred seasonal curve
 FourierSeasonality(
-    365.25, 10,
+    365.25,
+    10,
     tune_method="parametric",
-    loss_factor_for_tune=1.0  # Higher = stronger regularization toward context series
+    loss_factor_for_tune=1.0,  # Higher = stronger regularization toward context series
 )
 ```
 

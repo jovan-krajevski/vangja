@@ -83,7 +83,10 @@ class TestModelStringRepresentations:
         model = lt + nc
         result = str(model)
 
-        assert "LinearTrend(n_changepoints=25, changepoint_range=0.8, pool=complete" in result
+        assert (
+            "LinearTrend(n_changepoints=25, changepoint_range=0.8, pool=complete"
+            in result
+        )
         assert "NormalConstant(mu=0, sd=1, pool=complete" in result
         assert " + " in result
 

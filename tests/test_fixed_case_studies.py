@@ -33,7 +33,6 @@ from fixed_case_studies.smart_home import config as home_cfg  # noqa: E402
 
 
 class TestRelativeMAEAggregation:
-
     def _unit_df(self):
         return pd.DataFrame(
             {
@@ -65,7 +64,6 @@ class TestRelativeMAEAggregation:
 
 
 class TestPairedComparison:
-
     def _paired(self, rng):
         n_series, n_origins = 6, 8
         origins = pd.date_range("2023-01-01", periods=n_origins, freq="MS")
@@ -116,7 +114,6 @@ class TestPairedComparison:
 
 
 class TestFreezeCheck:
-
     def test_ok_and_tampered(self, tmp_path):
         proto = tmp_path / "protocol"
         proto.mkdir()
@@ -134,7 +131,6 @@ class TestFreezeCheck:
 
 
 class TestContextExclusion:
-
     def test_context_series_not_scored(self, tmp_path):
         # Build a minimal fake model object with the attributes unit_metrics
         # needs, including a context series as a group.
@@ -170,7 +166,6 @@ class TestContextExclusion:
 
 
 class TestDenominatorRule:
-
     def test_near_zero_persistence_excluded(self, tmp_path):
         class FakeModel:
             y_scale_params = {"scaler": "maxabs", "y_min": 0.0, "y_max": 1.0}
@@ -284,7 +279,8 @@ def test_smart_home_run_cell_offline(monkeypatch, tmp_path):
             pd.DataFrame(
                 {
                     "ds": dates,
-                    "y": 1.0 + 0.5 * np.sin(2 * np.pi * np.arange(len(dates)) / 7)
+                    "y": 1.0
+                    + 0.5 * np.sin(2 * np.pi * np.arange(len(dates)) / 7)
                     + 0.05 * rng.standard_normal(len(dates)),
                     "series": name,
                 }
@@ -309,7 +305,8 @@ def test_smart_home_run_cell_offline(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "vangja.datasets.load_kaggle_temperature",
         lambda city=None, start_date=None, end_date=None, freq=None: temp[
-            (temp["ds"] >= pd.Timestamp(start_date)) & (temp["ds"] <= pd.Timestamp(end_date))
+            (temp["ds"] >= pd.Timestamp(start_date))
+            & (temp["ds"] <= pd.Timestamp(end_date))
         ].copy(),
     )
     monkeypatch.setattr(home_runner, "RESULTS_ROOT", tmp_path / "results")
@@ -322,8 +319,13 @@ def test_smart_home_run_cell_offline(monkeypatch, tmp_path):
             period=365.25, series_order=5, beta_sd=1.5
         )
         m.fit(
-            temp_train, scaler=scaler, method="advi", n=200, samples=200,
-            random_seed=seed, progressbar=False,
+            temp_train,
+            scaler=scaler,
+            method="advi",
+            n=200,
+            samples=200,
+            random_seed=seed,
+            progressbar=False,
         )
         return m
 
@@ -336,7 +338,9 @@ def test_smart_home_run_cell_offline(monkeypatch, tmp_path):
         "horizon": home_cfg.HORIZON_DAYS,
     }
     unit_df = home_runner.run_cell(
-        home_cfg.CONFIGS["main"], split, seed=42,
+        home_cfg.CONFIGS["main"],
+        split,
+        seed=42,
         out_dir=tmp_path / "results" / "main",
     )
     assert set(unit_df["series"]) == set(home_cfg.SMART_HOME_COLUMNS)
@@ -350,7 +354,6 @@ def test_smart_home_run_cell_offline(monkeypatch, tmp_path):
 
 
 class TestBaselineModels:
-
     def _series(self, n=40, trend=0.1, period=7, seed=0):
         rng = np.random.default_rng(seed)
         t = np.arange(n)
@@ -401,32 +404,49 @@ class TestBaselineModels:
 
 
 class TestBaselineUnitMetrics:
-
     def _frames(self, n_train=30, n_test=7):
         ds = pd.date_range("2020-01-01", periods=n_train + n_test, freq="D")
         train = pd.DataFrame(
             {"ds": ds[:n_train], "y": np.arange(n_train, dtype=float), "series": "s"}
         )
         test = pd.DataFrame(
-            {"ds": ds[n_train:], "y": np.arange(n_train, n_train + n_test, dtype=float),
-             "series": "s"}
+            {
+                "ds": ds[n_train:],
+                "y": np.arange(n_train, n_train + n_test, dtype=float),
+                "series": "s",
+            }
         )
         # persistence forecast: last training value on the test dates
         yhat = pd.DataFrame(
-            {"ds": test["ds"], "series": "s",
-             "yhat": float(train["y"].iloc[-1])}
+            {"ds": test["ds"], "series": "s", "yhat": float(train["y"].iloc[-1])}
         )
         return train, test, yhat
 
     def test_schema_matches_unit_metrics(self):
         train, test, yhat = self._frames()
         df = common.baseline_unit_metrics(
-            train, test, yhat, origin="o1", baseline="persistence",
-            stage="retrospective", scale_mode="minmax_individual",
+            train,
+            test,
+            yhat,
+            origin="o1",
+            baseline="persistence",
+            stage="retrospective",
+            scale_mode="minmax_individual",
         )
         assert set(df.columns) == {
-            "series", "origin", "config", "stage", "n", "mae", "rmse", "mape",
-            "mae_scaled", "persistence_mae_scaled", "rel_mae", "excluded", "seed",
+            "series",
+            "origin",
+            "config",
+            "stage",
+            "n",
+            "mae",
+            "rmse",
+            "mape",
+            "mae_scaled",
+            "persistence_mae_scaled",
+            "rel_mae",
+            "excluded",
+            "seed",
         }
         assert len(df) == 1
         assert df["config"].iloc[0] == "persistence"
@@ -436,14 +456,17 @@ class TestBaselineUnitMetrics:
 
     def test_excludes_context_series(self):
         train, test, yhat = self._frames()
-        train = pd.concat(
-            [train, train.assign(series="source")], ignore_index=True
-        )
+        train = pd.concat([train, train.assign(series="source")], ignore_index=True)
         test = pd.concat([test, test.assign(series="source")], ignore_index=True)
         yhat = pd.concat([yhat, yhat.assign(series="source")], ignore_index=True)
         df = common.baseline_unit_metrics(
-            train, test, yhat, origin="o1", baseline="p",
-            stage="retrospective", scale_mode="minmax_individual",
+            train,
+            test,
+            yhat,
+            origin="o1",
+            baseline="p",
+            stage="retrospective",
+            scale_mode="minmax_individual",
         )
         assert set(df["series"]) == {"s"}
 
@@ -454,8 +477,13 @@ class TestBaselineUnitMetrics:
         test["y"] = 1.0 + 1e-9
         yhat["yhat"] = 1.0
         df = common.baseline_unit_metrics(
-            train, test, yhat, origin="o1", baseline="p",
-            stage="retrospective", scale_mode="minmax_individual",
+            train,
+            test,
+            yhat,
+            origin="o1",
+            baseline="p",
+            stage="retrospective",
+            scale_mode="minmax_individual",
         )
         assert df["excluded"].iloc[0]
         assert np.isnan(df["rel_mae"].iloc[0])
@@ -463,8 +491,13 @@ class TestBaselineUnitMetrics:
     def test_maxabs_complete_scale_mode(self):
         train, test, yhat = self._frames()
         df = common.baseline_unit_metrics(
-            train, test, yhat, origin="o1", baseline="p",
-            stage="confirmation", scale_mode="maxabs_complete",
+            train,
+            test,
+            yhat,
+            origin="o1",
+            baseline="p",
+            stage="confirmation",
+            scale_mode="maxabs_complete",
         )
         y_max = float(np.abs(train["y"]).max())
         # yhat == persistence in scaled space -> rel MAE == 1.
@@ -475,7 +508,6 @@ class TestBaselineUnitMetrics:
 
 
 class TestBaselineEvaluate:
-
     def test_evaluate_baselines_and_checkpoint(self, tmp_path):
         n_train, n_test = 30, 7
         ds = pd.date_range("2020-01-01", periods=n_train + n_test, freq="D")
@@ -483,17 +515,27 @@ class TestBaselineEvaluate:
             {"ds": ds[:n_train], "y": np.arange(n_train, dtype=float), "series": "s"}
         )
         test = pd.DataFrame(
-            {"ds": ds[n_train:], "y": np.arange(n_train, n_train + n_test, dtype=float),
-             "series": "s"}
+            {
+                "ds": ds[n_train:],
+                "y": np.arange(n_train, n_train + n_test, dtype=float),
+                "series": "s",
+            }
         )
         specs = [
             ("persistence", "Persistence", baselines.persistence),
             ("drift", "Drift", baselines.drift),
-            ("snaive_7", "Seasonal naive (7d)",
-             lambda y, h: baselines.seasonal_naive(y, h, 7)),
+            (
+                "snaive_7",
+                "Seasonal naive (7d)",
+                lambda y, h: baselines.seasonal_naive(y, h, 7),
+            ),
         ]
         unit_df, forecasts_df, elapsed = baselines.evaluate_baselines(
-            train, test, specs, origin="o1", stage="retrospective",
+            train,
+            test,
+            specs,
+            origin="o1",
+            stage="retrospective",
             scale_mode="minmax_individual",
         )
         assert len(unit_df) == 3  # 3 baselines x 1 series
@@ -503,8 +545,14 @@ class TestBaselineEvaluate:
 
         # Checkpointing: second call loads instead of recomputing.
         unit2 = baselines.run_baselines_origin(
-            train, test, specs, origin="o1", stage="retrospective",
-            scale_mode="minmax_individual", study="test", out_dir=tmp_path,
+            train,
+            test,
+            specs,
+            origin="o1",
+            stage="retrospective",
+            scale_mode="minmax_individual",
+            study="test",
+            out_dir=tmp_path,
         )
         assert len(unit2) == 3
         manifest = common.load_json(tmp_path / "manifest_baselines__o1__seed42.json")

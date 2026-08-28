@@ -230,10 +230,18 @@ class TestPersistenceForecast:
         from vangja.utils import persistence_forecast
 
         train = pd.DataFrame(
-            {"ds": pd.date_range("2020-01-01", periods=2), "y": [1.0, 2.0], "series": "A"}
+            {
+                "ds": pd.date_range("2020-01-01", periods=2),
+                "y": [1.0, 2.0],
+                "series": "A",
+            }
         )
         test = pd.DataFrame(
-            {"ds": pd.date_range("2020-01-03", periods=2), "y": [0.0, 0.0], "series": "B"}
+            {
+                "ds": pd.date_range("2020-01-03", periods=2),
+                "y": [0.0, 0.0],
+                "series": "B",
+            }
         )
         pers = persistence_forecast(train, test)
         assert pers.empty

@@ -166,9 +166,7 @@ class TestFilterPredictionsBySeries:
             }
         )
 
-        result = filter_predictions_by_series(
-            future, series_data, yhat_col="yhat_5"
-        )
+        result = filter_predictions_by_series(future, series_data, yhat_col="yhat_5")
 
         assert "yhat_0" in result.columns
         assert "yhat_5" not in result.columns
@@ -267,12 +265,8 @@ class TestMetrics:
     def test_basic_metrics(self):
         """Test that metrics returns all expected metric columns."""
         dates = pd.date_range("2020-01-01", periods=50, freq="D")
-        y_true = pd.DataFrame(
-            {"ds": dates, "y": np.ones(50) * 100, "series": "test"}
-        )
-        future = pd.DataFrame(
-            {"ds": dates, "yhat_0": np.ones(50) * 110}
-        )
+        y_true = pd.DataFrame({"ds": dates, "y": np.ones(50) * 100, "series": "test"})
+        future = pd.DataFrame({"ds": dates, "yhat_0": np.ones(50) * 110})
 
         result = metrics(y_true, future, "complete")
 
@@ -298,9 +292,7 @@ class TestMetrics:
     def test_known_error(self):
         """Test metrics with known constant error."""
         dates = pd.date_range("2020-01-01", periods=10, freq="D")
-        y_true = pd.DataFrame(
-            {"ds": dates, "y": np.ones(10) * 100, "series": "test"}
-        )
+        y_true = pd.DataFrame({"ds": dates, "y": np.ones(10) * 100, "series": "test"})
         future = pd.DataFrame({"ds": dates, "yhat_0": np.ones(10) * 110})
 
         result = metrics(y_true, future, "complete")
@@ -382,9 +374,7 @@ class TestMetrics:
     def test_returns_dataframe(self):
         """Test that metrics returns a pandas DataFrame."""
         dates = pd.date_range("2020-01-01", periods=10, freq="D")
-        y_true = pd.DataFrame(
-            {"ds": dates, "y": np.ones(10), "series": "test"}
-        )
+        y_true = pd.DataFrame({"ds": dates, "y": np.ones(10), "series": "test"})
         future = pd.DataFrame({"ds": dates, "yhat_0": np.ones(10) * 2})
 
         result = metrics(y_true, future, "complete")

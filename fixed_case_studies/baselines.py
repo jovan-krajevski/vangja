@@ -90,7 +90,7 @@ def seasonal_naive_mean(train_y: np.ndarray, horizon: int, period: int) -> np.nd
     n_cycles = n // period
     if n_cycles < 1:
         return np.full(horizon, np.nanmean(train_y) if n else np.nan)
-    mat = train_y[-(n_cycles * period):].reshape(n_cycles, period)
+    mat = train_y[-(n_cycles * period) :].reshape(n_cycles, period)
     avg_cycle = mat.mean(axis=0)
     return np.tile(avg_cycle, horizon // period + 1)[:horizon]
 
@@ -113,8 +113,15 @@ def global_mean(train_y: np.ndarray, horizon: int) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 # (p, d, q) non-seasonal candidates and the seasonal (P, D, Q, s) templates.
-_ARIMA_NONSEASONAL = [(1, 0, 0), (1, 1, 0), (1, 1, 1), (2, 1, 1), (2, 1, 2),
-                      (0, 1, 1), (1, 0, 1)]
+_ARIMA_NONSEASONAL = [
+    (1, 0, 0),
+    (1, 1, 0),
+    (1, 1, 1),
+    (2, 1, 1),
+    (2, 1, 2),
+    (0, 1, 1),
+    (1, 0, 1),
+]
 _ARIMA_SEASONAL_TEMPLATES = [(1, 1, 1, 1, 0, 0), (1, 1, 1, 1, 0, 1)]
 
 
@@ -357,9 +364,7 @@ def evaluate_baselines(
         )
 
     unit_df = (
-        pd.concat(unit_frames, ignore_index=True)
-        if unit_frames
-        else pd.DataFrame()
+        pd.concat(unit_frames, ignore_index=True) if unit_frames else pd.DataFrame()
     )
     forecasts_df = (
         pd.concat(forecast_frames, ignore_index=True)

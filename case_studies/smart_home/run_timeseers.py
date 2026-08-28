@@ -94,7 +94,7 @@ if RESULTS_FILE.exists():
         )
 
 for i, experiment in enumerate(sorted_experiments):
-    print(f"\n=== Running Experiment {i+1}/{len(sorted_experiments)} ===")
+    print(f"\n=== Running Experiment {i + 1}/{len(sorted_experiments)} ===")
     if experiment in processed_experiments:
         print(f"Skipping already processed experiment: {experiment}")
         continue

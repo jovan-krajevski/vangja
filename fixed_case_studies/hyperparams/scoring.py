@@ -167,7 +167,9 @@ def stacking_weights(pointwise: dict[str, np.ndarray]) -> np.ndarray:
     keys = list(pointwise)
     if not keys:
         return np.array([])
-    logp = np.stack([np.asarray(pointwise[k], dtype=float) for k in keys]).T  # (n_obs, K)
+    logp = np.stack(
+        [np.asarray(pointwise[k], dtype=float) for k in keys]
+    ).T  # (n_obs, K)
     n_cand = len(keys)
 
     def neg_log_score(w):

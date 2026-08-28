@@ -18,7 +18,9 @@ import pandas as pd
 from fixed_case_studies.hyperparams.scoring import pseudo_bma_weights, stacking_weights
 
 
-def weight_table(pointwise: dict[str, np.ndarray], n_boot: int = 1000, seed: int = 42) -> pd.DataFrame:
+def weight_table(
+    pointwise: dict[str, np.ndarray], n_boot: int = 1000, seed: int = 42
+) -> pd.DataFrame:
     """Candidate weights (pseudo-BMA with Bayesian bootstrap + stacking).
 
     Parameters
@@ -38,12 +40,20 @@ def weight_table(pointwise: dict[str, np.ndarray], n_boot: int = 1000, seed: int
     """
     names = list(pointwise)
     if not names:
-        return pd.DataFrame(columns=["name", "elpd", "pseudo_bma_weight", "stacking_weight"])
+        return pd.DataFrame(
+            columns=["name", "elpd", "pseudo_bma_weight", "stacking_weight"]
+        )
     # Drop candidates with no pointwise elpd (failed fits) before stacking.
-    pointwise = {n: np.asarray(v, dtype=float) for n, v in pointwise.items() if np.asarray(v).size > 0}
+    pointwise = {
+        n: np.asarray(v, dtype=float)
+        for n, v in pointwise.items()
+        if np.asarray(v).size > 0
+    }
     names = list(pointwise)
     if not names:
-        return pd.DataFrame(columns=["name", "elpd", "pseudo_bma_weight", "stacking_weight"])
+        return pd.DataFrame(
+            columns=["name", "elpd", "pseudo_bma_weight", "stacking_weight"]
+        )
     pbm = pseudo_bma_weights(pointwise, n_boot=n_boot, seed=seed)
     stk = stacking_weights(pointwise)
     table = pd.DataFrame(
@@ -84,9 +94,7 @@ def average_forecasts(
     return total
 
 
-def averaging_report(
-    out_dir, study: str, param: str, weight_df: pd.DataFrame
-) -> None:
+def averaging_report(out_dir, study: str, param: str, weight_df: pd.DataFrame) -> None:
     """Write the model-averaging markdown fragment (weights + verdict)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     lines = [f"# {study}: model averaging for `{param}`", ""]

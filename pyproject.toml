@@ -51,6 +51,7 @@ docs = [
 ]
 dev = [
     "vangja[test,docs]",
+    "ruff>=0.16.5",
 ]
 reproducibility = [
     "vangja[datasets]",

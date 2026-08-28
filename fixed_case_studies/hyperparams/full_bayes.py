@@ -95,11 +95,7 @@ def fit_full_bayes(
         )
         sigma = pm.HalfNormal("sigma", sigma=0.5)
 
-        mu = (
-            intercept
-            + pt.dot(x_yearly, beta_y)
-            + pt.dot(x_weekly, beta_w)
-        )
+        mu = intercept + pt.dot(x_yearly, beta_y) + pt.dot(x_weekly, beta_w)
         pm.Normal("obs", mu=mu, sigma=sigma, observed=y)
 
         trace = pm.sample(

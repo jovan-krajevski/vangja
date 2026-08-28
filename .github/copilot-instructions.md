@@ -103,11 +103,15 @@ Set `tune_method="parametric"` or `"prior_from_idata"` on components, then pass 
 
 ```python
 # Step 1: Fit base model on long series (use MCMC for meaningful posteriors)
-base_model = LinearTrend(tune_method="parametric") + FourierSeasonality(365.25, 10, tune_method="parametric")
+base_model = LinearTrend(tune_method="parametric") + FourierSeasonality(
+    365.25, 10, tune_method="parametric"
+)
 base_model.fit(long_data, method="nuts", samples=1000, chains=4)
 
 # Step 2: Create target model and fit with transferred priors
-target_model = LinearTrend(tune_method="parametric") + FourierSeasonality(365.25, 10, tune_method="parametric")
+target_model = LinearTrend(tune_method="parametric") + FourierSeasonality(
+    365.25, 10, tune_method="parametric"
+)
 target_model.fit(short_data, idata=base_model.trace)
 ```
 
@@ -196,7 +200,7 @@ ppc = model.sample_prior_predictive(samples=500)
 
 # Quantitative check
 coverage = prior_predictive_coverage(ppc)
-print(f"{coverage*100:.1f}% coverage")
+print(f"{coverage * 100:.1f}% coverage")
 
 # Visual check with HDI and reference lines
 plot_prior_predictive(ppc, show_hdi=True, show_ref_lines=True, t=model.data["t"].values)

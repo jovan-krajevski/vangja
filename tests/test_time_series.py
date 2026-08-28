@@ -544,14 +544,18 @@ class TestFitSeedsAndSamplerDispatch:
         return pd.DataFrame({"ds": dates, "y": y, "series": "s"})
 
     def test_mapx_receives_random_seed(self, small_data):
-        with patch("vangja.time_series.pmx.find_MAP", return_value=_fake_map_result()) as mock_map:
+        with patch(
+            "vangja.time_series.pmx.find_MAP", return_value=_fake_map_result()
+        ) as mock_map:
             model = FlatTrend()
             model.fit(small_data, method="mapx", random_seed=42, progressbar=False)
         assert mock_map.call_args.kwargs["random_seed"] == 42
         assert model.fit_info["random_seed"] == 42
 
     def test_nuts_uses_backend_sampler_without_explicit_step(self, small_data):
-        with patch("vangja.time_series.pm.sample", return_value=_fake_trace()) as mock_sample:
+        with patch(
+            "vangja.time_series.pm.sample", return_value=_fake_trace()
+        ) as mock_sample:
             model = FlatTrend()
             model.fit(
                 small_data,
@@ -572,7 +576,9 @@ class TestFitSeedsAndSamplerDispatch:
         assert kwargs["random_seed"] == 7
 
     def test_metropolis_uses_explicit_step_and_seed(self, small_data):
-        with patch("vangja.time_series.pm.sample", return_value=_fake_trace()) as mock_sample:
+        with patch(
+            "vangja.time_series.pm.sample", return_value=_fake_trace()
+        ) as mock_sample:
             model = FlatTrend()
             model.fit(
                 small_data,
@@ -591,7 +597,9 @@ class TestFitSeedsAndSamplerDispatch:
         assert kwargs["random_seed"] == 11
 
     def test_demetropolisz_uses_explicit_step(self, small_data):
-        with patch("vangja.time_series.pm.sample", return_value=_fake_trace()) as mock_sample:
+        with patch(
+            "vangja.time_series.pm.sample", return_value=_fake_trace()
+        ) as mock_sample:
             model = FlatTrend()
             model.fit(
                 small_data,
@@ -605,20 +613,28 @@ class TestFitSeedsAndSamplerDispatch:
             )
         step = mock_sample.call_args.kwargs["step"]
         assert any(
-            isinstance(m, pm.DEMetropolisZ)
-            for m in getattr(step, "methods", [step])
+            isinstance(m, pm.DEMetropolisZ) for m in getattr(step, "methods", [step])
         )
 
     def test_advi_receives_random_seed(self, small_data):
-        with patch("vangja.time_series.pm.fit", return_value=_fake_approx()) as mock_fit:
+        with patch(
+            "vangja.time_series.pm.fit", return_value=_fake_approx()
+        ) as mock_fit:
             model = FlatTrend()
             model.fit(
-                small_data, method="advi", n=10, samples=5, random_seed=3, progressbar=False
+                small_data,
+                method="advi",
+                n=10,
+                samples=5,
+                random_seed=3,
+                progressbar=False,
             )
         assert mock_fit.call_args.kwargs["random_seed"] == 3
 
     def test_target_accept_default_none_means_no_kwarg(self, small_data):
-        with patch("vangja.time_series.pm.sample", return_value=_fake_trace()) as mock_sample:
+        with patch(
+            "vangja.time_series.pm.sample", return_value=_fake_trace()
+        ) as mock_sample:
             model = FlatTrend()
             model.fit(
                 small_data,
@@ -638,7 +654,9 @@ class TestIncludeSourceInTarget:
     def test_requires_source_data(self, sample_data):
         model = FlatTrend()
         with pytest.raises(ValueError, match="source_data"):
-            model.fit(sample_data.copy(), include_source_in_target=True, progressbar=False)
+            model.fit(
+                sample_data.copy(), include_source_in_target=True, progressbar=False
+            )
 
     def test_source_appended_as_group(self, sample_data):
         source = pd.DataFrame(

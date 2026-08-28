@@ -33,7 +33,7 @@ SMART_HOME_COLUMNS = [
 ]
 TEMP_CITY = "Boston"
 TEMP_START = "2013-01-01"  # maximum available context (stable physics)
-DATA_END = "2016-12-16"    # last available smart-home date
+DATA_END = "2016-12-16"  # last available smart-home date
 
 # Primary split: first 91 days train, remaining 260 days test.
 PRIMARY_TRAIN_CUTOFF = "2016-04-01"
@@ -53,12 +53,12 @@ HORIZON_DAYS = 260  # primary horizon (Apr 1 .. Dec 16)
 class SmartHomeConfig:
     name: str
     description: str
-    tune_method: str | None      # None disables transfer from temperature
-    loss_factor: float           # seasonal amplitude-cap factor
-    yearly_pool: str             # "partial" or "individual"
+    tune_method: str | None  # None disables transfer from temperature
+    loss_factor: float  # seasonal amplitude-cap factor
+    yearly_pool: str  # "partial" or "individual"
     weekly_pool: str
     shrinkage: int
-    uniform_constant: bool       # sign-flipping factor on the yearly seasonality
+    uniform_constant: bool  # sign-flipping factor on the yearly seasonality
     intercept_sd: float
     beta_sd: float
     # Fourier orders (selected by the Bayesian workflow on training windows
@@ -209,9 +209,7 @@ def train_test_for_split(train_end: str, include_temp: bool = False):
 
     sh_df = load_smart_home_readings(column=SMART_HOME_COLUMNS, freq="D")
     train = sh_df[sh_df["ds"] < train_end].copy()
-    test = sh_df[
-        (sh_df["ds"] >= train_end) & (sh_df["ds"] <= DATA_END)
-    ].copy()
+    test = sh_df[(sh_df["ds"] >= train_end) & (sh_df["ds"] <= DATA_END)].copy()
 
     temp_train = load_kaggle_temperature(
         city=TEMP_CITY,

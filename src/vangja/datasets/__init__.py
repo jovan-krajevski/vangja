@@ -39,7 +39,10 @@ from vangja.datasets.loaders import (
     load_smart_home_readings,
     load_stock_data,
 )
-from vangja.datasets.stocks import get_sp500_tickers_at_date, get_sp500_tickers_for_range
+from vangja.datasets.stocks import (
+    get_sp500_tickers_at_date,
+    get_sp500_tickers_for_range,
+)
 from vangja.datasets.synthetic import (
     generate_hierarchical_products,
     generate_multi_store_data,

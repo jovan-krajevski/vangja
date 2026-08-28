@@ -185,9 +185,7 @@ class TestLoadSmartHomeReadingsMulti:
     def test_returns_ds_y_series_columns(self, mock_kagglehub, tmp_path):
         mock_kagglehub.dataset_download.return_value = str(tmp_path)
         with patch("vangja.datasets.loaders.pd.read_csv") as mock_csv:
-            mock_csv.return_value = _make_homec_csv_df(
-                "Fridge [kW]", "Microwave [kW]"
-            )
+            mock_csv.return_value = _make_homec_csv_df("Fridge [kW]", "Microwave [kW]")
             df = load_smart_home_readings(["Fridge [kW]", "Microwave [kW]"])
 
         assert list(df.columns) == ["ds", "y", "series"]

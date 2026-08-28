@@ -76,8 +76,14 @@ def mock_constituents_df():
     return pd.DataFrame(
         {
             "ticker": [
-                "AAPL", "MSFT", "AMZN", "GOOGL", "META",
-                "ABNB", "BX", "TSLA",
+                "AAPL",
+                "MSFT",
+                "AMZN",
+                "GOOGL",
+                "META",
+                "ABNB",
+                "BX",
+                "TSLA",
             ],
             "date_added": pd.to_datetime(
                 [
@@ -92,8 +98,14 @@ def mock_constituents_df():
                 ]
             ),
             "security": [
-                "Apple", "Microsoft", "Amazon", "Alphabet", "Meta",
-                "Airbnb", "Blackstone", "Tesla",
+                "Apple",
+                "Microsoft",
+                "Amazon",
+                "Alphabet",
+                "Meta",
+                "Airbnb",
+                "Blackstone",
+                "Tesla",
             ],
         }
     )
@@ -104,9 +116,7 @@ def mock_changes_df():
     """Minimal historical-changes DataFrame."""
     return pd.DataFrame(
         {
-            "date": pd.to_datetime(
-                ["2023-09-18", "2023-09-18", "2020-12-21"]
-            ),
+            "date": pd.to_datetime(["2023-09-18", "2023-09-18", "2020-12-21"]),
             "added_ticker": ["ABNB", "BX", "TSLA"],
             "added_name": ["Airbnb", "Blackstone", "Tesla"],
             "removed_ticker": ["NWL", "LNC", "AIV"],
@@ -178,7 +188,6 @@ class TestSafeTickerFilename:
 
 
 class TestDownloadStockData:
-
     @staticmethod
     def _mock_yf(return_value):
         """Create a mock yfinance module and inject it into sys.modules."""
@@ -208,9 +217,7 @@ class TestDownloadStockData:
             + sample_ohlcv["Low"]
             + sample_ohlcv["Close"]
         ) / 4
-        np.testing.assert_allclose(
-            result["typical_price"].values, expected.values
-        )
+        np.testing.assert_allclose(result["typical_price"].values, expected.values)
 
     def test_caching_creates_file(self, sample_ohlcv, tmp_path):
         cache = tmp_path / "cache"
@@ -264,9 +271,7 @@ class TestDownloadStockData:
         """Without cache_path, data is returned but nothing written."""
         ctx, _ = self._mock_yf(sample_ohlcv)
         with ctx:
-            result = _download_stock_data(
-                ["AAPL"], cache_path=None
-            )
+            result = _download_stock_data(["AAPL"], cache_path=None)
 
         assert not result.empty
 
@@ -296,7 +301,6 @@ class TestDownloadStockData:
 
 
 class TestParseConstituentsTable:
-
     def test_flat_columns(self):
         raw = pd.DataFrame(
             {
@@ -328,7 +332,6 @@ class TestParseConstituentsTable:
 
 
 class TestParseChangesTable:
-
     def test_flat_columns(self):
         raw = pd.DataFrame(
             {
@@ -399,10 +402,7 @@ class TestParseChangesTable:
 
 
 class TestFetchSP500WikiTables:
-
-    def test_returns_two_dataframes(
-        self, mock_constituents_df, mock_changes_df
-    ):
+    def test_returns_two_dataframes(self, mock_constituents_df, mock_changes_df):
         raw_const = pd.DataFrame(
             {
                 "Symbol": mock_constituents_df["ticker"],
@@ -472,7 +472,6 @@ class TestFetchSP500WikiTables:
 
 
 class TestGetSP500ConstituentsAtDate:
-
     def test_current_date_returns_current_set(
         self, mock_constituents_df, mock_changes_df
     ):
@@ -483,14 +482,18 @@ class TestGetSP500ConstituentsAtDate:
             changes_df=mock_changes_df,
         )
         expected = {
-            "AAPL", "MSFT", "AMZN", "GOOGL", "META",
-            "ABNB", "BX", "TSLA",
+            "AAPL",
+            "MSFT",
+            "AMZN",
+            "GOOGL",
+            "META",
+            "ABNB",
+            "BX",
+            "TSLA",
         }
         assert result == expected
 
-    def test_before_addition(
-        self, mock_constituents_df, mock_changes_df
-    ):
+    def test_before_addition(self, mock_constituents_df, mock_changes_df):
         """Tickers added after target_date should not appear."""
         # ABNB and BX were added 2023-09-18, TSLA on 2020-12-21
         result = _get_sp500_constituents_at_date(
@@ -512,9 +515,7 @@ class TestGetSP500ConstituentsAtDate:
         assert "AAPL" in result
         assert "MSFT" in result
 
-    def test_between_changes(
-        self, mock_constituents_df, mock_changes_df
-    ):
+    def test_between_changes(self, mock_constituents_df, mock_changes_df):
         """Date between changes should reflect the right set."""
         # After TSLA addition (2020-12-21) but before ABNB/BX (2023-09-18)
         result = _get_sp500_constituents_at_date(
@@ -534,33 +535,24 @@ class TestGetSP500ConstituentsAtDate:
 
 
 class TestGetSP500TickersForRange:
-
-    def test_returns_sorted_list(
-        self, mock_constituents_df, mock_changes_df
-    ):
+    def test_returns_sorted_list(self, mock_constituents_df, mock_changes_df):
         with patch(
             "vangja.datasets.stocks._fetch_sp500_wiki_tables",
             return_value=(mock_constituents_df, mock_changes_df),
         ):
-            result = get_sp500_tickers_for_range(
-                "2024-01-01", "2024-12-31"
-            )
+            result = get_sp500_tickers_for_range("2024-01-01", "2024-12-31")
 
         assert isinstance(result, list)
         assert result == sorted(result)
 
-    def test_excludes_removed_during_range(
-        self, mock_constituents_df, mock_changes_df
-    ):
+    def test_excludes_removed_during_range(self, mock_constituents_df, mock_changes_df):
         """Tickers removed during the range should be excluded."""
         # ABNB, BX added and NWL, LNC removed on 2023-09-18
         with patch(
             "vangja.datasets.stocks._fetch_sp500_wiki_tables",
             return_value=(mock_constituents_df, mock_changes_df),
         ):
-            result = get_sp500_tickers_for_range(
-                "2023-01-01", "2023-12-31"
-            )
+            result = get_sp500_tickers_for_range("2023-01-01", "2023-12-31")
 
         # NWL, LNC were removed during range → excluded
         assert "NWL" not in result
@@ -569,17 +561,13 @@ class TestGetSP500TickersForRange:
         assert "AAPL" in result
         assert "MSFT" in result
 
-    def test_no_changes_during_range(
-        self, mock_constituents_df, mock_changes_df
-    ):
+    def test_no_changes_during_range(self, mock_constituents_df, mock_changes_df):
         """If no changes during range, start-set is returned intact."""
         with patch(
             "vangja.datasets.stocks._fetch_sp500_wiki_tables",
             return_value=(mock_constituents_df, mock_changes_df),
         ):
-            result = get_sp500_tickers_for_range(
-                "2024-06-01", "2024-06-30"
-            )
+            result = get_sp500_tickers_for_range("2024-06-01", "2024-06-30")
 
         # No changes happened in June 2024 per mock data
         assert "AAPL" in result
@@ -590,16 +578,12 @@ class TestGetSP500TickersForRange:
         with pytest.raises(ValueError, match="must be before"):
             get_sp500_tickers_for_range("2025-01-01", "2020-01-01")
 
-    def test_all_items_are_strings(
-        self, mock_constituents_df, mock_changes_df
-    ):
+    def test_all_items_are_strings(self, mock_constituents_df, mock_changes_df):
         with patch(
             "vangja.datasets.stocks._fetch_sp500_wiki_tables",
             return_value=(mock_constituents_df, mock_changes_df),
         ):
-            result = get_sp500_tickers_for_range(
-                "2024-01-01", "2024-12-31"
-            )
+            result = get_sp500_tickers_for_range("2024-01-01", "2024-12-31")
 
         assert all(isinstance(t, str) for t in result)
 
@@ -610,7 +594,6 @@ class TestGetSP500TickersForRange:
 
 
 class TestLoadStockData:
-
     @pytest.fixture()
     def mock_download_data(self):
         """Sample data simulating _download_stock_data output."""
@@ -681,8 +664,14 @@ class TestLoadStockData:
     def test_empty_data(self):
         empty = pd.DataFrame(
             columns=[
-                "ds", "ticker", "Open", "High", "Low",
-                "Close", "Volume", "typical_price",
+                "ds",
+                "ticker",
+                "Open",
+                "High",
+                "Low",
+                "Close",
+                "Volume",
+                "typical_price",
             ]
         )
         with patch(
@@ -818,9 +807,7 @@ class TestLoadStockData:
             }
         )
         split = pd.Timestamp("2020-02-03")
-        with patch(
-            "vangja.datasets.stocks._download_stock_data", return_value=data
-        ):
+        with patch("vangja.datasets.stocks._download_stock_data", return_value=data):
             train, test = load_stock_data(
                 ["AAPL"],
                 split_date=split,
@@ -835,15 +822,15 @@ class TestLoadStockData:
             # observed trading day of the series within the split.
             first_obs = frame["ds"].min()
             last_obs = frame["ds"].max()
-            expected_start = data["ds"].min() if frame is train else data[
-                data["ds"] > split
-            ]["ds"].min()
+            expected_start = (
+                data["ds"].min()
+                if frame is train
+                else data[data["ds"] > split]["ds"].min()
+            )
             assert first_obs == expected_start
 
         # With interpolate=False the data stays on trading days only.
-        with patch(
-            "vangja.datasets.stocks._download_stock_data", return_value=data
-        ):
+        with patch("vangja.datasets.stocks._download_stock_data", return_value=data):
             train_raw, test_raw = load_stock_data(
                 ["AAPL"],
                 split_date=split,

@@ -126,7 +126,8 @@ def build_target_model(cfg: SmartHomeConfig):
         shrinkage_strength=cfg.shrinkage,
     )
     constant = UniformConstant(
-        lower=-1, upper=1,
+        lower=-1,
+        upper=1,
         pool_type=cfg.yearly_pool,
         shrinkage_strength=cfg.shrinkage,
     )
@@ -197,14 +198,22 @@ def run_cell(
             progressbar=progressbar,
         )
         model = fit_target(
-            cfg, train, temp_model, temp_train, seed=seed,
+            cfg,
+            train,
+            temp_model,
+            temp_train,
+            seed=seed,
             progressbar=progressbar,
         )
         horizon = split.get("horizon", HORIZON_DAYS)
         yhat = model.predict(horizon=horizon)
         unit_df = common.unit_metrics(
-            model, test, yhat, origin=split["label"],
-            config=cfg.name, stage="retrospective",
+            model,
+            test,
+            yhat,
+            origin=split["label"],
+            config=cfg.name,
+            stage="retrospective",
         )
         unit_df["seed"] = seed
         common.record_artifact(

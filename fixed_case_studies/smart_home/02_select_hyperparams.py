@@ -34,7 +34,14 @@ import pandas as pd
 
 from vangja import FlatTrend, FourierSeasonality, UniformConstant
 
-from fixed_case_studies.hyperparams import bayesian, candidates, full_bayes, robustness, stacking, ts_cv
+from fixed_case_studies.hyperparams import (
+    bayesian,
+    candidates,
+    full_bayes,
+    robustness,
+    stacking,
+    ts_cv,
+)
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 OUT_DIR = Path(__file__).resolve().parent / "results_hyperparams"
@@ -97,19 +104,23 @@ def build_target(
         pool_type=pool,
         shrinkage_strength=shrinkage,
     )
-    constant = UniformConstant(lower=-1, upper=1, pool_type=pool, shrinkage_strength=shrinkage)
+    constant = UniformConstant(
+        lower=-1, upper=1, pool_type=pool, shrinkage_strength=shrinkage
+    )
     return trend + constant * yearly + weekly
 
 
 def make_factory(**defaults):
     """Closure so the selection engine can vary one hyperparameter at a time."""
+
     def factory(**kw):
         return build_target(**{**defaults, **kw})
+
     return factory
 
 
 # ---------------------------------------------------------------------------
-# Temperature context 
+# Temperature context
 # (ADVI for screening; the study's own NUTS source is used at run time)
 # ---------------------------------------------------------------------------
 
@@ -176,9 +187,15 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--origins", nargs="+", default=["2016-04-01", "2016-07-01"])
     ap.add_argument("--screen-method", default="advi", choices=["advi", "nuts"])
-    ap.add_argument("--no-verify", action="store_true", help="skip the small-NUTS verification")
-    ap.add_argument("--samples", type=int, default=1500, help="ADVI posterior draws (screening)")
-    ap.add_argument("--n-iter", type=int, default=20000, help="ADVI iterations (screening)")
+    ap.add_argument(
+        "--no-verify", action="store_true", help="skip the small-NUTS verification"
+    )
+    ap.add_argument(
+        "--samples", type=int, default=1500, help="ADVI posterior draws (screening)"
+    )
+    ap.add_argument(
+        "--n-iter", type=int, default=20000, help="ADVI iterations (screening)"
+    )
     ap.add_argument("--ppc-samples", type=int, default=400)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out-dir", type=Path, default=OUT_DIR)
@@ -195,8 +212,10 @@ def main() -> None:
         temp_models[label] = load_or_fit_temp_advi(temp_train, label, args.seed)
 
     frames = [(label, train) for label, train in splits.items()]
-    print(f"[data] origins={args.origins}; training rows per split: "
-          f"{[len(t) for _, t in frames]}; test horizon untouched.")
+    print(
+        f"[data] origins={args.origins}; training rows per split: "
+        f"{[len(t) for _, t in frames]}; test horizon untouched."
+    )
 
     candidates.assert_current_in_candidates("smart_home")
     current = candidates.SMART_HOME_CURRENT
@@ -248,7 +267,11 @@ def main() -> None:
         # no-transfer arm (plain priors); the transferred shape is a separate
         # choice frozen in the study configuration.
         order_param = param in ("yearly_order", "weekly_order")
-        factory = make_factory(tune_method=None) if order_param else make_factory(tune_method="prior_from_idata")
+        factory = (
+            make_factory(tune_method=None)
+            if order_param
+            else make_factory(tune_method="prior_from_idata")
+        )
         print(f"\n=== {param} ===" + (" (no-transfer arm)" if order_param else ""))
         # Step 1: prior-predictive calibration (sd's only; plain priors).
         ppc_table = None
@@ -286,17 +309,27 @@ def main() -> None:
             top2 = bayesian.top_values_from_table(screen_table, evidence)
             try:
                 verify_table = bayesian.verify_top_k(
-                    factory, frames[:1], param, top2,
-                    fit_kwargs=nutpie_kwargs, seed=args.seed,
+                    factory,
+                    frames[:1],
+                    param,
+                    top2,
+                    fit_kwargs=nutpie_kwargs,
+                    seed=args.seed,
                     progressbar=args.progressbar,
                 )
                 print("verification:\n", verify_table.to_string(index=False))
             except Exception as err:  # pragma: no cover - fall back to screening
-                print(f"[verification failed for {param}; using the ADVI screening table: {err}]")
+                print(
+                    f"[verification failed for {param}; using the ADVI screening table: {err}]"
+                )
                 verify_table = None
 
         # Selection rule (NUTS table when available, else ADVI screening).
-        select_table = verify_table if verify_table is not None and not verify_table.empty else screen_table
+        select_table = (
+            verify_table
+            if verify_table is not None and not verify_table.empty
+            else screen_table
+        )
         chosen, justification = bayesian.recommend(select_table, param, current[param])
 
         # Strategy B — leave-future-out CRPS (primary origin only); used as
@@ -364,7 +397,9 @@ def main() -> None:
             extra={
                 "provenance": bayesian.provenance(),
                 "cross_check_flags": flags,
-                "ts_cv_best": None if cv_table is None or cv_table.empty else float(cv_table.iloc[0][param]),
+                "ts_cv_best": None
+                if cv_table is None or cv_table.empty
+                else float(cv_table.iloc[0][param]),
             },
         )
 
@@ -376,14 +411,20 @@ def main() -> None:
         # Strategy D — robustness around the recommended value.
         try:
             rob_table, verdict = robustness.robustness_sweep(
-                factory, frames, param, chosen,
-                fit_kwargs=screening_kwargs, fit_kwargs_fn=screening_kwargs_fn,
+                factory,
+                frames,
+                param,
+                chosen,
+                fit_kwargs=screening_kwargs,
+                fit_kwargs_fn=screening_kwargs_fn,
                 seed=args.seed,
                 cache_dir=out_dir / "cache",
                 cache_tag="plain" if order_param else "transfer",
                 progressbar=args.progressbar,
             )
-            robustness.write_robustness_report(out_dir, "smart_home", param, rob_table, verdict, chosen)
+            robustness.write_robustness_report(
+                out_dir, "smart_home", param, rob_table, verdict, chosen
+            )
             print(f"robustness: {verdict}")
         except Exception as err:  # pragma: no cover
             print(f"[robustness skipped for {param}: {err}]")
@@ -399,9 +440,13 @@ def main() -> None:
             seed=args.seed,
             progressbar=args.progressbar,
         )
-        full_bayes.report_summary(model, trace, out_dir, label=appliance.replace(" ", "_"))
-        print(f"\n[full_bayes] posterior of the sd's on '{appliance}': "
-              f"see full_bayes_{appliance.replace(' ', '_')}.md")
+        full_bayes.report_summary(
+            model, trace, out_dir, label=appliance.replace(" ", "_")
+        )
+        print(
+            f"\n[full_bayes] posterior of the sd's on '{appliance}': "
+            f"see full_bayes_{appliance.replace(' ', '_')}.md"
+        )
     except Exception as err:  # pragma: no cover
         print(f"[full_bayes skipped: {err}]")
 
@@ -419,7 +464,9 @@ def main() -> None:
     (out_dir / "smart_home_recommendations.json").write_text(
         json.dumps(summary, indent=2, default=str)
     )
-    print(f"\n[summary] recommendations -> {out_dir / 'smart_home_recommendations.json'}")
+    print(
+        f"\n[summary] recommendations -> {out_dir / 'smart_home_recommendations.json'}"
+    )
     for param, rec in recommendations.items():
         print(f"  {param}: {rec['current']} -> {rec['recommended']}")
 

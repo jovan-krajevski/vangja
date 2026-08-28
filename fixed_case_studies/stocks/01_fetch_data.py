@@ -90,14 +90,14 @@ def main() -> None:
                 "ticker": universe,
                 "origin": origin,
                 "universe_rule": "members_at_origin",
-                "date_added": [
-                    dates.get(t.replace("-", "."), "") for t in universe
-                ],
+                "date_added": [dates.get(t.replace("-", "."), "") for t in universe],
             }
         )
         universe_df.to_csv(universe_dir / f"universe_{origin}.csv", index=False)
 
-        all_tickers = sorted(set(universe) | {cfg.CONTEXT_TICKER, cfg.NEGATIVE_CONTROL_TICKER})
+        all_tickers = sorted(
+            set(universe) | {cfg.CONTEXT_TICKER, cfg.NEGATIVE_CONTROL_TICKER}
+        )
         _download_stock_data(all_tickers, cache_path=TICKERS_PATH)
 
         # Availability: trading-day observations in the 91-day window before
@@ -106,7 +106,9 @@ def main() -> None:
         availability = _availability(origin, universe)
         availability.update({"origin": origin})
         availability_rows.append(availability)
-        print(f"  universe={len(universe)} available={availability['n_available_train_and_test']}")
+        print(
+            f"  universe={len(universe)} available={availability['n_available_train_and_test']}"
+        )
 
     avail_df = pd.DataFrame(availability_rows)
     avail_path = Path(__file__).resolve().parent / "data" / "availability.csv"

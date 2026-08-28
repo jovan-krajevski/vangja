@@ -54,7 +54,12 @@ def short_multi_data():
     t = np.arange(90)
     frames = []
     for name, offset in [("s1", 55), ("s2", 60)]:
-        y = offset + 0.04 * t + 8 * np.sin(2 * np.pi * t / 365.25) + np.random.randn(90) * 2
+        y = (
+            offset
+            + 0.04 * t
+            + 8 * np.sin(2 * np.pi * t / 365.25)
+            + np.random.randn(90) * 2
+        )
         frames.append(pd.DataFrame({"ds": dates, "y": y, "series": name}))
     return pd.concat(frames, ignore_index=True)
 
@@ -83,10 +88,9 @@ class TestAssignModelIdx:
         assert idxs["lt"] == 1
 
     def test_combined_model(self):
-        model = (
-            LinearTrend(tune_method="prior_from_idata", n_changepoints=5)
-            + FourierSeasonality(365.25, 3, tune_method="prior_from_idata")
-        )
+        model = LinearTrend(
+            tune_method="prior_from_idata", n_changepoints=5
+        ) + FourierSeasonality(365.25, 3, tune_method="prior_from_idata")
         idxs: dict[str, int] = {}
         model._assign_model_idx(idxs)
         assert idxs["lt"] == 1
@@ -94,10 +98,9 @@ class TestAssignModelIdx:
 
     def test_prior_var_names_only_prior_from_idata(self):
         """Only components with tune_method='prior_from_idata' declare vars."""
-        model = (
-            LinearTrend(tune_method="prior_from_idata", n_changepoints=5)
-            + FourierSeasonality(365.25, 3, tune_method="parametric")
-        )
+        model = LinearTrend(
+            tune_method="prior_from_idata", n_changepoints=5
+        ) + FourierSeasonality(365.25, 3, tune_method="parametric")
         idxs: dict[str, int] = {}
         model._assign_model_idx(idxs)
         names = model._get_prior_var_names()
@@ -159,10 +162,9 @@ class TestVariableFiltering:
 
     def test_sigma_not_in_prior_vars(self, base_trace):
         """sigma should NOT be included in the prior variable set."""
-        model = (
-            LinearTrend(tune_method="prior_from_idata", n_changepoints=5)
-            + FourierSeasonality(365.25, 3, tune_method="prior_from_idata")
-        )
+        model = LinearTrend(
+            tune_method="prior_from_idata", n_changepoints=5
+        ) + FourierSeasonality(365.25, 3, tune_method="prior_from_idata")
         idxs: dict[str, int] = {}
         model._assign_model_idx(idxs)
         names = model._get_prior_var_names()
@@ -185,14 +187,14 @@ class TestVariableFiltering:
 class TestIndividualPoolingPriorFromIdata:
     """Individual pooling with prior_from_idata must create free per-group RVs."""
 
-    def test_linear_trend_individual_slope_is_free(
-        self, short_multi_data, base_trace
-    ):
+    def test_linear_trend_individual_slope_is_free(self, short_multi_data, base_trace):
         model = LinearTrend(
             tune_method="prior_from_idata",
             n_changepoints=5,
             pool_type="individual",
-        ) + FourierSeasonality(365.25, 3, tune_method="prior_from_idata", pool_type="individual")
+        ) + FourierSeasonality(
+            365.25, 3, tune_method="prior_from_idata", pool_type="individual"
+        )
         model.fit(short_multi_data, method="map", idata=base_trace, progressbar=False)
 
         # slope should be a free RV (Normal), not a Deterministic
@@ -206,7 +208,9 @@ class TestIndividualPoolingPriorFromIdata:
             tune_method="prior_from_idata",
             n_changepoints=5,
             pool_type="individual",
-        ) + FourierSeasonality(365.25, 3, tune_method="prior_from_idata", pool_type="individual")
+        ) + FourierSeasonality(
+            365.25, 3, tune_method="prior_from_idata", pool_type="individual"
+        )
         model.fit(short_multi_data, method="map", idata=base_trace, progressbar=False)
 
         beta_var = model.model.named_vars["fs_0 - beta"]
@@ -214,9 +218,7 @@ class TestIndividualPoolingPriorFromIdata:
             "beta should be a free RV for individual pooling with prior_from_idata"
         )
 
-    def test_flat_trend_individual_intercept_is_free(
-        self, short_multi_data
-    ):
+    def test_flat_trend_individual_intercept_is_free(self, short_multi_data):
         """FlatTrend individual + prior_from_idata → free intercept RV."""
         # First fit a base model
         base = FlatTrend() + FourierSeasonality(365.25, 3)
@@ -226,7 +228,9 @@ class TestIndividualPoolingPriorFromIdata:
 
         target = FlatTrend(
             tune_method="prior_from_idata", pool_type="individual"
-        ) + FourierSeasonality(365.25, 3, tune_method="prior_from_idata", pool_type="individual")
+        ) + FourierSeasonality(
+            365.25, 3, tune_method="prior_from_idata", pool_type="individual"
+        )
         target.fit(short_multi_data, method="map", idata=base.trace, progressbar=False)
 
         var = target.model.named_vars["ft_0 - intercept"]
@@ -241,9 +245,7 @@ class TestIndividualPoolingPriorFromIdata:
 class TestCompletePoolingPriorFromIdata:
     """Complete pooling + prior_from_idata should produce Deterministic vars."""
 
-    def test_complete_slope_is_deterministic(
-        self, short_data, base_trace
-    ):
+    def test_complete_slope_is_deterministic(self, short_data, base_trace):
         model = LinearTrend(
             tune_method="prior_from_idata", n_changepoints=5
         ) + FourierSeasonality(365.25, 3, tune_method="prior_from_idata")
@@ -263,9 +265,7 @@ class TestCompletePoolingPriorFromIdata:
 class TestTransferLearningPredictions:
     """Verify that transfer learning produces reasonable predictions."""
 
-    def test_prior_from_idata_complete_predicts(
-        self, short_data, base_trace
-    ):
+    def test_prior_from_idata_complete_predicts(self, short_data, base_trace):
         model = LinearTrend(
             tune_method="prior_from_idata", n_changepoints=5
         ) + FourierSeasonality(365.25, 3, tune_method="prior_from_idata")
@@ -275,9 +275,7 @@ class TestTransferLearningPredictions:
         assert not future["yhat_0"].isna().any()
         assert len(future) > 0
 
-    def test_prior_from_idata_individual_predicts(
-        self, short_multi_data, base_trace
-    ):
+    def test_prior_from_idata_individual_predicts(self, short_multi_data, base_trace):
         model = LinearTrend(
             tune_method="prior_from_idata",
             n_changepoints=5,
@@ -328,9 +326,7 @@ class TestTransferLearningPredictions:
 class TestInitvalsSkipDeterministic:
     """Initvals should not include Deterministic variables."""
 
-    def test_complete_pooling_prior_from_idata_initvals(
-        self, short_data, base_trace
-    ):
+    def test_complete_pooling_prior_from_idata_initvals(self, short_data, base_trace):
         model = LinearTrend(
             tune_method="prior_from_idata", n_changepoints=5
         ) + FourierSeasonality(365.25, 3, tune_method="prior_from_idata")

@@ -152,7 +152,10 @@ class FourierSeasonality(TimeSeriesModel):
         # ``series_order`` is a count (shape/``range()`` argument): integral
         # floats (e.g. 3.0 from a workflow that round-trips values through
         # strings) are coerced, genuinely fractional values are rejected.
-        if isinstance(series_order, (float, np.floating)) and not float(series_order).is_integer():
+        if (
+            isinstance(series_order, (float, np.floating))
+            and not float(series_order).is_integer()
+        ):
             raise ValueError(f"series_order must be an integer, got {series_order!r}")
         self.series_order = int(series_order)
         self.beta_mean = beta_mean
@@ -376,8 +379,7 @@ class FourierSeasonality(TimeSeriesModel):
                     [
                         (
                             1.0 / n_t
-                            if self.period
-                            > 2 * data[self.group == group_code].shape[0]
+                            if self.period > 2 * data[self.group == group_code].shape[0]
                             else 0.0
                         )
                         for group_code in self.groups_
@@ -469,8 +471,7 @@ class FourierSeasonality(TimeSeriesModel):
                     [
                         (
                             1.0 / n_t
-                            if self.period
-                            > 2 * data[self.group == group_code].shape[0]
+                            if self.period > 2 * data[self.group == group_code].shape[0]
                             else 0.0
                         )
                         for group_code in self.groups_

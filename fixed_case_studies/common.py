@@ -78,8 +78,15 @@ def environment_info() -> dict:
     import importlib.metadata as im
 
     info = {}
-    for pkg in ("vangja", "pymc", "arviz", "numpy", "pandas", "pytensor",
-                "scikit-learn"):
+    for pkg in (
+        "vangja",
+        "pymc",
+        "arviz",
+        "numpy",
+        "pandas",
+        "pytensor",
+        "scikit-learn",
+    ):
         try:
             info[pkg] = im.version(pkg)
         except im.PackageNotFoundError:
@@ -137,8 +144,7 @@ def per_series_scale_params(model) -> dict[str, tuple[float, float]]:
     if isinstance(model.y_scale_params, dict) and "scaler" in model.y_scale_params:
         shared = model.y_scale_params
         return {
-            name: (shared["y_min"], shared["y_max"])
-            for name in model.groups_.values()
+            name: (shared["y_min"], shared["y_max"]) for name in model.groups_.values()
         }
     return {
         name: (
@@ -294,7 +300,9 @@ def baseline_unit_metrics(
         fh = yhat_df[yhat_df["series"] == name].sort_values("ds")
         if tr.empty or te.empty or fh.empty:
             continue
-        merged = te[["ds", "y"]].merge(fh[["ds", "yhat"]], on="ds", how="inner").dropna()
+        merged = (
+            te[["ds", "y"]].merge(fh[["ds", "yhat"]], on="ds", how="inner").dropna()
+        )
         if merged.empty:
             continue
         y = merged["y"].values
@@ -348,7 +356,9 @@ def aggregate_rel_mae(unit_df: pd.DataFrame) -> dict:
             "q3": None,
             "prop_below_1": None,
             "n_units": 0,
-            "n_excluded": int(unit_df["excluded"].sum()) if "excluded" in unit_df else 0,
+            "n_excluded": int(unit_df["excluded"].sum())
+            if "excluded" in unit_df
+            else 0,
         }
     return {
         "median": float(vals.median()),
@@ -361,7 +371,9 @@ def aggregate_rel_mae(unit_df: pd.DataFrame) -> dict:
     }
 
 
-def add_origin_block(unit_df: pd.DataFrame, block_by: str = "half_year") -> pd.DataFrame:
+def add_origin_block(
+    unit_df: pd.DataFrame, block_by: str = "half_year"
+) -> pd.DataFrame:
     """Add an ``origin_block`` column grouping overlapping origins.
 
     Origins within the same block have heavily overlapping horizons, so the
@@ -376,7 +388,9 @@ def add_origin_block(unit_df: pd.DataFrame, block_by: str = "half_year") -> pd.D
     origins = pd.to_datetime(out["origin"])
     if block_by == "half_year":
         out["origin_block"] = (
-            origins.dt.year.astype(str) + "-H" + ((origins.dt.month >= 7) + 1).astype(str)
+            origins.dt.year.astype(str)
+            + "-H"
+            + ((origins.dt.month >= 7) + 1).astype(str)
         )
     else:  # year blocks
         out["origin_block"] = origins.dt.year.astype(str)
@@ -438,8 +452,14 @@ def paired_transfer_comparison(
         df["config"]
     ):
         empty = pd.DataFrame(
-            columns=["series", "origin", "transfer_rel_mae",
-                     "no_transfer_rel_mae", "diff_rel_mae", "origin_block"]
+            columns=[
+                "series",
+                "origin",
+                "transfer_rel_mae",
+                "no_transfer_rel_mae",
+                "diff_rel_mae",
+                "origin_block",
+            ]
         )
         return empty, {
             "n_paired_units": 0,
@@ -462,22 +482,20 @@ def paired_transfer_comparison(
         pd.concat([a, b], axis=1, join="inner")
         .dropna()
         .reset_index()
-        .rename(columns={transfer_config: "transfer_rel_mae",
-                         no_transfer_config: "no_transfer_rel_mae"})
+        .rename(
+            columns={
+                transfer_config: "transfer_rel_mae",
+                no_transfer_config: "no_transfer_rel_mae",
+            }
+        )
     )
-    joined["diff_rel_mae"] = (
-        joined["transfer_rel_mae"] - joined["no_transfer_rel_mae"]
-    )
+    joined["diff_rel_mae"] = joined["transfer_rel_mae"] - joined["no_transfer_rel_mae"]
     joined = add_origin_block(joined)
     summary = two_way_block_bootstrap(joined, n_iter=n_iter, seed=seed)
     summary["n_paired_units"] = int(len(joined))
-    summary["prop_units_transfer_better"] = float(
-        (joined["diff_rel_mae"] < 0).mean()
-    )
+    summary["prop_units_transfer_better"] = float((joined["diff_rel_mae"] < 0).mean())
     summary["median_paired_diff"] = float(joined["diff_rel_mae"].median())
-    summary["negative_transfer_rate"] = float(
-        (joined["diff_rel_mae"] > 0).mean()
-    )
+    summary["negative_transfer_rate"] = float((joined["diff_rel_mae"] > 0).mean())
     return joined, summary
 
 

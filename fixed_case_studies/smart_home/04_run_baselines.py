@@ -56,31 +56,53 @@ def baseline_specs() -> list[tuple[str, str, object]]:
         ("persistence", "Persistence (random walk)", f.persistence),
         ("drift", "Drift", f.drift),
         ("snaive_7", "Seasonal naive (7d)", lambda y, h: f.seasonal_naive(y, h, p)),
-        ("snaive_mean_7", "Seasonal naive mean (7d)", lambda y, h: f.seasonal_naive_mean(y, h, p)),
+        (
+            "snaive_mean_7",
+            "Seasonal naive mean (7d)",
+            lambda y, h: f.seasonal_naive_mean(y, h, p),
+        ),
         ("rolling_7", "Rolling mean (7d)", lambda y, h: f.rolling_mean(y, h, p)),
         ("rolling_30", "Rolling mean (30d)", lambda y, h: f.rolling_mean(y, h, 30)),
         ("global_mean", "Global mean", f.global_mean),
         ("arima_111", "ARIMA(1,1,1)", lambda y, h: f.fit_arima(y, h, order=(1, 1, 1))),
         ("arima_211", "ARIMA(2,1,1)", lambda y, h: f.fit_arima(y, h, order=(2, 1, 1))),
-        ("arima_best", "ARIMA (AIC)", lambda y, h: f.fit_arima_best(y, h, seasonal_period=p)),
+        (
+            "arima_best",
+            "ARIMA (AIC)",
+            lambda y, h: f.fit_arima_best(y, h, seasonal_period=p),
+        ),
         ("hw_aa_7", "Holt-Winters (A,A,7d)", lambda y, h: f.fit_holt_winters(y, h, p)),
-        ("hw_am_7", "Holt-Winters (A,M,7d)", lambda y, h: f.fit_holt_winters(y, h, p, seasonal="mul")),
-        ("hw_da_7", "Holt-Winters damped (A,A,7d)", lambda y, h: f.fit_holt_winters(y, h, p, damped_trend=True)),
+        (
+            "hw_am_7",
+            "Holt-Winters (A,M,7d)",
+            lambda y, h: f.fit_holt_winters(y, h, p, seasonal="mul"),
+        ),
+        (
+            "hw_da_7",
+            "Holt-Winters damped (A,A,7d)",
+            lambda y, h: f.fit_holt_winters(y, h, p, damped_trend=True),
+        ),
     ]
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--seed", type=int, default=common.BASE_SEED)
-    ap.add_argument("--progressbar", action="store_true", help="unused; kept for CLI parity")
+    ap.add_argument(
+        "--progressbar", action="store_true", help="unused; kept for CLI parity"
+    )
     args = ap.parse_args()
     seed = args.seed
 
     # Identical splits to 03_run_main.py (primary + rolling origins).
     data_end = pd.Timestamp(cfg.DATA_END)
     splits = [
-        {"train_start": "2016-01-01", "train_end": cfg.PRIMARY_TRAIN_CUTOFF,
-         "label": "primary", "horizon": cfg.HORIZON_DAYS},
+        {
+            "train_start": "2016-01-01",
+            "train_end": cfg.PRIMARY_TRAIN_CUTOFF,
+            "label": "primary",
+            "horizon": cfg.HORIZON_DAYS,
+        },
     ] + [
         {
             **r,
@@ -93,8 +115,11 @@ def main() -> None:
     out_dir = RESULTS_ROOT / "baselines"
     all_units = []
     for split in splits:
-        print(f"[baselines] {split['label']} (train_end={split['train_end']}, "
-              f"horizon={split['horizon']})", flush=True)
+        print(
+            f"[baselines] {split['label']} (train_end={split['train_end']}, "
+            f"horizon={split['horizon']})",
+            flush=True,
+        )
         train, test = load_frozen_split(split["train_end"])
         unit_df = baselines.run_baselines_origin(
             train,
@@ -116,9 +141,7 @@ def main() -> None:
         units.groupby(["origin", "config"])["rel_mae"]
         .median()
         .unstack()
-        .reindex(
-            columns=[c for c, _n, _f in specs]
-        )
+        .reindex(columns=[c for c, _n, _f in specs])
     )
     summary.to_csv(out_dir / "summary_by_origin.csv")
     print(f"\n[baselines] summary by origin -> {out_dir / 'summary_by_origin.csv'}")

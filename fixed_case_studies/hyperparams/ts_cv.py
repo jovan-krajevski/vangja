@@ -132,7 +132,9 @@ def score_fold(
     common_idx = future.index.intersection(held.index)
     if len(common_idx) == 0:
         return {"crps": float("nan"), "mae": float("nan"), "n_groups": 0, "n_points": 0}
-    ens = predictive_draws(model, future.loc[common_idx].reset_index(), n_samples=n_samples, seed=seed)
+    ens = predictive_draws(
+        model, future.loc[common_idx].reset_index(), n_samples=n_samples, seed=seed
+    )
     y = held.loc[common_idx, "y"].to_numpy()
 
     crps_vals, mae_vals = [], []
@@ -141,7 +143,12 @@ def score_fold(
             crps_vals.append(crps_ensemble(ens[:, g, j], float(y[j])))
             mae_vals.append(abs(float(np.mean(ens[:, g, j])) - float(y[j])))
     if not crps_vals:
-        return {"crps": float("nan"), "mae": float("nan"), "n_groups": ens.shape[1], "n_points": 0}
+        return {
+            "crps": float("nan"),
+            "mae": float("nan"),
+            "n_groups": ens.shape[1],
+            "n_points": 0,
+        }
     return {
         "crps": float(np.mean(crps_vals)),
         "mae": float(np.mean(mae_vals)),
@@ -216,7 +223,9 @@ def run_ts_cv(
             kwargs.setdefault("random_seed", seed)
             kwargs.setdefault("progressbar", progressbar)
             model.fit(train_block, **kwargs)
-            score = score_fold(model, held_out, n_samples=n_samples, seed=seed, freq=freq)
+            score = score_fold(
+                model, held_out, n_samples=n_samples, seed=seed, freq=freq
+            )
             if np.isfinite(score["crps"]):
                 crps_list.append(score["crps"])
                 mae_list.append(score["mae"])

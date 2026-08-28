@@ -29,7 +29,11 @@ def perturb_values(value, *, continuous: bool) -> list[float]:
     """Values around ``value``: {value*(1-p), value, value*(1+p)} or
     {value-1, value, value+1} for discrete parameters (floored at >=1)."""
     if not continuous:
-        return [max(1, int(value) - DISCRETE_PERTURBATION), int(value), int(value) + DISCRETE_PERTURBATION]
+        return [
+            max(1, int(value) - DISCRETE_PERTURBATION),
+            int(value),
+            int(value) + DISCRETE_PERTURBATION,
+        ]
     lo = max(1e-3, value * (1.0 - CONTINUOUS_PERTURBATION))
     hi = value * (1.0 + CONTINUOUS_PERTURBATION)
     return [round(lo, 4), value, round(hi, 4)]
@@ -85,7 +89,12 @@ def robustness_sweep(
 
 
 def write_robustness_report(
-    out_dir: Path, study: str, param: str, table: pd.DataFrame, verdict: str, chosen: float
+    out_dir: Path,
+    study: str,
+    param: str,
+    table: pd.DataFrame,
+    verdict: str,
+    chosen: float,
 ) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{study}_{param}_robustness.md"
@@ -95,7 +104,9 @@ def write_robustness_report(
             "",
             f"**Verdict:** {verdict}.",
             "",
-            bayesian._table_md(table) if table is not None and not table.empty else "_no fits_",
+            bayesian._table_md(table)
+            if table is not None and not table.empty
+            else "_no fits_",
             "",
         ]
     )

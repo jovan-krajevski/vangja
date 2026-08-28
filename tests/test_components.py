@@ -454,10 +454,9 @@ class TestVariableNameSafety:
         model = pm.Model()
         with model:
             model_idxs: dict[str, int] = {}
-            (
-                FourierSeasonality(365.25, 3)
-                + FourierSeasonality(7, 2)
-            ).definition(model, sample_data, model_idxs, None, None)
+            (FourierSeasonality(365.25, 3) + FourierSeasonality(7, 2)).definition(
+                model, sample_data, model_idxs, None, None
+            )
         names = [v.name for v in model.free_RVs]
         assert "fs_0 - beta" in names
         assert "fs_1 - beta" in names

@@ -9,7 +9,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from fixed_case_studies.hyperparams import bayesian, candidates, robustness, scoring, stacking, ts_cv
+from fixed_case_studies.hyperparams import (
+    bayesian,
+    candidates,
+    robustness,
+    scoring,
+    stacking,
+    ts_cv,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -159,10 +166,17 @@ class TestPriorPredictiveSweep:
             return LinearTrend(n_changepoints=0) + FourierSeasonality(7, 2, **kw)
 
         data = sample_data.copy()
-        data["t"] = (data["ds"] - data["ds"].min()) / (data["ds"].max() - data["ds"].min())
+        data["t"] = (data["ds"] - data["ds"].min()) / (
+            data["ds"].max() - data["ds"].min()
+        )
         table = bayesian.prior_predictive_sweep(
-            factory, data, "beta_sd", [0.1, 1.0],
-            samples=100, seed=0, fit_kwargs={"method": "mapx"},
+            factory,
+            data,
+            "beta_sd",
+            [0.1, 1.0],
+            samples=100,
+            seed=0,
+            fit_kwargs={"method": "mapx"},
         )
         assert list(table.columns) == ["beta_sd", "coverage", "verdict"]
         assert len(table) == 2
@@ -188,8 +202,10 @@ class TestTsCv:
 
     def test_fold_future_uses_model_scale(self):
         class FakeModel:
-            t_scale_params = {"ds_min": pd.Timestamp("2020-01-01"),
-                              "ds_max": pd.Timestamp("2020-02-29")}
+            t_scale_params = {
+                "ds_min": pd.Timestamp("2020-01-01"),
+                "ds_max": pd.Timestamp("2020-02-29"),
+            }
 
         held = pd.DataFrame({"ds": pd.date_range("2020-02-10", periods=3, freq="D")})
         future = ts_cv.fold_future(FakeModel(), held)

@@ -74,9 +74,7 @@ def _multi_data(n_per_series: int = 20, n_series: int = 2) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
-def _compile_potential(
-    component, data, model, loss_name: str, param_name: str
-):
+def _compile_potential(component, data, model, loss_name: str, param_name: str):
     """Compile the named Potential as a pytensor function of the parameter RV."""
     component.definition(model, data, {}, priors=None, idata=_slope_idata())
     param = model.named_vars[param_name]
@@ -266,9 +264,13 @@ class TestSeasonalRegularizationScale:
         beta_key = "fs_0 - beta"
         model = pm.Model()
         with model:
-            fs.definition(model, data, {}, priors=None, idata=_make_idata(
-                {beta_key: np.tile(self.BETA_MEAN, (1, 10, 1))}
-            ))
+            fs.definition(
+                model,
+                data,
+                {},
+                priors=None,
+                idata=_make_idata({beta_key: np.tile(self.BETA_MEAN, (1, 10, 1))}),
+            )
             beta = model.named_vars[beta_key]
             loss = model.named_vars[f"{beta_key} - loss"]
             f = pytensor.function([beta], loss)
@@ -303,8 +305,8 @@ class TestSeasonalRegularizationScale:
         new_beta = 2.0 * self.BETA_MEAN
         values = {}
         for pool_type in ["complete", "partial", "individual"]:
-            data = _single_data() if pool_type == "complete" else _multi_data(
-                n_series=1
+            data = (
+                _single_data() if pool_type == "complete" else _multi_data(n_series=1)
             )
             _, f = self._compile(pool_type, data)
             values[pool_type] = (
@@ -471,9 +473,7 @@ class TestSlopeTransferDefinition:
         """If the posterior has no delta variable, the raw slope is used."""
         lt = LinearTrend(n_changepoints=3, delta_side="left")
         lt.model_idx = 0
-        slope_mean, slope_sd = lt._get_slope_params_from_idata(
-            _slope_idata(mu=0.5)
-        )
+        slope_mean, slope_sd = lt._get_slope_params_from_idata(_slope_idata(mu=0.5))
         assert slope_mean == pytest.approx(0.5)
         assert slope_sd == pytest.approx(0.0, abs=1e-6)
 
@@ -484,7 +484,5 @@ class TestSlopeTransferDefinition:
             override_slope_mean_for_tune=np.array(7.0),
         )
         lt.model_idx = 0
-        slope_mean, _ = lt._get_slope_params_from_idata(
-            self._make_idata_with_delta()
-        )
+        slope_mean, _ = lt._get_slope_params_from_idata(self._make_idata_with_delta())
         assert slope_mean == pytest.approx(7.0)

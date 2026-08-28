@@ -32,7 +32,12 @@ from vangja.utils import (
 # ---------------------------------------------------------------------------
 
 
-def _make_predictive_idata(n_obs: int = 50, n_chains: int = 1, n_draws: int = 100, group: str = "prior_predictive"):
+def _make_predictive_idata(
+    n_obs: int = 50,
+    n_chains: int = 1,
+    n_draws: int = 100,
+    group: str = "prior_predictive",
+):
     """Create a mock InferenceData with prior or posterior predictive samples.
 
     Uses the DataTree-based constructor required by arviz >= 1.x.
@@ -46,9 +51,7 @@ def _make_predictive_idata(n_obs: int = 50, n_chains: int = 1, n_draws: int = 10
             "obs_dim_0": np.arange(n_obs),
         },
     )
-    return az.InferenceData(
-        xr.Dataset(), children={group: xr.DataTree(dataset)}
-    )
+    return az.InferenceData(xr.Dataset(), children={group: xr.DataTree(dataset)})
 
 
 def _make_trace_idata(var_dict: dict | None = None):
@@ -113,7 +116,10 @@ def posterior_idata():
 @pytest.fixture
 def sample_data_50():
     return pd.DataFrame(
-        {"ds": pd.date_range("2020-01-01", periods=50), "y": np.random.randn(50) * 10 + 50}
+        {
+            "ds": pd.date_range("2020-01-01", periods=50),
+            "y": np.random.randn(50) * 10 + 50,
+        }
     )
 
 
@@ -170,7 +176,9 @@ class TestPlotPriorPredictive:
         ax = plot_prior_predictive(prior_idata, show_hdi=True, hdi_prob=0.9)
         # fill_between creates a PolyCollection
         poly_collections = [
-            c for c in ax.collections if isinstance(c, matplotlib.collections.PolyCollection)
+            c
+            for c in ax.collections
+            if isinstance(c, matplotlib.collections.PolyCollection)
         ]
         assert len(poly_collections) >= 1
         plt.close("all")
@@ -180,7 +188,8 @@ class TestPlotPriorPredictive:
         ax = plot_prior_predictive(prior_idata, show_ref_lines=True, ref_values=(-1, 1))
         # axhline adds Line2D objects; look for dashed red lines
         ref_lines = [
-            line for line in ax.get_lines()
+            line
+            for line in ax.get_lines()
             if line.get_linestyle() == "--" and line.get_color() == "red"
         ]
         assert len(ref_lines) == 2
@@ -220,7 +229,8 @@ class TestPlotPriorPredictive:
             prior_idata, show_ref_lines=True, ref_values=(-3.0, 3.0)
         )
         ref_lines = [
-            line for line in ax.get_lines()
+            line
+            for line in ax.get_lines()
             if line.get_linestyle() == "--" and line.get_color() == "red"
         ]
         assert len(ref_lines) == 2
@@ -263,7 +273,9 @@ class TestPlotPosteriorPredictive:
     def test_show_hdi(self, posterior_idata):
         ax = plot_posterior_predictive(posterior_idata, show_hdi=True)
         poly_collections = [
-            c for c in ax.collections if isinstance(c, matplotlib.collections.PolyCollection)
+            c
+            for c in ax.collections
+            if isinstance(c, matplotlib.collections.PolyCollection)
         ]
         assert len(poly_collections) >= 1
         plt.close("all")
@@ -271,7 +283,8 @@ class TestPlotPosteriorPredictive:
     def test_show_ref_lines(self, posterior_idata):
         ax = plot_posterior_predictive(posterior_idata, show_ref_lines=True)
         ref_lines = [
-            line for line in ax.get_lines()
+            line
+            for line in ax.get_lines()
             if line.get_linestyle() == "--" and line.get_color() == "red"
         ]
         assert len(ref_lines) == 2

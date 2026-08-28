@@ -41,8 +41,12 @@ def main() -> None:
 
     data_end = pd.Timestamp(cfg.DATA_END)
     splits = [
-        {"train_start": "2016-01-01", "train_end": PRIMARY_TRAIN_CUTOFF,
-         "label": "primary", "horizon": cfg.HORIZON_DAYS},
+        {
+            "train_start": "2016-01-01",
+            "train_end": PRIMARY_TRAIN_CUTOFF,
+            "label": "primary",
+            "horizon": cfg.HORIZON_DAYS,
+        },
     ] + [
         {
             **r,
@@ -61,9 +65,15 @@ def main() -> None:
                 else [seed_for(oi, ci)]
             )
             for seed in seeds:
-                print(f"[retrospective] {split['label']} :: {name} :: seed {seed}", flush=True)
+                print(
+                    f"[retrospective] {split['label']} :: {name} :: seed {seed}",
+                    flush=True,
+                )
                 run_cell(
-                    cell_cfg, split, seed=seed, out_dir=out_dir,
+                    cell_cfg,
+                    split,
+                    seed=seed,
+                    out_dir=out_dir,
                     progressbar=args.progressbar,
                 )
     print("Smart-home main run finished. Results in", out_dir)
