@@ -149,7 +149,12 @@ class FourierSeasonality(TimeSeriesModel):
         See the class docstring for full parameter descriptions.
         """
         self.period = period
-        self.series_order = series_order
+        # ``series_order`` is a count (shape/``range()`` argument): integral
+        # floats (e.g. 3.0 from a workflow that round-trips values through
+        # strings) are coerced, genuinely fractional values are rejected.
+        if isinstance(series_order, (float, np.floating)) and not float(series_order).is_integer():
+            raise ValueError(f"series_order must be an integer, got {series_order!r}")
+        self.series_order = int(series_order)
         self.beta_mean = beta_mean
         self.beta_sd = beta_sd
         self.shrinkage_strength = shrinkage_strength
@@ -554,7 +559,7 @@ class FourierSeasonality(TimeSeriesModel):
             else:
                 beta = map_approx[f"prior_{beta_key}"]
 
-            if self.pool_type != "complete" and self.n_groups > 1:
+            if self.pool_type != "complete":
                 beta = beta[group_code]
             forecasts.append(
                 self._det_seasonality_posterior(beta, self._fourier_series(future))
@@ -582,7 +587,7 @@ class FourierSeasonality(TimeSeriesModel):
                 )
 
             # Handle per-group parameters
-            if self.pool_type != "complete" and self.n_groups > 1:
+            if self.pool_type != "complete":
                 beta = beta[group_code]
 
             forecast = self._det_seasonality_posterior(

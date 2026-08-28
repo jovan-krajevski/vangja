@@ -169,6 +169,11 @@ class LinearTrend(TimeSeriesModel):
         See the class docstring for full parameter descriptions.
         """
         self.n_changepoints = n_changepoints
+        # ``n_changepoints`` is a count (shape/``np.linspace`` argument):
+        # coerce integral floats, reject genuinely fractional values.
+        if isinstance(n_changepoints, (float, np.floating)) and not float(n_changepoints).is_integer():
+            raise ValueError(f"n_changepoints must be an integer, got {n_changepoints!r}")
+        self.n_changepoints = int(n_changepoints)
         self.changepoint_range = changepoint_range
         self.slope_mean = slope_mean
         self.slope_sd = slope_sd
@@ -773,13 +778,17 @@ class LinearTrend(TimeSeriesModel):
 
         # Only set initvals for free RVs (skip Deterministic from prior_from_idata)
         if slope_var in model.free_RVs:
-            if self.pool_type == "complete" or self.n_groups == 1:
+            # Complete pooling creates a scalar variable; individual (and
+            # partial-free) pooling creates a shape-(n_groups,) variable, so
+            # the initval must be an array even when n_groups == 1 (a scalar
+            # initval for a vector variable breaks ADVI's start handling).
+            if self.pool_type == "complete":
                 result[slope_var] = slopes[0]
             else:
                 result[slope_var] = np.array(slopes)
 
         if intercept_var in model.free_RVs:
-            if self.pool_type == "complete" or self.n_groups == 1:
+            if self.pool_type == "complete":
                 result[intercept_var] = intercepts[0]
             else:
                 result[intercept_var] = np.array(intercepts)
@@ -812,7 +821,7 @@ class LinearTrend(TimeSeriesModel):
                         self.pool_type == "partial"
                         and self.delta_pool_type in ["partial", "individual"]
                     )
-                ) and self.n_groups > 1:
+                ):
                     delta = delta[group_code]
 
                 slope_correction = new_A @ delta
@@ -828,7 +837,7 @@ class LinearTrend(TimeSeriesModel):
             else:
                 intercept = map_approx[f"prior_{intercept_key}"]
 
-            if self.pool_type != "complete" and self.n_groups > 1:
+            if self.pool_type != "complete":
                 slope = slope[group_code]
                 intercept = intercept[group_code]
 
@@ -868,7 +877,7 @@ class LinearTrend(TimeSeriesModel):
                 )
 
             # Handle per-group parameters
-            if self.pool_type != "complete" and self.n_groups > 1:
+            if self.pool_type != "complete":
                 slope = slope[group_code] if slope.ndim > 0 else slope
                 intercept = intercept[group_code] if intercept.ndim > 0 else intercept
 
@@ -893,7 +902,7 @@ class LinearTrend(TimeSeriesModel):
                         self.pool_type == "partial"
                         and self.delta_pool_type in ["partial", "individual"]
                     )
-                ) and self.n_groups > 1:
+                ):
                     delta = delta[group_code]
 
                 slope_correction = new_A @ delta

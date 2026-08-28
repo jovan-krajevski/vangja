@@ -111,7 +111,7 @@ def build_target_model(cfg: SmartHomeConfig):
     )
     yearly = FourierSeasonality(
         period=365.25,
-        series_order=5,
+        series_order=cfg.yearly_order,
         beta_sd=cfg.beta_sd,
         pool_type=cfg.yearly_pool,
         tune_method=cfg.tune_method,
@@ -120,7 +120,7 @@ def build_target_model(cfg: SmartHomeConfig):
     )
     weekly = FourierSeasonality(
         period=7,
-        series_order=3,
+        series_order=cfg.weekly_order,
         beta_sd=cfg.beta_sd,
         pool_type=cfg.weekly_pool,
         shrinkage_strength=cfg.shrinkage,

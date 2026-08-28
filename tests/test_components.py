@@ -462,3 +462,61 @@ class TestVariableNameSafety:
         assert "fs_0 - beta" in names
         assert "fs_1 - beta" in names
         assert len(set(names)) == len(names)
+
+
+class TestSingleSeriesNonCompletePooling:
+    """Regression: individual/partial pooling with a single series must
+    produce correctly-shaped initvals and predictions.
+
+    The old code special-cased ``n_groups == 1`` and passed scalar initvals
+    for shape-(1,) variables, which broke ADVI (TypeError in
+    ``_prepare_start``), and skipped per-group indexing in ``_predict_map``,
+    which produced 2-D prediction columns that broke
+    ``predict_uncertainty``'s DataFrame assembly.
+    """
+
+    def test_advi_fit_individual_pooling_single_series(self, sample_data):
+        model = FlatTrend(pool_type="individual") + FourierSeasonality(
+            30.4375, 2, pool_type="individual"
+        )
+        model.fit(
+            sample_data,
+            scaler="minmax",
+            method="advi",
+            n=2000,
+            samples=300,
+            random_seed=1,
+            progressbar=False,
+        )
+        assert model.trace is not None
+        assert "ft_0 - intercept" in model.trace.posterior.data_vars
+
+    def test_advi_fit_linear_trend_partial_single_series(self, sample_data):
+        data = sample_data.copy()
+        model = LinearTrend(n_changepoints=2, pool_type="partial")
+        model.fit(
+            data,
+            scaler="maxabs",
+            method="advi",
+            n=2000,
+            samples=300,
+            random_seed=1,
+            progressbar=False,
+        )
+        assert model.trace is not None
+
+    def test_predict_uncertainty_individual_pooling_single_series(self, sample_data):
+        model = FlatTrend(pool_type="individual") + FourierSeasonality(
+            30.4375, 2, pool_type="individual"
+        )
+        model.fit(
+            sample_data,
+            scaler="minmax",
+            method="advi",
+            n=2000,
+            samples=300,
+            random_seed=1,
+            progressbar=False,
+        )
+        future = model.predict_uncertainty(horizon=7, uncertainty_samples=50)
+        assert {"yhat_0", "yhat_lower_0", "yhat_upper_0"} <= set(future.columns)

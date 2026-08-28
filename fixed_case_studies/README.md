@@ -81,7 +81,7 @@ dependency-pinning item is also closed.
   `protocol/CONFIRMATION_ORIGINS.csv` (SHA-256
   `ab70ebfbf3cefed315785095d4c5c754791621a3b67cf88763689d784fcc29a0`),
   which is committed **before** any confirmation results are produced.
-  `03_run_confirmation.py` verifies the hash and refuses to score if the
+  `04_run_confirmation.py` verifies the hash and refuses to score if the
   file was modified. Horizon overlap between monthly origins is handled by
   block-resampling whole origin blocks in the paired comparison (§3.8).
 - **Smart home (2016):** retrospective. There is no independent confirmation
@@ -180,7 +180,7 @@ sensitivity of §3.6, confirmation origins, high-weight subset only).
   disclosed and probed by the **negative-control sensitivity**: transfer
   from gold futures (`GC=F`, unrelated to the constituents) on a frozen
   high-weight mega-cap subset, compared with S&P-transfer on the same subset
-  (`04_run_ablations.py`).
+  (`05_run_ablations.py`).
 - **Trading days only:** `load_stock_data(..., interpolate=False)`; no
   calendar-day invention, no cross-split interpolation (F-9).
 
@@ -219,7 +219,7 @@ could not demonstrate that posterior *covariance* was preserved. Here:
   `target_accept=0.9`, seeded), so the transferred `prior_from_idata`
   prior carries genuine covariance. ADVI is allowed for development
   screening only and is never used as covariance evidence.
-- `stocks/05_covariance_transfer.py` saves the source posterior, its
+- `stocks/06_covariance_transfer.py` saves the source posterior, its
   covariance/correlation matrices, and directly compares **joint transfer**
   (`prior_from_idata`) with **marginal moment matching** (`parametric`) on
   forecasting performance. The result determines how the paper presents the
@@ -228,7 +228,7 @@ could not demonstrate that posterior *covariance* was preserved. Here:
 
 ### 3.10 Uncertainty & calibration (F-15, P1-2, P1-4)
 
-- MAP is a point estimate; `stocks/06_calibration.py` records multi-start
+- MAP is a point estimate; `stocks/07_calibration.py` records multi-start
   optimizer diagnostics (status, objective, gradient norm, parameter spread)
   for the finalists.
 - Empirical coverage/width of the MAP residual-based intervals on the test
@@ -282,16 +282,21 @@ temperature context from 2013-01-01 up to each origin's training end.
 
 | Parameter | Value | Why |
 |---|---|---|
-| trend | `FlatTrend(0.5, 0.5)` individual | energy use hovers around a stable mean; 0.5 is the middle of the retrospective grid {0.1, 0.5, 1.0} |
-| yearly | FS(365.25, 5), `beta_sd=1.5`, partial, shrinkage 1 | the paper's described configuration (1.5 = the maximum grid value, matching the paper text) |
-| weekly | FS(7, 3), partial, shrinkage 1 | as in the original runner |
+| trend | `FlatTrend(0.5, 0.1)` individual | energy use hovers around a stable mean; the level is well identified from 91 days, and the Bayesian selection chose the smallest grid value 0.1 (PSIS-LOO on ADVI + NUTS verification and leave-future-out CRPS all agree; see `smart_home/best_hyperparams.md` §3) |
+| yearly | FS(365.25, 5), `beta_sd=0.25`, partial, shrinkage 1 | order 5 is **required by the transfer design** (the temperature context model's order; the `prior_from_idata` dimension is tied to the source order) and the NUTS verification shows no cost vs order 3; `beta_sd=0.25` is the PSIS-LOO winner (>1 dse) with the PPC caveat disclosed (§4.1) |
+| weekly | FS(7, 2), partial, shrinkage 1 | household-specific and **not transferred**, so a free choice: NUTS verification and leave-future-out CRPS prefer 2 over the frozen 3, and it is the parsimonious option (§4.2) |
 | uniform constant | on, `[-1,1]`, shrinkage 1 | sign-flipping seasonal factor (heating vs cooling appliances); its effect is probed by the `uniform_constant_off` ablation |
 | transfer | `prior_from_idata` on the yearly seasonality only | temperature informs the yearly shape; weekly patterns are household-specific |
 | `loss_factor` | 0 | the amplitude cap is probed in the `regularised` ablation |
 | scaler | minmax, individual scaling, σ individual | inherited from the original runner |
 
 These choices are defensible a priori and match the modelling narrative of
-the paper. If any of them is wrong, the ablations will show it — and that is
+the paper. The prior scales (`intercept_sd`, `beta_sd`) and the weekly order
+were then **re-selected by the Bayesian workflow on training windows only**
+(`02_select_hyperparams.py`; evidence and defence in
+`smart_home/best_hyperparams.md`) and frozen deliberately into
+`smart_home/config.py`; the yearly order is fixed at 5 by the transfer
+dimension. If any of them is wrong, the ablations will show it — and that is
 exactly the point of running a few targeted ablations instead of a grid.
 
 ---
@@ -310,25 +315,29 @@ uv sync --extra test --extra datasets
 # 1. Fetch universe + data (network; writes data/ with SHA-256 sidecars)
 python fixed_case_studies/stocks/01_fetch_data.py
 
-# 2. Retrospective development runs (24 origins x 7 configs; ADVI source)
-python fixed_case_studies/stocks/02_run_development.py
+# 2. Bayesian hyperparameter selection on development training windows
+#    (recommendations are then frozen deliberately into stocks/config.py)
+python fixed_case_studies/stocks/02_select_hyperparams.py [--verify]
 
-# 3. Confirmation runs (24 frozen origins x 7 configs; NUTS source;
+# 3. Retrospective development runs (24 origins x 7 configs; ADVI source)
+python fixed_case_studies/stocks/03_run_development.py
+
+# 4. Confirmation runs (24 frozen origins x 7 configs; NUTS source;
 #    hash-verified origins; repeated seeds for main & no_transfer)
-python fixed_case_studies/stocks/03_run_confirmation.py
+python fixed_case_studies/stocks/04_run_confirmation.py
 
-# 4. Targeted analyses: former-headline reproduction (dev only) and the
+# 5. Targeted analyses: former-headline reproduction (dev only) and the
 #    gold negative-control sensitivity (confirmation, high-weight subset)
-python fixed_case_studies/stocks/04_run_ablations.py
+python fixed_case_studies/stocks/05_run_ablations.py
 
-# 5. Covariance transfer: joint vs marginal on a NUTS-fitted source
-python fixed_case_studies/stocks/05_covariance_transfer.py --origin 2023-01-01
+# 6. Covariance transfer: joint vs marginal on a NUTS-fitted source
+python fixed_case_studies/stocks/06_covariance_transfer.py --origin 2023-01-01
 
-# 6. Calibration + MAP diagnostics for the finalists
-python fixed_case_studies/stocks/06_calibration.py --origin 2023-01-01
+# 7. Calibration + MAP diagnostics for the finalists
+python fixed_case_studies/stocks/07_calibration.py --origin 2023-01-01
 
-# 7. Aggregates, tables, block-bootstrap paired comparison
-python fixed_case_studies/stocks/07_report.py
+# 8. Aggregates, tables, block-bootstrap paired comparison
+python fixed_case_studies/stocks/08_report.py
 ```
 
 Every script supports `--origins` / `--configs` subsets for testing, and
@@ -339,13 +348,40 @@ all runs checkpoint (resubmit to continue). Outputs go to
 
 ```bash
 python fixed_case_studies/smart_home/01_fetch_data.py
-python fixed_case_studies/smart_home/02_run_main.py
-python fixed_case_studies/smart_home/03_report.py
+python fixed_case_studies/smart_home/02_select_hyperparams.py
+python fixed_case_studies/smart_home/03_run_main.py
+python fixed_case_studies/smart_home/04_report.py
 ```
 
-All outputs are labelled `retrospective`.
+All outputs are labelled `retrospective`. The hyperparameter selection
+(`02_select_hyperparams.py`) runs on training windows only; its chosen
+values are then frozen deliberately into `smart_home/config.py` (see
+`smart_home/best_hyperparams.md` for the evidence and defence).
 
-### 5.3 HPC
+### 5.3 Bayesian hyperparameter selection (both studies)
+
+The Prophet-inherited hyperparameters (`intercept_sd`, `beta_sd`,
+`series_order`, `n_changepoints`, `slope_sd`) are set by a **Bayesian
+workflow on development training windows only** — no test horizon is ever
+used (the old grid selected on test MAPE, REVIEW/FINDINGS.md F-1).  See
+`HYPERPARAMETER_SELECTION.md` for the full protocol and the alternative
+strategies (leave-future-out CRPS, model averaging, robustness sweeps,
+full-Bayes hyperpriors); all of them are implemented in
+`fixed_case_studies/hyperparams/`.
+
+```bash
+# smart home (4 appliances x 91-day training windows; ~10-20 min screening)
+python fixed_case_studies/smart_home/02_select_hyperparams.py
+# stocks (3 dev origins x 10 stocks; ~30-60 min screening; --verify adds NUTS)
+python fixed_case_studies/stocks/02_select_hyperparams.py [--verify]
+```
+
+Outputs (gitignored): `results_hyperparams/*_selection.md` (per-hyperparameter
+evidence), `*_recommendations.json` (chosen value + justification).  The
+scripts **never modify `config.py`**; freezing a recommendation is a
+deliberate step that must update the per-value justification in §4.
+
+### 5.4 HPC
 
 The original SLURM/Singularity scripts in `../case_studies/` can be reused
 verbatim — the entry points are the `python fixed_case_studies/...` commands
@@ -353,7 +389,7 @@ above. Expected scale: the confirmation stage is the heavy part (per origin:
 one NUTS context fit, reused across configs via the source cache, plus 7
 MAP target fits; finalists × 3 seeds).
 
-### 5.4 What "satisfying the audit" means, concretely
+### 5.5 What "satisfying the audit" means, concretely
 
 | Audit requirement | Where satisfied |
 |---|---|
@@ -365,9 +401,9 @@ MAP target fits; finalists × 3 seeds).
 | seeds/target_accept/NUTS dispatch (F-11) | §3.11 + `fit()` fix + tests |
 | Relative MAE primary metric (F-13) | §3.2 + `utils.relative_mae` + tests |
 | honest baselines (F-14) | §3.4, §3.5 — relabelled arms; no Prophet claim |
-| calibrated uncertainty (F-15) | §3.10 + `06_calibration.py` |
+| calibrated uncertainty (F-15) | §3.10 + `07_calibration.py` |
 | transfer vs hierarchy attribution (F-16) | §3.4 four-arm design |
-| covariance evidence (F-8) | §3.9 + NUTS sources on confirmation + `05_covariance_transfer.py` |
+| covariance evidence (F-8) | §3.9 + NUTS sources on confirmation + `06_covariance_transfer.py` |
 | universe & survivorship provenance (P0-16) | §3.6 + `01_fetch_data.py` |
 | dependence-aware inference (P0-18) | §3.8 + `common.two_way_block_bootstrap` |
 

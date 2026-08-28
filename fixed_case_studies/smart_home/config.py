@@ -61,6 +61,12 @@ class SmartHomeConfig:
     uniform_constant: bool       # sign-flipping factor on the yearly seasonality
     intercept_sd: float
     beta_sd: float
+    # Fourier orders (selected by the Bayesian workflow on training windows
+    # only; see best_hyperparams.md).  yearly_order must equal the
+    # temperature context model's order (5): the prior_from_idata transfer
+    # dimension is tied to the source order.
+    yearly_order: int = 5
+    weekly_order: int = 2
     include_context_group: bool = False
 
 
@@ -78,8 +84,10 @@ CONFIGS: dict[str, SmartHomeConfig] = {
         weekly_pool="partial",
         shrinkage=1,
         uniform_constant=True,
-        intercept_sd=0.5,
-        beta_sd=1.5,
+        intercept_sd=0.1,
+        beta_sd=0.25,
+        yearly_order=5,
+        weekly_order=2,
     ),
     # --- Reduced transfer x hierarchy design (PROTOCOL.md §7) ---------------
     "no_transfer": SmartHomeConfig(
@@ -94,8 +102,10 @@ CONFIGS: dict[str, SmartHomeConfig] = {
         weekly_pool="partial",
         shrinkage=1,
         uniform_constant=True,
-        intercept_sd=0.5,
-        beta_sd=1.5,
+        intercept_sd=0.1,
+        beta_sd=0.25,
+        yearly_order=5,
+        weekly_order=2,
     ),
     "target_only": SmartHomeConfig(
         name="target_only",
@@ -110,8 +120,10 @@ CONFIGS: dict[str, SmartHomeConfig] = {
         weekly_pool="individual",
         shrinkage=1,
         uniform_constant=False,
-        intercept_sd=0.5,
-        beta_sd=1.5,
+        intercept_sd=0.1,
+        beta_sd=0.25,
+        yearly_order=5,
+        weekly_order=2,
     ),
     "context_group": SmartHomeConfig(
         name="context_group",
@@ -125,8 +137,10 @@ CONFIGS: dict[str, SmartHomeConfig] = {
         weekly_pool="partial",
         shrinkage=1,
         uniform_constant=True,
-        intercept_sd=0.5,
-        beta_sd=1.5,
+        intercept_sd=0.1,
+        beta_sd=0.25,
+        yearly_order=5,
+        weekly_order=2,
         include_context_group=True,
     ),
     # --- Single-perturbation ablations of the main configuration ------------
@@ -143,8 +157,10 @@ CONFIGS: dict[str, SmartHomeConfig] = {
         weekly_pool="partial",
         shrinkage=1,
         uniform_constant=True,
-        intercept_sd=0.5,
-        beta_sd=1.5,
+        intercept_sd=0.1,
+        beta_sd=0.25,
+        yearly_order=5,
+        weekly_order=2,
     ),
     "uniform_constant_off": SmartHomeConfig(
         name="uniform_constant_off",
@@ -155,8 +171,10 @@ CONFIGS: dict[str, SmartHomeConfig] = {
         weekly_pool="partial",
         shrinkage=1,
         uniform_constant=False,
-        intercept_sd=0.5,
-        beta_sd=1.5,
+        intercept_sd=0.1,
+        beta_sd=0.25,
+        yearly_order=5,
+        weekly_order=2,
     ),
     "shrinkage_10": SmartHomeConfig(
         name="shrinkage_10",
@@ -167,8 +185,10 @@ CONFIGS: dict[str, SmartHomeConfig] = {
         weekly_pool="partial",
         shrinkage=10,
         uniform_constant=True,
-        intercept_sd=0.5,
-        beta_sd=1.5,
+        intercept_sd=0.1,
+        beta_sd=0.25,
+        yearly_order=5,
+        weekly_order=2,
     ),
 }
 

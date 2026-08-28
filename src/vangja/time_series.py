@@ -1015,7 +1015,9 @@ class TimeSeriesModel:
         else:
             plt.show()
 
-    def sample_prior_predictive(self, samples: int = 500) -> az.InferenceData:
+    def sample_prior_predictive(
+        self, samples: int = 500, random_seed: int | None = None
+    ) -> az.InferenceData:
         """Sample from the prior predictive distribution.
 
         Generates simulated observations from the model's priors *before*
@@ -1026,6 +1028,8 @@ class TimeSeriesModel:
         ----------
         samples : int, default 500
             Number of samples to draw from the prior predictive.
+        random_seed : int or None, default None
+            Seed for the prior-predictive draw.
 
         Returns
         -------
@@ -1051,7 +1055,7 @@ class TimeSeriesModel:
         if not hasattr(self, "model"):
             raise RuntimeError("Model must be fit before sampling prior predictive.")
         with self.model:
-            return pm.sample_prior_predictive(samples=samples)
+            return pm.sample_prior_predictive(draws=samples, random_seed=random_seed)
 
     def sample_posterior_predictive(
         self, random_seed: int | None = None

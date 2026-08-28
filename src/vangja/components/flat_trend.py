@@ -377,7 +377,11 @@ class FlatTrend(TimeSeriesModel):
 
         # Only set initvals for free RVs (skip Deterministic from prior_from_idata)
         if intercept_var in model.free_RVs:
-            if self.pool_type == "complete" or self.n_groups == 1:
+            # Complete pooling creates a scalar variable; individual (and
+            # partial-free) pooling creates a shape-(n_groups,) variable, so
+            # the initval must be an array even when n_groups == 1 (a scalar
+            # initval for a vector variable breaks ADVI's start handling).
+            if self.pool_type == "complete":
                 result[intercept_var] = intercepts[0] or 0
             else:
                 result[intercept_var] = np.array([i or 0 for i in intercepts])
@@ -408,7 +412,7 @@ class FlatTrend(TimeSeriesModel):
         for group_code in self.groups_.keys():
             intercept = map_approx[f"ft_{self.model_idx} - intercept"]
 
-            if self.pool_type != "complete" and self.n_groups > 1:
+            if self.pool_type != "complete":
                 intercept = intercept[group_code]
 
             forecast = np.ones(len(future)) * intercept
@@ -443,7 +447,7 @@ class FlatTrend(TimeSeriesModel):
                 f"ft_{self.model_idx} - intercept"
             ].to_numpy()
 
-            if self.pool_type != "complete" and self.n_groups > 1:
+            if self.pool_type != "complete":
                 intercept = intercept_samples[:, :, group_code].mean()
             else:
                 intercept = intercept_samples.mean()
