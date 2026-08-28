@@ -3248,6 +3248,7 @@ dev = [
     { name = "pandoc" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "ruff" },
     { name = "sphinx" },
     { name = "sphinx-book-theme" },
 ]
@@ -3274,11 +3275,6 @@ test = [
     { name = "pytest-cov" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "ruff" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "blackjax", specifier = "~=1.6.2" },
@@ -3297,6 +3293,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'test'", specifier = ">=9.1.1" },
     { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=7.1.0" },
     { name = "requests", marker = "extra == 'datasets'", specifier = ">=2.31.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.16.5" },
     { name = "scikit-learn", specifier = "~=1.9.0" },
     { name = "seaborn", marker = "extra == 'reproducibility'", specifier = ">=0.13.2" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=9.1.0" },
@@ -3307,9 +3304,6 @@ requires-dist = [
     { name = "yfinance", marker = "extra == 'datasets'", specifier = ">=1.6.0" },
 ]
 provides-extras = ["datasets", "test", "docs", "dev", "reproducibility"]
-
-[package.metadata.requires-dev]
-dev = [{ name = "ruff", specifier = ">=0.16.5" }]
 
 [[package]]
 name = "wcwidth"
