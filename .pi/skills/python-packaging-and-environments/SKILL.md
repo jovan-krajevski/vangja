@@ -1,6 +1,6 @@
 ---
 name: python-packaging-and-environments
-description: Change or verify the Vangja Python environment: dependencies, lockfile, extras, containers, or CI. Use when adding or relaxing a pin, running uv sync/lock, building the Singularity image, preparing an experiment environment fingerprint, or when an import fails on a cluster. Contains the pin rationale and the freeze_report fingerprint block used in manifests.
+description: "Change or verify the Vangja Python environment: dependencies, lockfile, extras, containers, or CI. Use when adding or relaxing a pin, running uv sync/lock, building the Singularity image, preparing an experiment environment fingerprint, or when an import fails on a cluster. Contains the pin rationale and the freeze_report fingerprint block used in manifests."
 ---
 
 # Python packaging and environments

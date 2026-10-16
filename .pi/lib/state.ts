@@ -39,7 +39,11 @@ const TRANSITIONS: Record<LoopStateName, LoopStateName[]> = {
 	WORK: ["REVIEW", "WAITING_HPC", "BLOCKED", "PAUSED", "DONE"],
 	WAITING_HPC: ["WORK", "BLOCKED", "PAUSED", "DONE"],
 	REVIEW: ["WORK", "MERGE", "SELECT_TASK", "BLOCKED", "PAUSED", "DONE"],
-	MERGE: ["POST_MERGE", "AUDIT", "BLOCKED", "PAUSED", "DONE"],
+	// MERGE → WORK is the human-gate rejection path: plan/09_OPERATIONS_RUNBOOK.md §3
+	// ("rejecting a gate sends the loop back with your note attached to the task; it
+	// does not stop the run") needs a legal edge back to WORK, otherwise a rejected
+	// merge gate deadlocks the loop.
+	MERGE: ["POST_MERGE", "AUDIT", "WORK", "BLOCKED", "PAUSED", "DONE"],
 	POST_MERGE: ["SELECT_TASK", "READINESS", "BLOCKED", "PAUSED", "DONE"],
 	READINESS: ["PAPER", "SELECT_TASK", "BLOCKED", "PAUSED", "DONE"],
 	PAPER: ["PAPER_REVIEW", "BLOCKED", "PAUSED", "DONE"],

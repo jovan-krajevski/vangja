@@ -125,7 +125,8 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3. merge_pr: refused for phd_candidate, accepted by the stub for supervisor.
+# 3. merge_pr: refused for phd_candidate; refused by the conductor without an
+#    accepted review; no merge event is appended in either case.
 # ---------------------------------------------------------------------------
 BEFORE_MERGE=$(event_lines)
 run_pi_json phd_candidate "read,merge_pr" phd_candidate__T-002__1 merge-refused \
@@ -135,22 +136,27 @@ if grep -q "guard:ROLE" "$OUT/merge-refused.jsonl"; then
 else
 	fail "3a. phd_candidate merge_pr refusal" "$OUT/merge-refused.jsonl"
 fi
-if [[ "$(event_lines)" == "$BEFORE_MERGE" ]] && [[ "$(query_events "$BEFORE_MERGE" "r.get('merge_stub') is True" | wc -l | tr -d ' ')" == "0" ]]; then
+if [[ "$(event_lines)" == "$BEFORE_MERGE" ]] && [[ "$(query_events "$BEFORE_MERGE" "r.get('merged') is True" | wc -l | tr -d ' ')" == "0" ]]; then
 	pass "3b. refused merge_pr appended no merge event" "$EVENTS"
 else
 	fail "3b. refused merge_pr must not append a merge event" "$EVENTS"
 fi
 
-BEFORE_STUB=$(event_lines)
-run_pi_json supervisor "read,merge_pr" supervisor__PR-001__1 merge-stub \
-	'Call the merge_pr tool exactly once with pr_id="PR-001", reason="S3 acceptance stub". Then reply with exactly: MERGE-STUB-OK.'
-STUB_EVENT=$(query_events "$BEFORE_STUB" "r.get('merge_stub') is True and r.get('merged') is False")
-if [[ -n "$STUB_EVENT" ]]; then
-	pass "3c. supervisor merge_pr accepted and logged by the orchestrator stub" "$EVENTS"
-	echo "$STUB_EVENT" | grep -E '"(pr_id|merge_stub|merged|summary)"' | head -4
+# S4: the conductor merges only an accepted review. PR-001 does not exist in the
+# real state, so the tool must refuse with the conductor's reason (not the guard).
+BEFORE_CONDUCTOR=$(event_lines)
+run_pi_json supervisor "read,merge_pr" supervisor__PR-001__1 merge-conductor \
+	'Call the merge_pr tool exactly once with pr_id="PR-001", reason="S4 acceptance: there is no accepted review". Then reply with exactly: MERGE-REFUSED.'
+if grep -qE "merge refused|unknown PR" "$OUT/merge-conductor.jsonl"; then
+	pass "3c. supervisor merge_pr refused by the conductor without an accepted review" "$OUT/merge-conductor.jsonl"
 else
-	fail "3c. supervisor merge_pr stub event" "$OUT/merge-stub.jsonl"
-	tail -n 3 "$OUT/merge-stub.jsonl" | cut -c1-300
+	fail "3c. conductor merge_pr refusal without an accepted review" "$OUT/merge-conductor.jsonl"
+	tail -n 3 "$OUT/merge-conductor.jsonl" | cut -c1-300
+fi
+if [[ "$(event_lines)" == "$BEFORE_CONDUCTOR" ]]; then
+	pass "3d. refused conductor merge appended no event" "$EVENTS"
+else
+	fail "3d. refused conductor merge must not append an event" "$EVENTS"
 fi
 
 # ---------------------------------------------------------------------------

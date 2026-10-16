@@ -5,8 +5,8 @@
 #   test               unit + integration suite (offline, no model calls)
 #   skills-test        validate .pi/skills + run the skill-script tests
 #   env-check          config/settings/roster/secrets checks with PASS lines
-#   verify-env         test + skills-test + env-check, plus a STUB banner for the S4 command
-#   verify-env-strict  same, but fails until /loop:verify-env exists (S4)
+#   verify-env         test + skills-test + env-check + orchestrator-check
+#   verify-env-strict  alias of verify-env (kept for the S0..S3 reports)
 #   accept             model-backed acceptance checks (small token cost)
 #   all                verify-env
 #   help               this list
@@ -20,9 +20,12 @@ TEST_FILES := .pi/tests/test_settings.test.ts .pi/tests/test_schemas.test.ts \
 	.pi/tests/test_ledger.test.ts .pi/tests/test_ledger_concurrency.test.ts \
 	.pi/tests/test_status.test.ts .pi/tests/test_child_pi.test.ts \
 	.pi/tests/agents/test_agents_manifest.test.ts .pi/tests/agents/test_tools_registry.test.ts \
-	.pi/tests/agents/test_dispatch_unit.test.ts .pi/tests/agents/test_prompt_templates.test.ts
+	.pi/tests/agents/test_dispatch_unit.test.ts .pi/tests/agents/test_prompt_templates.test.ts \
+	.pi/tests/orchestrator/test_state_machine.test.ts .pi/tests/orchestrator/test_budget.test.ts \
+	.pi/tests/orchestrator/test_gates.test.ts .pi/tests/orchestrator/test_cli_status.test.ts \
+	.pi/tests/orchestrator/test_pause_resume.test.ts .pi/tests/orchestrator/test_sandbox_cycle.test.ts
 
-.PHONY: all test skills-test env-check verify-env verify-env-strict accept agents-accept help
+.PHONY: all test skills-test env-check verify-env verify-env-strict orchestrator-check orchestrator-accept accept agents-accept help
 
 all: verify-env
 
@@ -38,16 +41,21 @@ env-check:
 	@echo "== environment checks =="
 	cd $(ROOT) && $(NODE) .pi/tests/check_env.ts
 
-verify-env: test skills-test env-check stub-orchestrator
+verify-env: test skills-test env-check orchestrator-check
 	@echo
-	@echo "verify-env: environment tests green."
-	@echo "verify-env: NOTE the S4 stub above — the orchestrator does not exist yet."
+	@echo "verify-env: environment tests green (the orchestrator is implemented; see loop/README.md)."
 
-verify-env-strict: test skills-test env-check
+verify-env-strict: verify-env
+
+# Offline: reads the environment, runs the orchestrator's own checks, writes nothing.
+orchestrator-check:
 	@echo
-	@echo "STUB (S4): '/loop:verify-env' and .pi/loop/step.sh are not implemented yet." >&2
-	@echo "           This target fails on purpose until research_agent/prompts/04 lands." >&2
-	@exit 1
+	@echo "== orchestrator verify-env =="
+	cd $(ROOT) && $(NODE) .pi/extensions/orchestrator/cli.ts verify-env --headless
+
+# The full S4 acceptance transcript (sandbox only; no model calls).
+orchestrator-accept:
+	bash $(ROOT)/.pi/tests/orchestrator/run_orchestrator_acceptance.sh
 
 # Not part of verify-env: these make real model calls.
 accept:
@@ -59,12 +67,6 @@ accept:
 
 agents-accept:
 	bash $(ROOT)/.pi/tests/agents/run_agent_acceptance.sh
-
-stub-orchestrator:
-	@echo
-	@echo "STUB (S4): 'pi --print \"/loop:verify-env\"' is not available; the orchestrator"
-	@echo "           (research_agent/prompts/04_orchestrator_and_state.md) has not been built."
-	@echo "           Use 'make -C .pi verify-env-strict' in CI to fail on this stub."
 
 help:
 	@grep -E '^[a-z-]+:' $(CURDIR)/Makefile | sed 's/:.*//' | sort -u

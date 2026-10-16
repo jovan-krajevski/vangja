@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # status.sh — thin shim around the orchestrator CLI's `status` command.
 #
-# Prints the same summary as the TUI widget: state, current task/PR/experiment,
-# budget, open gates, recent events, and what the next step would do.
+# Pure pass-through (no logic lives here). Prints the same summary as the TUI
+# widget: state, current task/PR/experiment + attempt, budget vs caps, open
+# human gates, the last 5 events, a stale child lock if any, and the nextAction.
+#
+# Usage: bash .pi/loop/status.sh [--json] [--sandbox <path>]
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,14 +14,10 @@ CLI="${ROOT}/.pi/extensions/orchestrator/cli.ts"
 
 if [[ ! -f "${CLI}" ]]; then
 	cat >&2 <<EOF
-status.sh: not implemented until S4.
+status.sh: the orchestrator CLI is missing.
 
   expected : ${CLI}
-  will run : node ${CLI} status --headless \$@
-  prompt   : research_agent/prompts/04_orchestrator_and_state.md
-
-Fallback (S0, read-only, no dependencies):
-  node ${ROOT}/.pi/tests/check_env.ts --status
+  fallback : node ${ROOT}/.pi/tests/check_env.ts --status
 EOF
 	exit 2
 fi

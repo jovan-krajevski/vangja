@@ -2,7 +2,8 @@
 # collect.sh — thin shim around the orchestrator CLI's collector command (S5).
 #
 # The collector shepherds HPC jobs: it polls the active experiment, records
-# evidence, fetches checkpoints/outputs, and never submits a second job.
+# evidence, fetches checkpoints/outputs, and never submits a second job. Until
+# S5 the CLI reports the HPC gate state and exits 2 (never a silent success).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,12 +12,11 @@ CLI="${ROOT}/.pi/extensions/orchestrator/cli.ts"
 
 if [[ ! -f "${CLI}" ]]; then
 	cat >&2 <<EOF
-collect.sh: not implemented until S5.
+collect.sh: the orchestrator CLI is missing.
 
   expected : ${CLI}
-  will run : node ${CLI} collect --headless \$@
-  prompts  : research_agent/prompts/04_orchestrator_and_state.md (orchestrator)
-             research_agent/prompts/05_hpc_and_collector.md (collector)
+  note     : the collector itself arrives in S5
+             (research_agent/prompts/05_hpc_and_collector.md)
 EOF
 	exit 2
 fi

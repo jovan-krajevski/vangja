@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Unified offline test runner for the .pi environment.
 #
-# Usage: bash .pi/tests/run.sh [all|node|skills]
-#   node    the TypeScript/Node suite (settings, guards, ledger, status)
-#   skills  validate_skills.sh + the Python skill-script tests
-#   all     both (default)
+# Usage: bash .pi/tests/run.sh [all|node|skills|orchestrator]
+#   node          the TypeScript/Node suite (settings, guards, ledger, status, child pi)
+#   skills        validate_skills.sh + the Python skill-script tests
+#   orchestrator  the S4 orchestrator suite (state machine, sandbox cycle, budget,
+#                 pause/resume, gates) plus the acceptance transcript script
+#   all           node + skills (default)
 #
 # No network, no model calls. Exit non-zero if any suite fails.
 set -uo pipefail
@@ -28,9 +30,32 @@ TEST_FILES=(
 	.pi/tests/agents/test_prompt_templates.test.ts
 )
 
+ORCHESTRATOR_TESTS=(
+	.pi/tests/orchestrator/test_state_machine.test.ts
+	.pi/tests/orchestrator/test_budget.test.ts
+	.pi/tests/orchestrator/test_gates.test.ts
+	.pi/tests/orchestrator/test_cli_status.test.ts
+	.pi/tests/orchestrator/test_pause_resume.test.ts
+	.pi/tests/orchestrator/test_sandbox_cycle.test.ts
+)
+
 run_node() {
 	echo "== node --test (offline) =="
 	(cd "$ROOT" && "$NODE" --test "${TEST_FILES[@]}")
+}
+
+run_orchestrator() {
+	echo "== node --test orchestrator (offline, sandbox only) =="
+	(cd "$ROOT" && "$NODE" --test "${ORCHESTRATOR_TESTS[@]}")
+	local status=$?
+	echo
+	echo "== orchestrator acceptance transcript =="
+	bash "$ROOT/.pi/tests/orchestrator/run_orchestrator_acceptance.sh"
+	local acceptance=$?
+	if [[ "$status" -ne 0 || "$acceptance" -ne 0 ]]; then
+		return 1
+	fi
+	return 0
 }
 
 run_skills() {
@@ -57,8 +82,9 @@ case "$SUITE" in
 		;;
 	node) run_node || status=1 ;;
 	skills) run_skills || status=1 ;;
+	orchestrator) run_orchestrator || status=1 ;;
 	*)
-		echo "usage: bash .pi/tests/run.sh [all|node|skills]" >&2
+		echo "usage: bash .pi/tests/run.sh [all|node|skills|orchestrator]" >&2
 		exit 2
 		;;
 esac

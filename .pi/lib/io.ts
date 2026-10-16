@@ -149,6 +149,15 @@ function fsyncDirBestEffort(dir: string): void {
 	}
 }
 
+/** Remove a file if it exists; used for pid locks and temp state. Best effort. */
+export function removeFileBestEffort(file: string): void {
+	try {
+		fs.rmSync(file, { force: true });
+	} catch {
+		// A lock we cannot remove is reported by the next stale-lock check.
+	}
+}
+
 export function readJsonFile<T>(file: string): T | undefined {
 	if (!fs.existsSync(file)) return undefined;
 	const raw = fs.readFileSync(file, "utf8");

@@ -155,7 +155,27 @@ check("loop shims", () => {
 		assert(fs.existsSync(file), `${file} is missing`);
 		assert((fs.statSync(file).mode & 0o111) !== 0, `${file} is not executable`);
 	}
-	return "step.sh, status.sh, collect.sh present and executable (S4/S5 stubs)";
+	return "step.sh, status.sh, collect.sh present and executable (thin CLI wrappers)";
+});
+
+check("orchestrator", () => {
+	const cli = path.join(PI_DIR, "extensions", "orchestrator", "cli.ts");
+	assert(fs.existsSync(cli), `${cli} is missing`);
+	for (const module of [
+		"state-machine.ts",
+		"execute.ts",
+		"gates.ts",
+		"git.ts",
+		"budget.ts",
+		"context.ts",
+		"commands.ts",
+		"sandbox.ts",
+	]) {
+		assert(fs.existsSync(path.join(PI_DIR, "extensions", "orchestrator", module)), `orchestrator/${module} is missing`);
+	}
+	const stepSh = fs.readFileSync(path.join(PI_DIR, "loop", "step.sh"), "utf8");
+	assert(stepSh.includes("cli.ts"), "step.sh must exec the orchestrator CLI (no duplicated logic)");
+	return "cli.ts + 8 modules present; step.sh execs the CLI";
 });
 
 check("gitignore coverage", () => {
@@ -188,7 +208,7 @@ check("state root", () => {
 	const stateExists = fs.existsSync(statePath(REPO_ROOT, "LOOP_STATE.json"));
 	return stateExists
 		? `${statePath(REPO_ROOT, "LOOP_STATE.json")} exists (run status.sh for details)`
-		: "no LOOP_STATE.json yet — the orchestrator (S4) creates it on BOOT";
+		: "no LOOP_STATE.json yet — the first `loop start`/`loop step` creates it on BOOT";
 });
 
 let failures = 0;

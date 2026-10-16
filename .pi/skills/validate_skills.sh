@@ -21,10 +21,16 @@ SKILLS_DIR="${1:-$ROOT/.pi/skills}"
 REPO_ROOT="${2:-$ROOT}"
 
 exec python3 - "$SKILLS_DIR" "$REPO_ROOT" <<'PY'
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+try:  # Real YAML, when available: a frontmatter value with ": " in it is not YAML.
+    import yaml as _yaml
+except ImportError:  # pragma: no cover - environment without PyYAML
+    _yaml = None
 
 skills_dir = Path(sys.argv[1]).resolve()
 repo_root = Path(sys.argv[2]).resolve()
@@ -53,14 +59,30 @@ def fail(skill: str, message: str) -> None:
     print(f"FAIL  {skill}: {message}")
 
 
-def parse_frontmatter(text: str):
+def parse_frontmatter(text: str, skill: str = "<unknown>"):
     if not text.startswith("---\n"):
         return None
     end = text.find("\n---", 3)
     if end == -1:
         return None
+    block = text[4:end]
+    if _yaml is not None:
+        try:
+            data = _yaml.safe_load(block)
+        except Exception as exc:  # yaml.YAMLError, but stay dependency-free here
+            first = str(exc).splitlines()[0] if str(exc) else exc.__class__.__name__
+            fail(skill, f"frontmatter is not valid YAML ({first}); quote values containing ': '")
+            return {}
+        if data is None:
+            return {}
+        if not isinstance(data, dict):
+            fail(skill, f"frontmatter must be a YAML mapping, got {type(data).__name__}")
+            return {}
+        return {str(key): "" if value is None else value for key, value in data.items()}
+    print("WARN  PyYAML is not installed; falling back to a line-based frontmatter "
+          "parser that cannot detect invalid YAML", file=sys.stderr)
     data = {}
-    for line in text[4:end].splitlines():
+    for line in block.splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         if ":" not in line:
@@ -89,8 +111,23 @@ def looks_like_path(token: str) -> bool:
 
 RUNTIME_PARTS = {"data", "results", "results_hyperparams", ".venv", "node_modules"}
 
+# Directories that must never make a referenced path "exist": a virtualenv or a
+# node_modules tree contains a file named like almost anything (e.g. pandas ships
+# `missing.py`), which would silently pass the existence check below.
+SKIP_DIRS = {
+    ".git", ".venv", "venv", "node_modules", "__pycache__", ".mypy_cache",
+    ".pytest_cache", ".ruff_cache", ".ipynb_checkpoints", ".tox",
+}
 
-basename_index = {p.name for p in repo_root.rglob("*") if p.is_file()}
+
+def iter_repo_files(root: Path):
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+        for filename in sorted(filenames):
+            yield Path(dirpath) / filename
+
+
+basename_index = {p.name for p in iter_repo_files(repo_root)}
 
 skill_dirs = sorted(
     d for d in skills_dir.iterdir()
@@ -109,7 +146,7 @@ for skill_dir in skill_dirs:
     text = skill_md.read_text()
     ok = True
 
-    data = parse_frontmatter(text)
+    data = parse_frontmatter(text, name)
     if data is None:
         fail(name, "SKILL.md has no parseable frontmatter block")
         continue
