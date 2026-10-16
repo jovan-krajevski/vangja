@@ -753,3 +753,241 @@ or documented; D3 is human decision D-001 (intentional, not a defect).
 Uncommitted at re-verification time: `.gitignore` (D-001 comment),
 `research_agent/REPORT_BUILD.md` (this section) and the `.pi/**` fixes above.
 Commit them together before starting S1.
+
+---
+
+## S1 — research & methodology skills
+
+Built in one session with the pinned model (`opencode-go/deepseek-v4.1-flash`,
+thinking `max`) on branch `update_pymc`, per
+`research_agent/prompts/01_skills_research.md`. Read-only sources were not
+modified: `src/`, `tests/`, `fixed_case_studies/`, `paper/` and
+`Vangja-project/` are untouched; every change is under `.pi/`.
+
+### Created
+
+| Skill | SKILL.md | Bundled artifacts |
+|---|---|---|
+| `reproducible-experiments` | 97 lines | `scripts/make_manifest.py`, `scripts/check_manifest.py`, `references/manifest-schema.md`, `templates/run_dir.md` |
+| `experiment-protocol-design` | 97 lines | `references/vangja-protocol.md`, `scripts/check_protocol_compliance.py` |
+| `bayesian-workflow` | 112 lines | `references/thresholds.md`, `scripts/diagnose_idata.py`, `scripts/check_convergence.py` |
+| `forecasting-evaluation` | 89 lines | `references/metrics.md`, `scripts/relative_mae.py`, `scripts/block_bootstrap.py` |
+| `scientific-integrity-and-anti-gaming` | 100 lines | `references/gaming-catalogue.md`, `scripts/scan_gaming.py`, clean/seeded fixtures + 5 patch fixtures |
+| `data-provenance` | 98 lines | `references/datasets.md`, `scripts/hash_tree.py`, `scripts/check_sidecars.py` |
+
+Every skill states the project's real rules with file:line citations
+(`BASE_SEED = 42` and `seed_for` per origin/cell, `REL_MAE_EPSILON = 1e-3` on
+the scaled target, PPC coverage 30–60 %, R̂ < 1.01 / ESS > 400 / BFMI > 0.3 /
+divergences = 0 / tree-depth hits = 0 / NUTS `target_accept ≥ 0.9`, the frozen
+Wikipedia `oldid=1306326561`, the confirmation-origin hash check, the
+anti-gaming catalogue) and links to `AGENTS.md` sections. Long material lives
+in `references/`; the frontmatter descriptions are the routing surface.
+
+Cross-cutting:
+
+- `.pi/skills/validate_skills.sh` — frontmatter parses, `name` matches the
+  directory and the skill-name grammar, description ≤ 1024, SKILL.md ≤ 120
+  lines, every referenced path resolves (skill dir, repo root, sibling skill,
+  or repo basename index), no absolute paths outside the repo (or `~/`), no
+  secret material, and `README.md` lists every skill. Failed checks exit 1.
+- `.pi/skills/README.md` — one row per built skill (trigger + owner stage S1)
+  plus the planned S2/S3 skills.
+- `.pi/tests/run.sh [all|node|skills]` — unified offline runner.
+- `.pi/Makefile` — new `skills-test` target; `verify-env` now runs
+  `test + skills-test + env-check` (67 Node tests, 72 Python tests, 12 checks).
+- `.pi/tests/skills/` — `helpers.py` plus one test module per script and one
+  for the validator (11 modules, 72 tests), fixtures under `fixtures/protocol/`.
+- `.pi/tests/README.md` and `.pi/README.md` updated for the new suite.
+
+All scripts take `--help`, exit non-zero on failure, use no network, and write
+only under an explicit `--out`/`--sidecar` (or not at all). They are
+stdlib-only; only `diagnose_idata.py --idata` needs the project environment
+(`uv run`, arviz).
+
+### Acceptance
+
+**1. `bash .pi/skills/validate_skills.sh` → all six valid**
+
+```
+PASS  bayesian-workflow: description 371 chars, 112 lines
+PASS  data-provenance: description 367 chars, 98 lines
+PASS  experiment-protocol-design: description 380 chars, 97 lines
+PASS  forecasting-evaluation: description 363 chars, 89 lines
+PASS  reproducible-experiments: description 336 chars, 97 lines
+PASS  scientific-integrity-and-anti-gaming: description 341 chars, 100 lines
+
+validate_skills: all 6 skills valid
+EXIT=0
+```
+
+**2. `bash .pi/tests/run.sh skills` → all green, including the scan_gaming fixture matrix**
+
+```
+== validate skills ==
+… six PASS lines …
+validate_skills: all 6 skills valid
+
+== python -- skill script tests ==
+… 72 tests …
+Ran 72 tests in 9.209s
+
+OK
+EXIT=0
+```
+
+Fixture matrix (tested in `test_scan_gaming.py`; clean fixture must stay
+clean, each seeded defect must be detected):
+
+```
+$ python3 .pi/skills/scientific-integrity-and-anti-gaming/scripts/scan_gaming.py \
+    --root .pi/skills/scientific-integrity-and-anti-gaming/fixtures/clean
+CLEAN: 0 (S0=0, S1=0, S2=0)
+EXIT=0
+
+$ python3 .pi/skills/scientific-integrity-and-anti-gaming/scripts/scan_gaming.py \
+    --root .pi/skills/scientific-integrity-and-anti-gaming/fixtures/seeded
+[S0] test-metric-selection evaluation.py:5: selects by .idxmin() over test/metric tokens
+[S0] metric-reassignment metrics.py:4: REL_MAE_EPSILON changed to 1e-6
+[S0] denominator-clipping metrics.py:8: persistence denominator is clipped/bounded
+[S1] seed-change-frozen-config config.py:2: BASE_SEED = 7 in a frozen config file (expected 42)
+[S1] hashed-file-mismatch hashed.txt.sha256:1: hash mismatch for hashed.txt
+[S1] failure-trimming-swallow report.py:5: exception swallowed with `pass` inside record_units() around result recording
+[S1] failure-trimming-dropna report.py:9: dropna() chained straight into a file write
+[S1] test-weakening-tolerance tests/test_metrics.py:10: approx(..., abs=0.5) exceeds the 0.1 guideline
+[S1] test-weakening-skip tests/test_metrics.py:5: test 'test_relative_mae_matches_reference' is skipped/xfailed unconditionally
+FINDINGS: 9 (S0=3, S1=6, S2=0)
+EXIT=1
+```
+
+Diff-mode categories (assertion removed, seed change, exclusion change,
+horizon cropping, swallow added) are exercised by the five patch fixtures in
+`fixtures/seeded/patches/`; a monitor test asserts each category appears when
+the corresponding patch is scanned against the clean fixture.
+
+**3. Metric scripts: `--help` and a synthetic demo**
+
+```
+$ python3 …/relative_mae.py --help        # exit 0; usage + "Example: … --out results/relmae"
+$ python3 …/block_bootstrap.py --help     # exit 0; usage + "Example: … --out results/boot"
+```
+
+Demo output shape (two targets: one perfect forecast, one zero-variance
+excluded by the ε rule):
+
+```
+{
+  "metric": "relative_mae_vs_persistence",
+  "epsilon": 0.001,
+  "scale": "values must be on the scaled target used for fitting",
+  "n_units_total": 2, "n_units_scored": 1, "n_excluded": 1,
+  "aggregate": {"median": 0.0, "mean": 0.0, "q1": 0.0, "q3": 0.0, "prop_below_1": 1.0},
+  "units": [
+    {"series": "A", "n": 3, "mae": 0.0, "persistence_mae": 1.0, "rel_mae": 0.0, "excluded": false},
+    {"series": "B", "n": 3, "mae": 0.5, "persistence_mae": 0.0, "rel_mae": null, "excluded": true}
+  ]
+}
+
+{
+  "n_paired_units": 6, "n_iter": 2000, "n_iter_used": 2000,
+  "sample_median": -0.04, "median_diff": -0.04,
+  "ci_2p5": -0.175, "ci_97p5": 0.175,
+  "prop_diff_lt_0": 0.6805, "negative_transfer_rate": 0.5, "seed": 0
+}
+```
+
+Both invocations wrote `units.csv` + `aggregate.json` / `bootstrap.json` only
+under `--out` (verified).
+
+**4. `check_protocol_compliance.py` on the real repo → clean; fixture → flagged**
+
+```
+$ python3 .pi/skills/experiment-protocol-design/scripts/check_protocol_compliance.py --repo .
+confirmation origins: frozen origins hash verified
+CLEAN: 0 (0 S1)
+EXIT=0
+
+$ python3 …/check_protocol_compliance.py --repo .pi/tests/skills/fixtures/protocol/dirty
+confirmation origins: CONFIRMATION_ORIGINS.csv is missing
+[S1] test-metric-selection evaluation.py:6: selection by .idxmin() on an expression carrying test/confirmation metric tokens
+FINDINGS: 1 (1 S1)
+EXIT=1
+```
+
+Hashed-file mismatch, context-series-in-aggregate, and frozen-edit patch
+fixtures are asserted in `test_check_protocol_compliance.py`.
+
+**5. Skill routing through pi**
+
+```
+$ pi --print --model opencode-go/deepseek-v4.1-flash --thinking max \
+    "/skill:reproducible-experiments summarize the seed policy"
+EXIT=0   (stderr 0 bytes)
+
+Seed policy (frozen, PROTOCOL.md §10) — all values verified against source, not just the skill doc:
+
+**Constants** — `fixed_case_studies/common.py:48-49`
+- `BASE_SEED = 42`
+- `FINALIST_SEEDS = (42, 20240816, 7)`
+
+**Per-cell seed** — `BASE_SEED + origin_index*100 + config_index`
+- `fixed_case_studies/stocks/runner.py:405`, `fixed_case_studies/smart_home/runner.py:249`
+…
+```
+
+The model read the skill and answered from it (the first version of the test
+also caught two stale citations in the skill — `subset_seed` line and the
+missing smart-home `seed_for` — which were fixed in this stage; the re-run is
+the transcript above).
+
+**Full environment check**
+
+```
+$ make -C .pi verify-env
+== node --test (offline) ==     67 tests, 67 pass, 0 fail
+== skills (offline) ==          validate_skills all 6 valid; Ran 72 tests; OK
+== environment checks ==        12/12 checks passed
+STUB (S4): '/loop:verify-env' … not available
+verify-env: environment tests green.
+EXIT=0
+```
+
+### Deviations and decisions
+
+1. **`check_protocol_compliance.py` excludes `Vangja-project/`, `fixtures/`
+   and runtime `data`/`results` trees by default.** The archive contains the
+   old study's scripts, which are not the live protocol; `--include-readonly`
+   scans it. Fixtures are excluded so the live-repo scan stays clean while the
+   fixture scans (rooted at the fixture) still see every file.
+2. **`scan_gaming.py` tolerance guideline is `abs > 0.1` / `rel > 0.05`, not
+   "any non-default tolerance"**, to avoid a false positive on the
+   Monte-Carlo CRPS tolerance in `tests/test_hyperparams.py:38` (500-sample
+   simulation). The seeded fixture uses `abs=0.5`, so detection is assertive
+   where it matters; every hit is still triaged against the catalogue.
+3. **`scan_gaming.py`'s `except …: pass` rule requires a result-recording call
+   inside the `try`** (`to_csv`/`save_json`/`record_artifact`/…) or a bare
+   `except:`; the two benign swallows in `src/vangja/time_series.py` (package
+   version metadata, optional residual stds) are deliberately not findings.
+   This is the false-positive discipline documented in the skill.
+4. **`diagnose_idata.py` is JSON-first.** The `--json` path is fully tested;
+   the ArviZ `--idata` path is best-effort (lazy import, DataTree-aware, tree
+   depth read from `sample_stats`) and needs `uv run`. Tree-depth hits from an
+   InferenceData are approximated as samples at the observed maximum depth.
+5. **`make_manifest.py --command` is an `argparse.REMAINDER` and must be the
+   last flag**; documented in the script help and
+   `references/manifest-schema.md`.
+6. `scripts/*` are Python 3 stdlib-only (system `python3`); the skill tests
+   therefore do not need the project virtualenv and run offline in ~9 s.
+7. `scan_gaming.py` also reports clean on the real repository's static scan
+   (`--root .` → `CLEAN: 0`), which is asserted by a test so the gate does not
+   rot.
+
+### Open items
+
+- Skills 7–15 (`vangja-codebase`, HPC, git/PR, packaging, writing, review,
+  audit, memory) remain for S2/S3; they are already named in
+  `.pi/config/agents.json` and listed as planned in `.pi/skills/README.md`.
+- `.pi/skills/**` and `.pi/tests/skills/**` are uncommitted at report time;
+  commit with `.pi/Makefile`, `.pi/README.md`, `.pi/tests/README.md`,
+  `.pi/tests/run.sh` before S2.
+- The agent definitions (S3) must reference the new skill names; the roster
+  already does.

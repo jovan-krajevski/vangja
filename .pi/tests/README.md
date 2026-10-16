@@ -1,13 +1,15 @@
 # `.pi/tests` — the environment test suite
 
-Runs with Node's built-in test runner and TypeScript type stripping. No build
-step, no dependencies, no network.
+Runs two offline suites: a Node/TypeScript suite and a Python suite for the
+skill scripts. No build step, no dependencies, no network.
 
 ```bash
-make -C .pi test          # 30 tests: settings, schemas, guards, ledger, status, child pi
+make -C .pi test          # node suite: settings, schemas, guards, ledger, status, child pi
+make -C .pi skills-test   # validate .pi/skills + python skill-script tests
 make -C .pi env-check     # config/roster/secrets checks with PASS lines
-make -C .pi verify-env    # both
+make -C .pi verify-env    # all three
 make -C .pi accept        # model-backed acceptance checks (~4 short model turns)
+bash .pi/tests/run.sh [all|node|skills]
 ```
 
 | File | What it proves |
@@ -21,8 +23,13 @@ make -C .pi accept        # model-backed acceptance checks (~4 short model turns
 | `test_status.test.ts` | TUI/headless status lines for uninitialized, working, and paused states. |
 | `test_child_pi.test.ts` | Real `pi` children with a drifted model/thinking are blocked before any model turn (offline; exit 3, no stdout, stderr names `model.json`). |
 | `check_env.ts` | Environment summary with PASS/FAIL lines; `--status` prints the headless status fallback. |
+| `skills/test_*.py` | One unittest module per skill script (manifest, protocol compliance, diagnostics, metrics, bootstrap, gaming scan, hashing, sidecars) plus the skill validator. Fixtures under `skills/fixtures/`. |
 | `fixtures/` | Worker scripts used by the concurrency test. |
 | `acceptance/run_acceptance.sh` | Model-backed checks: protected/secret/destructive tool calls refused in a real session, role preamble visible to the model, trusted startup warning-free. |
+
+Scratch roots are created under the system temp directory; the suite never writes
+inside the repository (the Python tests use `tempfile` and set
+`PYTHONDONTWRITEBYTECODE=1`).
 
 Scratch roots are created under the system temp directory; the suite never writes
 inside the repository.

@@ -1,0 +1,11 @@
+diff --git a/report.py b/report.py
+--- a/report.py
++++ b/report.py
+@@ -1,6 +1,9 @@
+ def record_units(df):
+-    df.to_csv("units.csv", index=False)
++    try:
++        df.to_csv("units.csv", index=False)
++    except Exception:
++        pass
+     return df

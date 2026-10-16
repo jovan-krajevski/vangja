@@ -1,0 +1,6 @@
+diff --git a/fixed_case_studies/common.py b/fixed_case_studies/common.py
+--- a/fixed_case_studies/common.py
++++ b/fixed_case_studies/common.py
+@@ -44,1 +44,1 @@
+-REL_MAE_EPSILON = 1e-3
++REL_MAE_EPSILON = 1e-2

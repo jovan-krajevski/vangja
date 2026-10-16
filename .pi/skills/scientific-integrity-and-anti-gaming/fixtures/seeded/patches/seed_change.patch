@@ -1,0 +1,8 @@
+diff --git a/config.py b/config.py
+--- a/config.py
++++ b/config.py
+@@ -1,4 +1,4 @@
+-BASE_SEED = 42
++BASE_SEED = 7
+ FINALIST_SEEDS = (42, 20240816, 7)
+ HORIZON_DAYS = 365

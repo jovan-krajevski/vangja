@@ -24,14 +24,16 @@ implementation.
 | `tests/` | offline `node --test` suite, fixtures, acceptance scripts | yes |
 | `state/` | `LOOP_STATE.json`, `*.jsonl` ledgers, derived `*.md` views, sessions, worktrees | **no** (runtime) |
 | `artifacts/` | collected experiment outputs + manifests | **no** (runtime; manifests are the committed part once S5 lands — see open items) |
-| `agents/`, `skills/`, `prompts/`, `rubrics/`, `audit/` | arriving in S1–S6 | yes |
+| `agents/`, `prompts/`, `rubrics/`, `audit/` | arriving in S2–S6 | yes |
+| `skills/` | six research & methodology skills (S1): manifests, protocol, Bayesian workflow, evaluation, anti-gaming, provenance | yes |
 
 ## Verify
 
 ```bash
 make -C .pi test           # unit + integration suite (offline, ~10s)
+make -C .pi skills-test    # validate .pi/skills + python skill-script tests
 make -C .pi env-check      # config/settings/roster/secrets checks with PASS lines
-make -C .pi verify-env     # both, plus an explicit STUB banner for the S4 command
+make -C .pi verify-env     # all three, plus an explicit STUB banner for the S4 command
 make -C .pi verify-env-strict  # same, but fails until /loop:verify-env exists (S4)
 ```
 
