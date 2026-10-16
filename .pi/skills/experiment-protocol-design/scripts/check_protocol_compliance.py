@@ -289,16 +289,17 @@ def scan_patch(repo: Path, patch_text: str) -> list[dict]:
     out: list[dict] = []
     for path, line, kind, content in parse_patch(patch_text):
         location = f"{path}:{line}"
+        verb = {"add": "added", "del": "deleted"}.get(kind, kind)
         if FROZEN_EDIT.search(content):
             out.append(finding(
                 "frozen-split-metric-edit", "S1", location,
-                f"{kind}ed line touches a frozen split/metric/exclusion constant",
+                f"{verb} line touches a frozen split/metric/exclusion constant",
                 content,
             ))
         if SEED_EDIT.search(content) and re.search(r"config", path, re.IGNORECASE):
             out.append(finding(
                 "seed-change-frozen-config", "S1", location,
-                f"{kind}ed seed constant in a frozen config file",
+                f"{verb} seed constant in a frozen config file",
                 content,
             ))
         if re.search(r"\bassert\b", content) and kind == "del":

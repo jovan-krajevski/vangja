@@ -43,6 +43,8 @@ class TestProtocolCompliance(unittest.TestCase):
         ])
         self.assertEqual(proc.returncode, 1)
         self.assertIn("frozen-split-metric-edit", proc.stdout)
+        self.assertNotIn("deled", proc.stdout)
+        self.assertIn("deleted", proc.stdout)
 
     def test_json_report_written_to_out(self):
         import tempfile

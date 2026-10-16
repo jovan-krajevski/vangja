@@ -53,7 +53,7 @@ amendment path. Scan for violations with
    no pooled Diebold–Mariano, no stock-only bootstrap.
 9. **Covariance claims need a covariance-capable source.** Mean-field ADVI
    gives a diagonal transfer prior; do not claim covariance preservation from
-   it (`fixed_case_studies/stocks/runner.py:170`; FINDINGS F-8). Use NUTS source
+   it (`fixed_case_studies/stocks/runner.py:180-182`; FINDINGS F-8). Use NUTS source
    posteriors for joint-transfer claims.
 10. **The paper may only cite artifacts produced on `update_pymc`** and each
     number cites an artifact path plus manifest SHA.

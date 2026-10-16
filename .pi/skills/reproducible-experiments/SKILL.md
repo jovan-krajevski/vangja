@@ -61,10 +61,14 @@ python .pi/skills/reproducible-experiments/scripts/make_manifest.py \
   --out fixed_case_studies/stocks/results/<run> \
   --data fixed_case_studies/stocks/data/tickers \
   --config fixed_case_studies/stocks/config.py \
-  --base-seed 42 --seed origin=2013-01-01 --seed cell=42 \
+  --base-seed 42 --seed origin=0 --seed cell=42 \
   --status ok --exit-code 0 \
   --command python fixed_case_studies/stocks/03_run_main.py --origins 2013-01-01
 ```
+
+`--seed` takes `[LABEL=]INT` (here `origin` is the origin *index* and `cell`
+the config index, matching `seed_for`); the origin date belongs in the run
+command, not the seed.
 
 Validate before using a number:
 

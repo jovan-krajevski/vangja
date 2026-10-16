@@ -338,6 +338,7 @@ def scan_patch(patch_text: str) -> list[dict]:
     out: list[dict] = []
     for path, line, kind, content in parse_patch(patch_text):
         location = f"{path}:{line}"
+        verb = {"add": "added", "del": "deleted"}.get(kind, kind)
         if kind == "del" and re.search(r"\bassert\b", content):
             out.append(finding("test-weakening-assertion-removed", "S1", location,
                                "assertion deleted", content,
@@ -356,23 +357,23 @@ def scan_patch(patch_text: str) -> list[dict]:
                                "rows removed before reporting"))
         if SEED_DIFF.search(content) and re.search(r"config", path, re.IGNORECASE):
             out.append(finding("seed-change-frozen-config", "S1", location,
-                               f"seed constant {kind}ed in a frozen config", content,
+                               f"seed constant {verb} in a frozen config", content,
                                "results produced with a different seed than recorded"))
         if EXCLUSION_DIFF.search(content):
             out.append(finding("exclusion-change", "S1", location,
-                               f"exclusion logic {kind}ed", content,
+                               f"exclusion logic {verb}", content,
                                "units excluded after the fact (post-hoc exclusion)"))
         if FROZEN_SPLIT_EDIT.search(content):
             out.append(finding("frozen-split-edit", "S1", location,
-                               f"frozen split/origin constant {kind}ed", content,
+                               f"frozen split/origin constant {verb}", content,
                                "development/confirmation splits changed without an amendment"))
         if FROZEN_METRIC_EDIT.search(content):
             out.append(finding("metric-reassignment", "S0", location,
-                               f"frozen metric definition {kind}ed", content,
+                               f"frozen metric definition {verb}", content,
                                "the protocol definition changed without an amendment"))
         if HORIZON_DIFF.search(content) and kind in ("add", "del"):
             out.append(finding("horizon-cropping", "S1", location,
-                               f"horizon/window expression {kind}ed", content,
+                               f"horizon/window expression {verb}", content,
                                "arms may be evaluated over different horizons"))
         if kind == "add" and CLIP_DENOM.search(content):
             out.append(finding("denominator-clipping", "S0", location,

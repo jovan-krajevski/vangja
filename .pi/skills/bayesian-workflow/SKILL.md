@@ -57,7 +57,7 @@ manifest.
 
 - No `tune()` method: construct the target model with the transfer
   configuration and call `fit(..., idata=base.trace)` after fitting the source
-  (`fixed_case_studies/stocks/runner.py:250`).
+  (`fixed_case_studies/stocks/runner.py:271-276`).
 - `tune_method="parametric"` matches **posterior mean/sd**, not the MAP/mode
   (`src/vangja/components/linear_trend.py:70`; WS-S-001). Do not describe it as
   MAP unless the code changes.

@@ -143,7 +143,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="make_manifest.py",
         description="Write a vangja-run-manifest-1.0 for a run directory.",
         epilog="Example: make_manifest.py --out results/run42 --data data/tickers "
-               "--base-seed 42 --seed origin=2013-01-01 --status ok",
+               "--base-seed 42 --seed origin=0 --seed cell=42 --status ok",
     )
     p.add_argument("--out", required=True, type=Path, help="run directory (only write target)")
     p.add_argument("--name", default="manifest.json", help="manifest file name (default: manifest.json)")

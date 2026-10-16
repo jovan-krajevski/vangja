@@ -61,11 +61,11 @@ class TestScanGaming(unittest.TestCase):
     def test_patch_categories_is_detected(self):
         for name, expected in PATCH_CATEGORIES.items():
             with self.subTest(patch=name):
-                categories = {
-                    f["category"]
-                    for f in findings_for(CLEAN, SEEDED / "patches" / name)
-                }
+                findings = findings_for(CLEAN, SEEDED / "patches" / name)
+                categories = {f["category"] for f in findings}
                 self.assertIn(expected, categories)
+                messages = " ".join(f["message"] for f in findings)
+                self.assertNotIn("deled", messages)
 
     def test_out_writes_reports(self):
         with tempfile.TemporaryDirectory() as tmp:

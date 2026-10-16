@@ -991,3 +991,236 @@ EXIT=0
   `.pi/tests/run.sh` before S2.
 - The agent definitions (S3) must reference the new skill names; the roster
   already does.
+
+---
+
+## S1 verification
+
+Independent stage verification by a fresh human-role session that did not build
+S1 (prompt: `research_agent/prompts/01_skills_research.md`). The report text was
+not trusted: every acceptance test was re-run from the committed tree, the
+skills, scripts, fixtures and citations were inspected directly, and both demo
+invocations were reproduced from scratch.
+
+- Revision verified: `930c26a` ("S1") on `update_pymc`; working tree at
+  verification time `?? Vangja-project/` only (pre-existing, untracked).
+  Toolchain: `pi 1.3.0`, `node v24.21.0`, `python3 3.14.4`.
+- Scope checked: all six skills and every bundled script/reference/fixture; the
+  changed-path set of `930c26a` (only `.pi/**` plus this report — no `src/`,
+  `tests/`, `fixed_case_studies/`, `paper/`, `Vangja-project/` edits; no
+  existing test weakened or deleted); `make -C .pi verify-env`.
+
+### Verdict: GO — all five acceptance tests pass; two non-blocking artifact defects found (V1, V2)
+
+### Per-test results
+
+| # | Acceptance test | Verdict |
+|---|---|---|
+| 1 | `bash .pi/skills/validate_skills.sh` → all six valid | PASS |
+| 2 | `bash .pi/tests/run.sh skills` → green, incl. fixture matrix | PASS |
+| 3 | metric scripts `--help` + demo output shape | PASS (demo numbers byte-identical to the report) |
+| 4 | `check_protocol_compliance.py` real repo clean / fixture flagged | PASS |
+| 5 | `pi /skill:reproducible-experiments` routing | PASS |
+| + | `make -C .pi verify-env` (67 node + 72 python + 12 checks) | PASS |
+
+**1. `validate_skills.sh`** — re-run, exit 0, exactly the reported lines:
+
+```
+$ bash .pi/skills/validate_skills.sh; echo "EXIT=$?"
+PASS  bayesian-workflow: description 371 chars, 112 lines
+PASS  data-provenance: description 367 chars, 98 lines
+PASS  experiment-protocol-design: description 380 chars, 97 lines
+PASS  forecasting-evaluation: description 363 chars, 89 lines
+PASS  reproducible-experiments: description 336 chars, 97 lines
+PASS  scientific-integrity-and-anti-gaming: description 341 chars, 100 lines
+
+validate_skills: all 6 skills valid
+EXIT=0
+```
+
+Line counts independently confirmed (`wc -l`): 112/98/97/89/97/100, all ≤120.
+The validator was also exercised on temp skills with a bad frontmatter name, a
+missing referenced path, >120 lines and an absolute `/tmp` path: each exits 1
+with the matching message (`.pi/tests/skills/test_validate_skills.py`).
+
+**2. `bash .pi/tests/run.sh skills`** — re-run, exit 0; `Ran 72 tests … OK`
+(11 unittest modules: 10 scripts + the validator). The fixture matrix was also
+re-run directly, not via the test wrapper:
+
+```
+$ python3 …/scan_gaming.py --root …/fixtures/clean
+CLEAN: 0 (S0=0, S1=0, S2=0)
+EXIT=0
+
+$ python3 …/scan_gaming.py --root …/fixtures/seeded
+[S0] test-metric-selection evaluation.py:5: selects by .idxmin() over test/metric tokens
+[S0] metric-reassignment metrics.py:4: REL_MAE_EPSILON changed to 1e-6
+[S0] denominator-clipping metrics.py:8: persistence denominator is clipped/bounded
+[S1] seed-change-frozen-config config.py:2: BASE_SEED = 7 in a frozen config file (expected 42)
+[S1] hashed-file-mismatch hashed.txt.sha256:1: hash mismatch for hashed.txt
+[S1] failure-trimming-swallow report.py:5: exception swallowed with `pass` inside record_units() around result recording
+[S1] failure-trimming-dropna report.py:9: dropna() chained straight into a file write
+[S1] test-weakening-tolerance tests/test_metrics.py:10: approx(..., abs=0.5) exceeds the 0.1 guideline
+[S1] test-weakening-skip tests/test_metrics.py:5: test 'test_relative_mae_matches_reference' is skipped/xfailed unconditionally
+FINDINGS: 9 (S0=3, S1=6, S2=0)
+EXIT=1
+```
+
+I read every fixture file: the seeded defects are real (`BASE_SEED = 7`,
+`test_rel_mae` idxmin, `REL_MAE_EPSILON = 1e-6` + `np.clip`, all-zero sidecar,
+`except: pass` + `dropna().to_csv`, unconditional skip, `abs=0.5`), and the clean
+fixture's sidecar was independently recomputed and matches
+(`b6741dae…5053`). All five patch fixtures were scanned against the clean tree;
+each produced its category:
+
+```
+removed_assert  -> test-weakening-assertion-removed  tests/test_metrics.py:7
+seed_change     -> seed-change-frozen-config         config.py:1
+  exclusion_change-> exclusion-change                  evaluation.py:2
+horizon_crop    -> horizon-cropping                  config.py:3
+swallow         -> failure-trimming-swallow          report.py:4
+```
+
+So all 11 catalogue categories are exercised (9 static + assertion-removed,
+exclusion-change, horizon-cropping). `scan_gaming.py --root .` on the real
+repository is `CLEAN: 0` (exit 0), as claimed.
+
+**3. Metric scripts** — both `--help` exit 0 and print usage. Demo re-run from
+the synthetic inputs I reconstructed from the report; both JSON blobs reproduce
+the report's documented numbers exactly:
+
+```
+$ python3 …/relative_mae.py --train train.csv --test test.csv --pred pred.csv --out out_relmae
+{"metric": "relative_mae_vs_persistence", "epsilon": 0.001, "n_units_total": 2,
+ "n_units_scored": 1, "n_excluded": 1,
+ "aggregate": {"median": 0.0, "mean": 0.0, "q1": 0.0, "q3": 0.0, "prop_below_1": 1.0},
+ "units": [{"series": "A", … "mae": 0.0, "persistence_mae": 1.0, "rel_mae": 0.0, "excluded": false},
+           {"series": "B", … "mae": 0.5, "persistence_mae": 0.0, "rel_mae": null, "excluded": true}]}
+EXIT=0
+
+$ python3 …/block_bootstrap.py --paired paired.csv --n-iter 2000 --seed 0 --out out_boot
+{"n_paired_units": 6, "n_iter": 2000, "n_iter_used": 2000,
+ "sample_median": -0.04, "median_diff": -0.04, "ci_2p5": -0.175, "ci_97p5": 0.175,
+ "prop_diff_lt_0": 0.6805, "negative_transfer_rate": 0.5, "seed": 0}
+EXIT=0
+```
+
+`--out` contained exactly `units.csv`+`aggregate.json` and `bootstrap.json`;
+nothing was written to the repo (`git status` unchanged).
+
+**4. Protocol compliance** — re-run, all three invocations match the report:
+
+```
+$ python3 …/check_protocol_compliance.py --repo .
+confirmation origins: frozen origins hash verified
+CLEAN: 0 (0 S1)                      EXIT=0
+$ python3 …/check_protocol_compliance.py --repo .pi/tests/skills/fixtures/protocol/dirty
+confirmation origins: CONFIRMATION_ORIGINS.csv is missing
+[S1] test-metric-selection evaluation.py:6: selection by .idxmin() on an expression carrying test/confirmation metric tokens
+FINDINGS: 1 (1 S1)                   EXIT=1
+```
+
+I recomputed the frozen hash independently: `sha256sum
+fixed_case_studies/protocol/CONFIRMATION_ORIGINS.csv` =
+`ab70ebfbf3cefed315785095d4c5c754791621a3b67cf88763689d784fcc29a0`, identical to
+`CONFIRMATION_ORIGINS.sha256`. The sidecar-mismatch, context-series-in-aggregate
+and frozen-edit patch fixtures were also scanned directly and each flags with
+file:line (e.g. `context-series-in-aggregate units_main.csv:2`, `hashed-file-
+mismatch data_hashed.csv.sha256:1`, `frozen-split-metric-edit common.py:44`).
+
+**5. Skill routing** — the prompt's literal command was re-run:
+
+```
+$ pi --print --model opencode-go/deepseek-v4.1-flash --thinking max \
+    "/skill:reproducible-experiments summarize the seed policy"
+EXIT=0   stderr bytes: 0   stdout bytes: 2568
+```
+
+The answer is skill content, not generic advice: it quotes the seed table
+(`BASE_SEED = 42`, `FINALIST_SEEDS = (42, 20240816, 7)`, per-cell
+`base + origin_index*100 + config_index`, per-origin source seed), cites
+`reproducible-experiments § Failure modes`, and links seed shopping to
+`scientific-integrity-and-anti-gaming`. Per pi's `docs/skills.md`,
+`/skill:name` force-loads the skill, so this proves discovery + load.
+
+**Full environment** — `make -C .pi verify-env` exit 0: `tests 67 / pass 67 /
+fail 0`, `Ran 72 tests … OK`, `12/12 checks passed`, with the S4 stub banner.
+Matches the report.
+
+### Discrepancies
+
+- **V1 (S2, stale citation).** `.pi/skills/experiment-protocol-design/SKILL.md:56`
+cites `fixed_case_studies/stocks/runner.py:170` for the ADVI/real-covariance
+rule. Line 170 is `def fit_source(`; the text is at `runner.py:180-182`
+("``method="advi"`` is used for development screening only; confirmation runs
+use ``method="nuts"`` so that the transferred posterior carries real covariance
+(review F-8 / PLAN P0-17)"). The rule itself is correct; only the pointer is
+stale. Same file, `SKILL.md:60` cites `runner.py:250` for the transfer call;
+line 250 is `def fit_target(` and the actual `kwargs["idata"] =
+source_model.trace` is at `runner.py:272` (right function, imprecise line).
+- **V2 (S2, runnable example).** `.pi/skills/reproducible-experiments/SKILL.md:64`
+documents `--seed origin=2013-01-01 --seed cell=42`; `parse_seed`
+(`make_manifest.py:110-120`) requires an integer, so the documented command dies
+with an uncaught `argparse.ArgumentTypeError` (traceback, exit 1). The corrected
+form `--seed origin=0 --seed cell=42` works end to end: manifest written
+(`vangja-run-manifest-1.0`, commit/branch/dirty/seeds/data hashes present),
+`check_manifest.py` ok, and a tampered `AAPL.csv` fails with exit 1. The
+acceptance tests are unaffected (they pass `--base-seed` only).
+- **V3 (S3, cosmetic).** Diff messages render "deled"/"added"
+(`scan_gaming.py:359-375`, `f"{kind}ed"` with `kind` in `{del, add}`), e.g.
+"seed constant deled in a frozen config". Detection is correct; only the wording
+is wrong.
+
+None of V1–V3 contradicts a number, a rule, or an acceptance result; V1 and V2
+should still be fixed before the skills are cited by agents in S2/S3.
+
+### Verified-positive notes
+
+- Thresholds quoted in `bayesian-workflow` match the project's own sources:
+  notebook `10_bayesian_workflow.ipynb` cell 13 (§3) states R̂ < 1.01, ESS
+  bulk/tail > 400, BFMI > 0.3, divergences 0; WS-S-009 repeats them. The
+  `diagnose_idata.py` defaults are exactly `r_hat_max 1.01 / ess 400 / bfmi 0.3
+  / divergences 0 / tree-depth 0 / target_accept 0.9`; good/bad synthetic
+  payloads give `pass`/`fail` (6 failures) and `check_convergence.py` exits 0/1
+  with the waiver path turning a fail into exit 0 and recording the reason.
+- All 10 scripts: `--help` exit 0; no network references; stdlib-only (arviz is
+  imported lazily inside `from_idata`, so the `--json` path is offline); writes
+  only under `--out`/`--sidecar`; failure paths return 2 (missing input) or 1
+  (finding/failed gate). `hash_tree.py`/`check_sidecars.py` pass and fail
+  correctly on synthetic trees, including `--allow-extra`-style unrecorded-file
+  detection.
+- The report's "Open items" bullet that `.pi/skills/**` and `.pi/tests/skills/**`
+  were uncommitted at report time is closed: they are in `930c26a`.
+
+### S1 verification follow-up — V1/V2/V3 fixed (uncommitted)
+
+Applied after the verdict above; the verdict is unchanged (GO). Files touched:
+
+- **V1** `experiment-protocol-design/SKILL.md:56` → cites
+  `fixed_case_studies/stocks/runner.py:180-182` (the ADVI/real-covariance text);
+  `bayesian-workflow/SKILL.md:60` → cites `runner.py:271-276` (the
+  `kwargs["idata"] = source_model.trace` block and the `model.fit` call).
+- **V2** `reproducible-experiments/SKILL.md` example now uses
+  `--seed origin=0 --seed cell=42`, with a sentence stating `--seed` takes
+  `[LABEL=]INT`; `make_manifest.py`'s `--help` epilog fixed the same way.
+- **V3** `scan_gaming.py` and `check_protocol_compliance.py` now print
+  "deleted"/"added" (verb mapping) instead of "deled"/"added"; regression
+  assertions added in `test_scan_gaming.py` and
+  `test_check_protocol_compliance.py` (`assertNotIn("deled", …)`).
+
+Re-verified after the fixes:
+
+```
+$ bash .pi/skills/validate_skills.sh            → all 6 valid, exit 0
+$ bash .pi/tests/run.sh skills                  → Ran 72 tests, OK, exit 0
+$ make -C .pi verify-env                        → 67 node / 72 python / 12 checks, exit 0
+$ python3 …/make_manifest.py --out … --seed origin=0 --seed cell=42 --status ok --exit-code 0 --command python run.py
+  exit 0; seeds {'base_seed': 42, 'values': {'cell': 42, 'origin': 0}}; check_manifest ok=true
+$ python3 …/scan_gaming.py --root .             → CLEAN: 0, exit 0
+$ python3 …/check_protocol_compliance.py --repo . → frozen origins hash verified; CLEAN: 0, exit 0
+$ patch scans                                   → "seed constant deleted/added", "deleted line touches …"
+```
+
+The fixes are uncommitted at the time of writing; commit them with the rest of
+`.pi/**` before S2. `research_agent/REPORT_BUILD.md` was the only file modified
+by the verification itself.
