@@ -2462,3 +2462,269 @@ event: scout ok /tmp/verifier-s3-par2-KT2LfH/.pi/state/sessions/verify-run/scout
   scout` but the allowlist additionally grants `methodologist` to
   `audit_finder` (`.pi/lib/agents.ts:63`).
 
+
+## S4 — orchestrator, state machine, git/PR pipeline
+
+Built in one session with the pinned model (`opencode-go/deepseek-v4.1-flash`,
+thinking `max`) on branch `update_pymc`, commits
+`b37053f` (`S4: orchestrator, state machine, git/PR pipeline`) and `28b5ed9`
+(acceptance-script fix). Scope: `.pi/**` plus this report; **0** files under
+`src/ tests/ fixed_case_studies/ paper/ Vangja-project/ case_studies/ docs/`, no
+branch or tag created in the real repository, `update_pymc` unchanged by the
+tests. The S4 stage also fixes the `SKILL.md` frontmatter conflict pi reported
+(§ D-S4-11) and the validator false-negative it exposed.
+
+### Created
+
+| Path | What it is |
+|---|---|
+| `.pi/extensions/orchestrator/state-machine.ts` | the pure `nextAction(state, ledgers, options)` table: 39 ordered rules covering every state in `plan/02 §2`, PAUSED/BLOCKED, human gates, budget stops, WAITING_HPC, the audit-cycle cap, and DONE |
+| `.pi/extensions/orchestrator/ledgers.ts` | read-only `.pi/state/**` → `LedgerView` adapter + child-lock aliveness; no policy, no writes |
+| `.pi/extensions/orchestrator/execute.ts` | one action per call: builds the child argv from `.pi/config/agents.json`, spawns it, parses the JSON stream (final message, tool calls, usage, errors), records `start`/`complete` events with the exact argv + agent-file/prompt SHA-256, updates `LOOP_STATE.json` atomically, enforces the single-child pid lock |
+| `.pi/extensions/orchestrator/gates.ts` | pre-merge gate runner (tests, protected paths, test diff, integrity scan, provenance, hygiene, claims) with command + raw-output evidence and waivers; human gates; `hpcGate()` returning `not-configured` |
+| `.pi/extensions/orchestrator/git.ts` | worktrees under `.pi/state/worktrees/<task_id>/`, branch `work/T-###-slug` from `update_pymc`, commits, PR records, `merge --no-ff` with the review id in the message, tags `run/<run_id>/merge/<n>`; refuses dirty checkouts, rebases, force-pushes, history rewrites |
+| `.pi/extensions/orchestrator/budget.ts` | `BUDGET.json` snapshot + `BUDGET.jsonl` history; sessions/day, wall clock, cost, consecutive failures, no-progress cycles, audit cycles; every violation quotes the cap, the value, and the resume command |
+| `.pi/extensions/orchestrator/context.ts` | deterministic `CONTEXT.md`/`TASKS.md`/`PRS.md`/`REVIEWS.md`/`EXPERIMENTS.md` views and the `status` report |
+| `.pi/extensions/orchestrator/commands.ts` | the shared command layer (`step`, `start`, `pause`, `resume`, `status`, `verify-env`, `gate`, `peek`) used by the CLI **and** the `/loop:*` commands |
+| `.pi/extensions/orchestrator/sandbox.ts` | `--sandbox <path>` (refused when it resolves to the real root) and `--dry-run` (writes only `state/DRYRUN.jsonl`) |
+| `.pi/extensions/orchestrator/cli.ts` | `node .pi/extensions/orchestrator/cli.ts start\|step\|pause\|resume\|status\|verify-env\|gate list/approve/reject\|collect\|peek` |
+| `.pi/extensions/orchestrator/merge-tool.ts` | the real `merge_pr`: capability + state checks, accepted-review requirement, human gate, then the same merge path the MERGE state uses |
+| `.pi/extensions/orchestrator/index.ts` | pi surface: `/loop:start\|step\|pause\|resume\|status\|verify-env\|gate` + `merge_pr` (replaces the S3 stub, which is deleted) |
+| `.pi/tests/orchestrator/` | 6 test files (58 tests), `orchestrator_helpers.ts` (scratch clones under `.pi/state/orchestrator-tests/`), `run_orchestrator_acceptance.sh` (the transcript script) |
+| `.pi/tests/fixtures/orchestrator_stub_child.mjs` | deterministic conductor-child stand-in: performs the ledger/git side effects a real child performs (`work`, `review`, `fail`, `slow`, `none`) through the sandbox's own ledger module |
+| `.pi/loop/{step,status,collect}.sh`, `.pi/loop/README.md` | thin wrappers around the CLI (no logic) and the human entry-point docs |
+| `.pi/Makefile`, `.pi/tests/run.sh`, `.pi/tests/check_env.ts` | `run.sh orchestrator` suite; orchestrator tests in `make test`; `make orchestrator-check`/`orchestrator-accept`; the S4 stub banner replaced by the real `verify-env`; two new env checks (shims, orchestrator modules) |
+
+Modules: `state-machine 1106`, `execute 972`, `gates 645`, `git 339`, `budget 266`,
+`commands 220`, `merge-tool 181`, `sandbox 176`, `context 163`, `ledgers 161`,
+`cli 154`, `index 148` lines; tests + fixtures + acceptance script 2129 lines.
+
+### The state machine, rule by rule
+
+`RULES` (first match wins; `fallback` is unreachable and exists to make a new
+state a visible table change):
+
+```
+budget stop-flag done paused blocked
+uninitialized boot
+select-task-to-readiness select-task-assign select-task
+work-any
+waiting-hpc
+review-to-merge-changes-reject review-accept review-no-pr review-spawn
+merge-no-review merge-waiting-on-gate merge-gate-rejected merge-open-gate merge-execute
+post-merge
+readiness-pass readiness-fail readiness-spawn
+paper-review paper-spawn paper-review-no-pr paper-review-decision paper-review-spawn
+audit-over-cap audit-complete audit-spawn
+decide-done-waiting decide-done-approved decide-done-rejected decide-open-gate decide-more-work decide-spawn
+```
+
+Guarantees encoded in the table:
+
+- `stop-flag` → `done` → `paused` → `blocked` → budget, so a STOP file pauses
+  even when a cap is also exceeded, and DONE is terminal;
+- spawn rules never transition: the child writes the ledger, the next step
+  re-reads it, so one step is one observable action;
+- spawn/attempt keys make a completed action unrepeatable
+  (`work:T-001:1` → the next attempt is `work:T-001:2`);
+- `merge-no-review` precedes the gate rules: the conductor never opens a merge
+  gate for a PR whose review is not `accept`;
+- `audit-over-cap` blocks with the plan's `maxAuditCycles` wording (§5.4), and
+  `decide-*` maps the decision rule to `DONE` only behind the `submission`
+  human gate.
+
+### Child invocation contract
+
+- argv is built from `.pi/config/agents.json` + `.pi/config/model.json` and is
+  recorded verbatim in the `start` event **before** the spawn, together with
+  `agent_file_hash` and `prompt_hash`;
+- children get `PI_LOOP_ROLE`, `PI_AGENT_NAME`, `PI_LOOP_STATE`, `PI_LOOP_RUN`,
+  `PI_LOOP_ROOT`, `PI_LOOP_SANDBOX` (when set), `PI_DISPATCH_DEPTH=1`, and the
+  inherited environment (`SSH_AUTH_SOCK` included) for HPC runs;
+- sessions: `.pi/state/sessions/<run_id>/<agent>/<entity>/a<attempt>`, name
+  `<agent>__<entity>__<attempt>`;
+- one child at a time: `.pi/state/locks/child.json` holds the **child** pid; a
+  live pid refuses a second spawn, a dead pid is reported as a stale lock and
+  cleared, and the ledger keeps the start event without a completion;
+- completion events are the idempotency key, and the effect is always applied
+  *before* the event: a replay is a no-op, a killed action resumes.
+
+### Acceptance tests
+
+**1. `bash .pi/tests/run.sh orchestrator` → all green.** 58 node tests plus the
+acceptance transcript script:
+
+```
+== node --test orchestrator (offline, sandbox only) ==
+ℹ tests 58
+ℹ pass 58
+ℹ fail 0
+== orchestrator acceptance transcript ==
+acceptance: all S4 orchestrator checks passed
+```
+
+Test files: `test_state_machine` (26 table/purity cases), `test_budget` (7),
+`test_gates` (12), `test_cli_status` (8), `test_pause_resume` (3),
+`test_sandbox_cycle` (2).
+
+**2. Sandbox cycle transcript** (`bash .pi/tests/orchestrator/run_orchestrator_acceptance.sh`,
+scratch clone driven through the real CLI with the stub child):
+
+```
+$ PI_STUB_MODE=none  … cli.ts step   → booted run run-20261016231840-28b5ed95 on base 28b5ed95743d
+$ PI_STUB_MODE=none  … cli.ts step   → SELECT_TASK → WORK: selected T-001 (P2): acceptance stub task
+$ PI_STUB_MODE=work  … cli.ts step   → phd_candidate ok in 0.7s (1 tool calls, $0.0020)
+$ PI_STUB_MODE=none  … cli.ts step   → WORK → REVIEW: T-001 has a PR (PR-001); supervise it
+$ PI_STUB_MODE=review … cli.ts step  → supervisor ok in 0.1s (1 tool calls, $0.0020)
+$ PI_STUB_MODE=none  … cli.ts step   → REVIEW → MERGE: PR-001 accepted; run the pre-merge gate and merge
+$ PI_STUB_MODE=none  … cli.ts step   → human gate G-001 (merge) is pending: merge PR-001 (work/T-001-stub → update_pymc)
+$ PI_STUB_MODE=none  … cli.ts step   → skipped(no-action) waiting for human gate G-001 (merge)
+$ … cli.ts gate approve G-001 "acceptance: reviewed the transcript"   → gate G-001 (merge) → approved
+$ PI_STUB_MODE=none  … cli.ts step   → merged PR-001 → POST_MERGE at 67cd5aa9fbc6 (tag run/run-20261016231840-28b5ed95/merge/1)
+$ PI_STUB_MODE=none  … cli.ts step   → POST_MERGE → SELECT_TASK: post-merge bookkeeping
+
+-- merge commit message --
+67cd5aa merge PR-001 (review RV-001): stub PR for T-001
+5897ed8 T-001: stub implementation
+-- tag --
+run/run-20261016231840-28b5ed95/merge/1
+PASS  merge commit message contains the review id
+PASS  exactly one run/<run_id>/merge/1 tag
+PASS  the sandbox update_pymc advanced by exactly the task commit + the merge commit
+PASS  exactly one pre-merge gate run recorded
+PASS  the merge event records the gate result and the merge sha
+```
+
+The merge commit message contains the review id (`review RV-001`); the gate run
+(`.pi/state/gate-runs/PR-001-*.json`) holds all seven checks with their commands
+and raw output tails; the merge event records `gate_ok: true`, the gate-run path,
+`merge_sha`, and `merge_tag`.
+
+**3. Pause/resume matrix.** `test_pause_resume.test.ts` executes and then replays
+the action at every transition boundary (`BOOT`, assign, WORK, PRE-REVIEW,
+REVIEW, MERGE, POST_MERGE): the replay is always `skipped(completed)`, appends
+no event, writes no PR, and the next action key differs. A real SIGKILL of the
+conductor mid-child leaves a lock with a dead pid; the resumed run reports
+`stale child lock`, appends exactly one completion, and produces exactly one PR.
+Pausing before the merge and resuming (with the gate approved) produces exactly
+one merge commit and one tag. Transcript: `PASS replay/kill/pause-resume tests
+green (3 cases)`.
+
+**4. Budget caps.** Each of the six caps produces `PAUSED` quoting the cap name,
+the value, and `node .pi/extensions/orchestrator/cli.ts resume …`:
+
+```
+budget caps pause with the cap name, the values, and the resume command
+a cap pauses the loop in a sandbox, and resume returns to the recorded state
+six budget caps pause with the reason + resume command
+```
+
+**5. `.pi/loop/step.sh` ↔ CLI parity.** Both entry points are executed against
+identical sandboxes for three steps; the events are compared field-by-field
+(action key/phase/kind/state, agent, attempt, exit state, gate fields, effects,
+summary with SHAs and run ids normalised): identical. `status.sh` prints the
+same report as `cli.ts status`. Transcript: `PASS step.sh and the CLI append
+identical events for the same starting state`. The pi command surface adds a
+structural test: every `/loop:*` handler calls the shared `commands.ts`
+function, and `index.ts` contains no call to `executeAction`, `saveLoopState`,
+`nextAction`, or `runPreMergeGates` — so `/loop:step` and the CLI cannot
+diverge without failing a test.
+
+**6. Real repository after the whole run** (acceptance script, on the committed
+tree):
+
+```
+PASS  real update_pymc SHA unchanged (28b5ed95743db8228a423bd86fb77ff5722c891c)
+PASS  no branch or tag created in the real repository
+PASS  real working tree clean (no tracked-file changes)
+git status --porcelain … ?? Vangja-project/   (pre-existing untracked archive)
+```
+
+`make -C .pi verify-env` on the committed tree: 158 node tests pass, 150 python
+tests OK, all 15 skills valid, 15/15 environment checks, 4/4 orchestrator
+checks, exit 0. The full suite grew from 100 node tests (S3) to 158 with the 58
+new orchestrator tests.
+
+### Deviations and decisions
+
+- **D-S4-1 — `MERGE → WORK` added to the transition table.** `plan/02 §2` has no
+  edge back from MERGE, but `plan/09 §3` requires a rejected human gate to send
+  the loop back with the note ("it does not stop the run"). Without the edge a
+  rejected merge gate deadlocks the loop. `.pi/lib/state.ts` now allows
+  `MERGE → WORK` with the runbook cited in a comment; no other transition
+  changed.
+- **D-S4-2 — idempotency is "effect applied", not "event exists".** A completed
+  key is a no-op only when the loop has already left the state the action ran in
+  (`execute.ts: effectApplied`). A second pause after a resume, or a second WORK
+  cycle, must still run; a replay of a finished spawn/gate/merge must not.
+- **D-S4-3 — pre-merge gate runs are evidence files, not `gate` ledger records.**
+  `GATES.jsonl` holds human gates only; mixing a green pre-merge run into it
+  would make an automatic check look like a human approval (which the merge-gate
+  rules read). Runs go to `state/gate-runs/<pr>-<ts>.json` and are summarised in
+  an event; waivers (`WAIVERS.jsonl`, free-text `gate` field) can waive
+  `pre-merge:<check>` and name the PR.
+- **D-S4-4 — a red pre-merge gate pauses instead of dead-ending.** The merge
+  action records a `failed` (not `complete`) event and writes `PAUSED` with the
+  failed checks, the evidence path, and the two allowed resolutions (fix +
+  resume, or a supervisor waiver). Resume re-runs the same action.
+- **D-S4-5 — readiness/paper/audit/decision read surfaces.** The plan defines
+  these states but not the file the verdict lives in. S4 fixes them as
+  `state/READINESS.json` `{pass, reason, evidence[]}`, `state/DECISION.json`
+  `{done, grade, reason}`, and `state/AUDIT.json` `{cycle, phase, complete}`;
+  the state machine refuses to guess (missing file → the spawning rule).
+- **D-S4-6 — AUDIT is a contract, not the pipeline.** `audit-spawn` starts (or
+  continues) the find phase for the current cycle from `AUDIT.json` and names
+  the S6 audit-cycle prompt; the four-phase orchestration (find → verify →
+  synthesise → adjudicate) arrives with S6. `maxAuditCycles` is enforced here.
+- **D-S4-7 — HPC is a hook.** `hpcGate()` reports `not-configured`/`ok` from
+  `.pi/config/hpc.json` and the `WAITING_HPC` state spawns the collector, but
+  `collect` exits 2 with the S5 pointer (a stub that succeeds would make a dead
+  loop look alive).
+- **D-S4-8 — BOOT ignores untracked files.** The real checkout carries the
+  untracked `Vangja-project/` archive; BOOT refuses tracked-file dirt only
+  (`git status --porcelain --untracked-files=no`). Worktree/merge operations
+  still refuse any tracked change and let git refuse a checkout that untracked
+  files would block.
+- **D-S4-9 — attempts increment at spawn start.** A killed run resumes with a
+  new attempt and the same logical action key; the ledger shows the start event
+  without a completion, so "one action, at most one completion" stays checkable.
+- **D-S4-10 — no bookkeep-key collisions.** Bookkeep keys include the
+  from/to state, the entity, and the attempt; a loop back into the same state is
+  therefore a new action, while a replay after the transition is caught by
+  D-S4-2.
+- **D-S4-11 — the skill frontmatter fix (in-session request).** pi reported
+  `[Skill conflicts] … python-packaging-and-environments/SKILL.md: Nested
+  mappings are not allowed in compact mappings` — the unquoted description
+  contains `environment: dependencies`. Fixed by double-quoting the value; pi's
+  own loader now discovers all 15 skills with **zero diagnostics** (verified by
+  importing pi's `loadSkills` and asserting an empty diagnostics array).
+  `validate_skills.sh` previously used a line-based parser that could not see
+  this class of error: it now parses frontmatter with PyYAML (warning to stderr
+  and line-based fallback when PyYAML is absent), and two tests were added
+  (invalid YAML rejected; every real skill parses as YAML). The same hardening
+  exposed a second, unrelated false negative — `repo_root.rglob()` indexed
+  `.venv/` and `node_modules/` names, so `See scripts/missing.py` passed because
+  pandas ships a `missing.py`; the basename index now prunes runtime
+  directories, restoring the integrity of the existing test
+  (`test_missing_referenced_path_is_rejected`) that the installed environment
+  had silently broken.
+- **D-S4-12 — S3 acceptance script updated.** Test 3 in
+  `.pi/tests/agents/run_agent_acceptance.sh` asserted the stub's
+  `{merged: false, merge_stub: true}` record. S4 replaces that with two sharper
+  checks: the guard still refuses `phd_candidate`, and the conductor refuses the
+  supervisor without an accepted review — no merge event in either case. This
+  file is model-backed and not part of `verify-env`; it is changed because the
+  stub it asserted no longer exists, and the replacement tests the new contract.
+
+### Not done (by design)
+
+- `hpc/*` tools, the collector, checkpoint fetch/requeue: **S5**
+  (`hpcGate`/`collect` are the documented interface stubs).
+- `verify/*`, `rubric/*`, `auditkit/*`, `paper/*`: **S6**, referenced by the
+  state machine as spawn targets and read surfaces only.
+- GitHub PRs: no `gh` call, no `git push` anywhere in the orchestrator (`git.ts`
+  has no `"push"` argument; a test asserts it and that `filter-branch`/`rebase`
+  are refused). PRs are local ledger records; `useGitHub` is not implemented.
+- The `/loop:*` commands are registered by the orchestrator extension and share
+  `commands.ts` with the CLI, but the TUI rendering is deliberately minimal
+  (`ui.notify`/`ui.setWidget`); a richer widget is not part of S4.

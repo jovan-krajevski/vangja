@@ -164,6 +164,30 @@ test("an unknown CLI command exits 2 with the usage text", () => {
 	assert.match(result.stderr, /unknown command "frobnicate"/);
 });
 
+test("every /loop:* command delegates to the shared command layer", () => {
+	const source = fs.readFileSync(path.join(REPO_ROOT, ".pi", "extensions", "orchestrator", "index.ts"), "utf8");
+	const pairs: Array<[string, string]> = [
+		["loop:start", "commandStart"],
+		["loop:step", "commandStep"],
+		["loop:pause", "commandPause"],
+		["loop:resume", "commandResume"],
+		["loop:status", "commandStatus"],
+		["loop:verify-env", "commandVerifyEnv"],
+		["loop:gate", "commandGate"],
+	];
+	for (const [command, fn] of pairs) {
+		const start = source.indexOf(`registerCommand("${command}"`);
+		assert.ok(start >= 0, `${command} is not registered`);
+		const body = source.slice(start, source.indexOf("\n\t});", start));
+		assert.ok(body.includes(`${fn}(`), `${command} must call ${fn} (no duplicated loop logic)`);
+	}
+	// The pi surface is a wrapper: it must not call the executor, the state file,
+	// or the gate runner itself (checked as calls, not as prose).
+	for (const forbidden of ["executeAction", "saveLoopState", "nextAction", "runPreMergeGates"]) {
+		assert.equal(source.includes(`${forbidden}(`), false, `index.ts must not call ${forbidden} directly`);
+	}
+});
+
 test("a missing state directory is not silently created by status", () => {
 	const sandbox = createSandbox("status-missing");
 	try {
