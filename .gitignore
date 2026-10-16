@@ -179,3 +179,20 @@ data/
 fixed_case_studies/**/results/
 fixed_case_studies/**/results_hyperparams/
 fixed_case_studies/**/data/
+
+# paper (while be removed from .gitignore once it is published)
+paper/
+
+# pi research-agent runtime (see .pi/README.md) — manifests/hashes are committed, bodies are not
+.pi/state/
+.pi/artifacts/*/
+.pi/config/hpc.json
+.pi/**/node_modules/
+.pi/loop/worktrees/
+.pi/sessions/
+
+# Paper and container artifacts
+*.sif
+*.pdf
+!paper/paper.pdf
+!paper/**/*.pdf

@@ -1,0 +1,7 @@
+{
+  "provider": "opencode-go",
+  "model": "deepseek-v4.1-flash",
+  "thinking": "max",
+  "contextWindow": 1000000,
+  "enforce": true
+}
