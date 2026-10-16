@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import * as path from "node:path";
 import { test } from "node:test";
 import {
+	bashSecretDecision,
 	bashWriteTargetDecision,
 	buildRolePreamble,
 	checkModelPin,
@@ -158,6 +159,31 @@ test("shell writes into protected paths are refused", () => {
 	assert.equal(bashWriteTargetDecision("cp findings.md Vangja-project/audit/FINDINGS.md", base).allowed, false);
 	assert.equal(bashWriteTargetDecision("echo x > src/vangja/notes.md", base).allowed, true);
 	assert.equal(bashWriteTargetDecision("echo x > /tmp/outside.txt", base).allowed, true);
+});
+
+test("bash secret policy: content, secret paths, and git staging (D2)", () => {
+	const base = { root: "/repo", cwd: "/repo", currentBranch: "work/T-001", worktreeDirty: false, role: "phd_candidate" as LoopRole, loopState: "WORK" };
+	const pemHeader = ["-----BEGIN OPENSSH", ["PRIVATE", "KEY"].join(" ") + "-----"].join(" ");
+	const payload = "MIIEowIBAAKCAQEA0123456789abcdefghijklmnopqrstuv";
+	const pem = `${pemHeader}\n${payload}\n-----END OPENSSH PRIVATE KEY-----`;
+	const blocked = [
+		`cat > src/vangja/leaked-key.ts <<'EOF'\n${pem}\nEOF`,
+		"printf 'API_KEY=abc\\n' > .env",
+		"cp /tmp/cert.pem cert.pem",
+		"git add cert.pem",
+		"git add .pi/config/hpc.json",
+	];
+	for (const command of blocked) {
+		const decision = bashSecretDecision(command, base);
+		assert.equal(decision.allowed, false, command);
+		if (!decision.allowed) {
+			assert.match(formatDenial(decision), /\[guard:SECRET\]/);
+			assert.ok(!decision.reason.includes(payload), `must not echo the key material for: ${command}`);
+		}
+	}
+	assert.equal(bashSecretDecision("uv run pytest tests/test_regularization.py -q", base).allowed, true);
+	assert.equal(bashSecretDecision("git add src/vangja/notes.ts", base).allowed, true);
+	assert.equal(bashSecretDecision("git commit -m 'fix the trend potential sign'", base).allowed, true);
 });
 
 test("role matrix matches plan/05 §7 for every capability", () => {

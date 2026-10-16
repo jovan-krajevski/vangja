@@ -6,7 +6,7 @@
  * composes them for the `tool_call` handler and is re-exported for tests.
  */
 
-import { bashWriteTargetDecision, destructiveBashDecision, type BashPolicyContext } from "./bash.ts";
+import { bashSecretDecision, bashWriteTargetDecision, destructiveBashDecision, type BashPolicyContext } from "./bash.ts";
 import { ALLOWED, deny, type GuardDecision } from "./decision.ts";
 import { protectedPathDecision, type ProtectionContext } from "./protected.ts";
 import { parseRole, roleGateForTool, type LoopRole } from "../../lib/roles.ts";
@@ -19,6 +19,7 @@ export { protectedPathDecision, type ProtectionContext } from "./protected.ts";
 export {
 	destructiveBashDecision,
 	bashWriteTargetDecision,
+	bashSecretDecision,
 	extractWriteTargets,
 	splitSegments,
 	tokenize,
@@ -143,6 +144,8 @@ export function toolCallDecision(input: ToolCallInputs, ctx: ToolCallContext): G
 		if (!destructive.allowed) return destructive;
 		const writeTarget = bashWriteTargetDecision(input.command, bashCtx);
 		if (!writeTarget.allowed) return writeTarget;
+		const secrets = bashSecretDecision(input.command, bashCtx);
+		if (!secrets.allowed) return secrets;
 	}
 
 	return ALLOWED;

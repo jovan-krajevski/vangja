@@ -4,6 +4,7 @@
  * tool_call / session_start / input / tool_result paths without a child pi.
  */
 
+import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -185,6 +186,46 @@ test("secret paths and secret content are refused without echoing the value", as
 	)) as { block?: boolean; reason?: string };
 	assert.equal(editBomb?.block, true);
 	assert.ok(!(editBomb?.reason ?? "").includes("B".repeat(36)));
+});
+
+test("secret material is refused on the bash and commit paths (D2)", async () => {
+	const h = harness();
+	await h.fire("session_start", { type: "session_start", reason: "startup" }, h.ctx);
+
+	const pemHeader = ["-----BEGIN OPENSSH", ["PRIVATE", "KEY"].join(" ") + "-----"].join(" ");
+	const payload = "MIIEowIBAAKCAQEA0123456789abcdefghijklmnopqrstuv";
+	const pem = `${pemHeader}\n${payload}\n-----END OPENSSH PRIVATE KEY-----\n`;
+	const blockedCommands = [
+		`cat > src/vangja/leaked-key.ts <<'EOF'\n${pem}EOF`,
+		"printf 'API_KEY=abc\\n' > .env",
+		"cp /tmp/cert.pem cert.pem",
+		"git add cert.pem && git commit -m 'add cert'",
+	];
+	for (const command of blockedCommands) {
+		const blocked = (await h.fire("tool_call", toolCallEvent("bash", { command }), h.ctx)) as {
+			block?: boolean;
+			reason?: string;
+		};
+		assert.equal(blocked?.block, true, command);
+		assert.match(blocked?.reason ?? "", /\[guard:SECRET\]/, command);
+		assert.ok(!(blocked?.reason ?? "").includes(payload), "the guard must not echo the key body");
+	}
+
+	// A secret in the index is refused at commit time even though the index was built
+	// outside the session (the guard queries `git diff --cached --name-only`).
+	const repo = h.root;
+	execFileSync("git", ["-C", repo, "init", "-q"], { stdio: "ignore" });
+	execFileSync("git", ["-C", repo, "config", "user.email", "guard@example.invalid"], { stdio: "ignore" });
+	execFileSync("git", ["-C", repo, "config", "user.name", "guard"], { stdio: "ignore" });
+	fs.writeFileSync(path.join(repo, "id_rsa"), "placeholder\n");
+	execFileSync("git", ["-C", repo, "add", "id_rsa"], { stdio: "ignore" });
+	const commit = (await h.fire("tool_call", toolCallEvent("bash", { command: "git commit -m 'key'" }), h.ctx)) as {
+		block?: boolean;
+		reason?: string;
+	};
+	assert.equal(commit?.block, true);
+	assert.match(commit?.reason ?? "", /\[guard:SECRET\]/);
+	assert.match(commit?.reason ?? "", /id_rsa/);
 });
 
 test("destructive bash commands are refused", async () => {

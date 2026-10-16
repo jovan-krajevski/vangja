@@ -7,21 +7,22 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { test } from "node:test";
-import { FIXTURES_DIR, scratchRoot, spawnSyncNode } from "./helpers.ts";
+import { FIXTURES_DIR, scratchRoot, spawnAsyncNode } from "./helpers.ts";
 
-test("200 concurrent appends from 4 processes yield 200 valid lines", () => {
+test("200 concurrently launched appends from 4 processes yield 200 valid lines", async () => {
 	const root = scratchRoot("vangja-concurrency-");
 	const workers = 4;
 	const perWorker = 50;
-	const results = [];
-	for (let i = 0; i < workers; i += 1) {
-		const worker = spawnSyncNode(
-			process.execPath,
-			[path.join(FIXTURES_DIR, "append_worker.ts"), root, "event", String(perWorker), `w${i}`],
-			{ timeoutMs: 120_000 },
-		);
-		results.push(worker);
-	}
+	// Launched together (not sequentially): the lock is under real contention.
+	const results = await Promise.all(
+		Array.from({ length: workers }, (_, i) =>
+			spawnAsyncNode(
+				process.execPath,
+				[path.join(FIXTURES_DIR, "append_worker.ts"), root, "event", String(perWorker), `w${i}`],
+				{ timeoutMs: 120_000 },
+			),
+		),
+	);
 	for (const worker of results) {
 		assert.equal(worker.status, 0, `worker failed: ${worker.stderr}`);
 	}
@@ -57,20 +58,19 @@ test("200 concurrent appends from 4 processes yield 200 valid lines", () => {
 	assert.ok(fs.existsSync(path.join(root, ".pi", "state", "CONTEXT.md")), "the derived view is written");
 });
 
-test("LOOP_STATE.json survives 100 concurrent reads and writes", () => {
+test("LOOP_STATE.json survives 100 concurrently launched reads and writes", async () => {
 	const root = scratchRoot("vangja-state-race-");
 	const workers = 4;
 	const perWorker = 25;
-	const results = [];
-	for (let i = 0; i < workers; i += 1) {
-		results.push(
-			spawnSyncNode(
+	const results = await Promise.all(
+		Array.from({ length: workers }, (_, i) =>
+			spawnAsyncNode(
 				process.execPath,
 				[path.join(FIXTURES_DIR, "state_worker.ts"), root, String(perWorker), `s${i}`],
 				{ timeoutMs: 120_000 },
 			),
-		);
-	}
+		),
+	);
 	for (const worker of results) {
 		assert.equal(worker.status, 0, `state worker failed: ${worker.stderr}`);
 	}

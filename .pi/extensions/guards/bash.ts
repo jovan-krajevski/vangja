@@ -7,9 +7,12 @@
  * only needs to find an `rm`/`git` segment, not to parse shell semantics.
  */
 
+import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { toRepoRelative, underPath } from "../../lib/paths.ts";
 import type { LoopRole } from "../../lib/roles.ts";
+import { describeFindings, scanForSecrets, secretPathDecision } from "../../lib/secrets.ts";
 import { ALLOWED, deny, type GuardDecision } from "./decision.ts";
 import { protectedPathDecision } from "./protected.ts";
 
@@ -243,5 +246,134 @@ export function bashWriteTargetDecision(command: string, ctx: BashPolicyContext)
 			);
 		}
 	}
+	return ALLOWED;
+}
+
+// ---------------------------------------------------------------------------
+// Secret material in shell commands
+// ---------------------------------------------------------------------------
+
+const SECRET_ALTERNATIVE =
+	"keep credentials outside the repository (an OS keyring or ~/.ssh); reference them through the environment and commit only examples with placeholders";
+
+function secretPathProblem(candidate: string, ctx: BashPolicyContext, where: string): GuardDecision | null {
+	const relative = toRepoRelative(candidate, ctx.cwd, ctx.root);
+	const checked = relative.outsideRoot ? relative.abs : relative.rel;
+	const decision = secretPathDecision(checked);
+	if (!decision.blocked) return null;
+	return deny(
+		"SECRET",
+		`${where} "${checked}": ${decision.reason ?? "matches a secret-bearing path pattern"}`,
+		SECRET_ALTERNATIVE,
+	);
+}
+
+function pathIsDirectory(candidate: string, ctx: BashPolicyContext): boolean {
+	const { abs } = toRepoRelative(candidate, ctx.cwd, ctx.root);
+	try {
+		return fs.statSync(abs).isDirectory();
+	} catch {
+		return false;
+	}
+}
+
+function pathIsFile(candidate: string, ctx: BashPolicyContext): boolean {
+	const { abs } = toRepoRelative(candidate, ctx.cwd, ctx.root);
+	try {
+		return fs.statSync(abs).isFile();
+	} catch {
+		return false;
+	}
+}
+
+/** Read-only git query; an empty list when the root is not a git repository. */
+function gitLines(ctx: BashPolicyContext, args: string[]): string[] {
+	try {
+		const out = execFileSync("git", ["-C", ctx.root, ...args], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+		return out
+			.split("\n")
+			.map((line) => line.trim())
+			.filter((line) => line !== "");
+	} catch {
+		return [];
+	}
+}
+
+/** Paths reported by `git status --porcelain --untracked-files=all` (renames resolved). */
+function gitChangedPaths(ctx: BashPolicyContext): string[] {
+	return gitLines(ctx, ["status", "--porcelain", "--untracked-files=all"]).map((line) => {
+		const renamed = line.slice(3).split(" -> ");
+		return renamed[renamed.length - 1];
+	});
+}
+
+function gitAddCandidates(args: string[], ctx: BashPolicyContext): string[] {
+	const explicit = args.filter((token) => !token.startsWith("-"));
+	if (explicit.length === 0 || explicit.includes(".")) return gitChangedPaths(ctx);
+	const out: string[] = [];
+	for (const token of explicit) {
+		if (pathIsDirectory(token, ctx)) out.push(...gitChangedPaths(ctx));
+		else out.push(token);
+	}
+	return out;
+}
+
+function gitCommitCandidates(args: string[], ctx: BashPolicyContext): string[] {
+	const out = gitLines(ctx, ["diff", "--cached", "--name-only"]);
+	if (args.some((token) => token === "--all" || /^-[a-zA-Z]*a[a-zA-Z]*$/.test(token))) {
+		out.push(...gitLines(ctx, ["diff", "--name-only"]));
+	}
+	// Explicit pathspecs exist as files; commit-message words do not.
+	for (const token of args) {
+		if (!token.startsWith("-") && pathIsFile(token, ctx)) out.push(token);
+	}
+	return out;
+}
+
+/**
+ * D2: the shell is a second write path, so it gets the same secret rules as
+ * `write`/`edit` — content scan, secret-bearing targets, and staging/committing.
+ * Denials name the pattern and never echo the value.
+ */
+export function bashSecretDecision(command: string, ctx: BashPolicyContext): GuardDecision {
+	// 1. Secret material anywhere in the command text (including heredoc bodies).
+	const scan = scanForSecrets(command);
+	if (scan.findings.length > 0) {
+		return deny(
+			"SECRET",
+			`command text contains secret-like material (${describeFindings(scan.findings)}); the values are not echoed`,
+			SECRET_ALTERNATIVE,
+		);
+	}
+
+	// 2. Secret-bearing shell write targets.
+	for (const target of extractWriteTargets(command)) {
+		if (target.startsWith("$") || target.startsWith("`")) continue; // cannot resolve variables
+		const problem = secretPathProblem(target, ctx, "command writes to a secret-bearing path");
+		if (problem) return problem;
+	}
+
+	// 3. Staging/committing secret files (git is the commit path).
+	for (const segment of splitSegments(command)) {
+		const tokens = tokenize(segment);
+		const index = commandIndex(tokens);
+		if (tokens[index] !== "git") continue;
+		const sub = tokens[index + 1];
+		const args = tokens.slice(index + 2);
+		const candidates =
+			sub === "add" ? gitAddCandidates(args, ctx) : sub === "commit" ? gitCommitCandidates(args, ctx) : [];
+		for (const candidate of candidates) {
+			const problem = secretPathProblem(
+				candidate,
+				ctx,
+				"refusing to stage or commit a secret-bearing path",
+			);
+			if (problem) return problem;
+		}
+	}
+
 	return ALLOWED;
 }

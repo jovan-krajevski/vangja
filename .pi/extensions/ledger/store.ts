@@ -22,7 +22,14 @@ import {
 	validateRecord,
 	type LedgerKind,
 } from "../../lib/records.ts";
-import { renderContextMd, renderExperimentsMd, renderPrsMd, renderReviewsMd, renderTasksMd } from "../../lib/views.ts";
+import {
+	renderContextMd,
+	renderDecisionsMd,
+	renderExperimentsMd,
+	renderPrsMd,
+	renderReviewsMd,
+	renderTasksMd,
+} from "../../lib/views.ts";
 import { roleGate, type Capability, type LoopRole } from "../../lib/roles.ts";
 import { loadLoopState } from "../../lib/state.ts";
 
@@ -125,6 +132,9 @@ function updateViews(root: string, kind: LedgerKind): void {
 			break;
 		case "pr":
 			write("PRS.md", renderPrsMd(readLedger(root, "pr")));
+			break;
+		case "decision":
+			write("DECISIONS.md", renderDecisionsMd(readLedger(root, "decision")));
 			break;
 		default:
 			break;

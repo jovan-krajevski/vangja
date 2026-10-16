@@ -63,6 +63,10 @@ check("settings pin", () => {
 		"enabledModels drift",
 	);
 	const compaction = settings.compaction as { reserveTokens?: number; keepRecentTokens?: number } | undefined;
+	assert(
+		Array.isArray(settings.defaultTools) && settings.defaultTools.length === 1 && settings.defaultTools[0] === "+codemode",
+		"defaultTools must add codemode on top of the defaults",
+	);
 	assert(compaction?.reserveTokens === 32768, "compaction.reserveTokens drift");
 	assert(compaction?.keepRecentTokens === 120000, "compaction.keepRecentTokens drift");
 	return "model pin, enabledModels, +codemode, and compaction values match plan/02 §7";

@@ -79,9 +79,11 @@ with the highest `seq` for that id. Nothing rewrites history.
   `fixed_case_studies/protocol/**` (amendment only), `paper/**` (PAPER state
   only), `AGENTS.md` (supervisor/conductor), `.git/**`, `.pi/state/**`.
 - Secrets: writes matching `.env`, `auth.json`, `hpc.json`, `*.pem`, `id_*` are
-  refused; PEM blocks, bearer tokens, AWS/GitHub/OpenAI keys in write content are
-  refused; bash output is redacted before it reaches the model. Key material is
-  never echoed back.
+  refused, and the same rule applies to shell write targets and to
+  `git add`/`git commit` (a staged secret file is refused; the guard reads the
+  index, read-only); PEM blocks, bearer tokens, AWS/GitHub/OpenAI keys in write
+  content or bash command text are refused; bash output is redacted before it
+  reaches the model. Key material is never echoed back.
 - Bash: force pushes, history rewrites, shared-branch rebases, `reset --hard`
   with uncommitted work, `rm -rf` outside `.pi/state`/`.pi/artifacts`,
   `~/.ssh` writes, `curl | sh`, and environment exfiltration are refused.

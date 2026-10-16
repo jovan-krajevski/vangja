@@ -256,6 +256,17 @@ test("state_set is conductor-only", () => {
 	assert.match(denied.content[0].text, /state_set.*conductor/);
 });
 
+test("ledger_append(kind=decision) refreshes DECISIONS.md too (D5)", () => {
+	const root = scratchRoot();
+	handleLedgerAppend(
+		{ kind: "decision", record: { title: "t", context: "c", decision: "d", alternatives: ["a"], consequences: ["x"] } },
+		ctx(root),
+	);
+	const view = path.join(root, ".pi", "state", "DECISIONS.md");
+	assert.ok(fs.existsSync(view), "DECISIONS.md must exist after a generic decision append");
+	assert.match(fs.readFileSync(view, "utf8"), /D-001/);
+});
+
 test("derived views are written deterministically", () => {
 	const root = scratchRoot();
 	handleTaskEnqueue({ brief: BRIEF }, ctx(root));

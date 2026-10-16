@@ -3,7 +3,7 @@
  * type stripping, so there is no build step and no dependency.
  */
 
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -161,4 +161,42 @@ export function spawnSyncNode(
 		encoding: "utf8",
 	});
 	return { status: result.status, stdout: String(result.stdout ?? ""), stderr: String(result.stderr ?? "") };
+}
+
+/** Launch a child without blocking; used when a test must run processes concurrently. */
+export function spawnAsyncNode(
+	file: string,
+	args: string[],
+	options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
+): Promise<SpawnResult> {
+	return new Promise((resolve, reject) => {
+		const child = spawn(file, args, {
+			cwd: options.cwd ?? REPO_ROOT,
+			env: { ...process.env, ...options.env },
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		let stdout = "";
+		let stderr = "";
+		let timer: NodeJS.Timeout | undefined;
+		if (options.timeoutMs) {
+			timer = setTimeout(() => {
+				child.kill("SIGKILL");
+				reject(new Error(`spawnAsyncNode timed out after ${options.timeoutMs}ms: ${file}`));
+			}, options.timeoutMs);
+		}
+		child.stdout.on("data", (chunk) => {
+			stdout += String(chunk);
+		});
+		child.stderr.on("data", (chunk) => {
+			stderr += String(chunk);
+		});
+		child.on("error", (error) => {
+			if (timer) clearTimeout(timer);
+			reject(error);
+		});
+		child.on("close", (status) => {
+			if (timer) clearTimeout(timer);
+			resolve({ status, stdout, stderr });
+		});
+	});
 }

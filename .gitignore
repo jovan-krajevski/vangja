@@ -180,7 +180,12 @@ fixed_case_studies/**/results/
 fixed_case_studies/**/results_hyperparams/
 fixed_case_studies/**/data/
 
-# paper (while be removed from .gitignore once it is published)
+# paper/ is DELIBERATELY untracked until the manuscript is published: human
+# decision D-001 in .pi/state/DECISIONS.md (2026-10-16, recorded during the
+# independent S0 verification). paper/** is expected to be invisible to
+# `git status`/`git diff`; verifiers must not treat that as a finding. Remove
+# this block only when committing the manuscript, then re-run the S7 fresh-clone
+# check and re-verify paper claims traceability.
 paper/
 
 # pi research-agent runtime (see .pi/README.md) — manifests/hashes are committed, bodies are not
@@ -192,7 +197,6 @@ paper/
 .pi/sessions/
 
 # Paper and container artifacts
+# (no !paper/** re-inclusions: they cannot take effect while paper/ is ignored)
 *.sif
 *.pdf
-!paper/paper.pdf
-!paper/**/*.pdf

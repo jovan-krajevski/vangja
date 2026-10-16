@@ -359,3 +359,397 @@ load and execute through jiti under the pinned model.
 - Minor: `plan/09_OPERATIONS_RUNBOOK.md` says "`.pi/state/HUMAN_GATES.json`"; S0
   writes pending gates to `GATES.jsonl` + the derived `CONTEXT.md` and leaves
   `HUMAN_GATES.json` to S4. Align the runbook in S7.
+
+---
+
+## S0 verification
+
+Independent stage verification by a fresh human-role session that did not build
+S0 (prompt: `research_agent/prompts/00_scaffold_and_guards.md`). The report text
+was not trusted: every acceptance test was re-run from the committed tree and
+the files were inspected directly. 
+
+- Revision verified: `4e23d6c` (`pi: S0 research-agent scaffold …`) on
+  `update_pymc`; working tree at verification time `?? Vangja-project/` only
+  (pre-existing, untracked). Toolchain: `pi 1.3.0`, `node v24.21.0`.
+- Scope checked: all nine deliverables, all seven acceptance tests, the config
+  values against `plan/02` §6–7, the full role matrix against `plan/05` §7, the
+  agent roster against `plan/03` §1–2, and the changed-path set of `4e23d6c`.
+
+### Verdict: NO-GO (1 of 7 acceptance tests fails; D3 closed by human decision D-001, D2 remains) — **superseded by "S0 re-verification" below: GO**
+
+Acceptance 5 fails on its literal criterion "a fixture file with a PEM block
+cannot be written/committed": the `write`/`edit` path is blocked and never
+echoes the key, but the same PEM block (and `.env`, `*.pem`) **can** be written
+through `bash` redirection/heredoc and committed with `git add` + `git commit`,
+because the guard's bash branch (`.pi/extensions/guards/policy.ts:132-146`,
+`.pi/extensions/guards/bash.ts:229-247`) checks protected paths only — never
+`secretPathDecision` or `scanForSecrets` on the command. This is not an
+architecture problem (the bash path already resolves shell write targets for the
+protected-path rule); it is missing coverage. Smallest fix: in
+`bashWriteTargetDecision`, resolve each target and apply `secretPathDecision`,
+and scan the command text (heredocs/inline bodies) with `scanForSecrets` without
+echoing it; optionally also refuse `git add`/`git commit` when the staged set
+contains a secret-path file. Add one wiring test for the bash path; then re-run
+this verification. Everything else below passes.
+
+### Per-test results
+
+| # | Acceptance test | Verdict |
+|---|---|---|
+| 1 | `make -C .pi verify-env` green | PASS (exit 0; 64/64 tests, 12/12 checks) |
+| 2 | wrong model blocked, names `model.json` | PASS (exit 3, empty stdout) |
+| 3 | protected paths refused in real sessions | PASS (8/8 model-backed checks; no files created) |
+| 4 | ledger 200 appends / 4 processes, state under 100 r/w | PASS on substance; **test method not concurrent** (see D1) |
+| 5 | PEM fixture cannot be written/committed | **FAIL** — file tools blocked, `bash` path not (see D2) |
+| 6 | role gates for `merge_pr` / `hpc_submit` | PASS |
+| 7 | `pi --print` loads with zero warnings | PASS (0 bytes stderr) |
+
+### 1. `make -C .pi verify-env` → PASS
+
+```
+$ make -C .pi verify-env; echo EXIT=$?
+== node --test (offline) ==
+… (64 tests) …
+ℹ tests 64
+ℹ pass 64
+ℹ fail 0
+== environment checks ==
+PASS  pi binary: pi 1.3.0 on PATH
+PASS  settings pin: model pin, enabledModels, +codemode, and compaction values match plan/02 §7
+PASS  model.json: opencode-go/deepseek-v4.1-flash thinking=max window=1000000 enforce=true
+PASS  budgets.json: all 9 caps equal plan/02_ARCHITECTURE.md §6
+PASS  project.json: Journal of Forecasting; base=update_pymc; requireHumanMerge=true; dryRun=false
+PASS  agents.json: 16 agents, all on opencode-go/deepseek-v4.1-flash thinking=max; 0/16 definition files present (the rest arrive in S3)
+PASS  hpc.example.json: host="" wall=24h singleSlot=1
+PASS  hpc.json (runtime): disabled: no /home/jovan/repos/vangja/.pi/config/hpc.json; the HPC path is disabled
+PASS  loop shims: step.sh, status.sh, collect.sh present and executable (S4/S5 stubs)
+PASS  gitignore coverage: 6 runtime paths ignored
+PASS  no key material under .pi: no PEM blocks or provider tokens in versioned .pi files
+PASS  state root: no LOOP_STATE.json yet — the orchestrator (S4) creates it on BOOT
+
+12/12 checks passed
+
+STUB (S4): 'pi --print "/loop:verify-env"' is not available; the orchestrator
+           (research_agent/prompts/04_orchestrator_and_state.md) has not been built.
+           Use 'make -C .pi verify-env-strict' in CI to fail on this stub.
+
+verify-env: environment tests green.
+verify-env: NOTE the S4 stub above — the orchestrator does not exist yet.
+EXIT=0
+```
+
+The deviation the report documents (item 1) is real and works as claimed:
+`make -C .pi verify-env-strict` runs the same checks and then fails
+(`make: *** [Makefile:43: verify-env-strict] Error 1`, exit 2 from make). The
+loop shims fail loudly with `not implemented until S4/S5` (exit 2 each). Marked
+PASS with that deviation accepted, not silently.
+
+### 2. Wrong model → PASS
+
+```
+$ PI_LOOP_ROOT=$PWD pi --print --no-session -na -e .pi/extensions/guards/index.ts \
+    --provider opencode-go --model opencode-go/gpt-5.6-luna --thinking max \
+    "Reply with exactly: SHOULD-NOT-RUN"
+EXIT=3
+stdout: (empty)
+stderr:
+[guard:MODEL_PIN] model/thinking drift: model is "gpt-5.6-luna" but the pin requires "deepseek-v4.1-flash". The pin is enforced for every session (plan/02_ARCHITECTURE.md §7). Fix .pi/config/model.json, or relaunch with "--provider opencode-go --model opencode-go/deepseek-v4.1-flash --thinking max".
+```
+
+Thinking drift also blocks: `--thinking low` → exit 3, `stderr` says
+`thinking level is "low" but the pin requires "max"` and names
+`.pi/config/model.json`. No model turn, no tokens.
+
+### 3. Protected paths → PASS
+
+```
+$ bash .pi/tests/acceptance/run_acceptance.sh; echo EXIT=$?
+== acceptance: model-backed guard checks (pinned model, no repo writes expected) ==
+PASS  Vangja-project/** write refused for phd_candidate  (evidence: …/archive-write.jsonl)
+PASS  paper/** write refused while PI_LOOP_STATE=WORK  (evidence: …/paper-write-work.jsonl)
+PASS  .env write refused (secret path)  (evidence: …/env-write.jsonl)
+PASS  PEM fixture write refused without echoing the key  (evidence: …/pem-fixture.out)
+PASS  recursive forced delete outside .pi/{state,artifacts} refused  (evidence: …/rm-rf.jsonl)
+PASS  trusted session exposes the ledger tools  (evidence: …/ledger-tool.jsonl)
+PASS  role preamble injected (LOOP ROLE: scout)  (evidence: …/preamble.txt)
+PASS  trusted startup is warning-free  (evidence: …/preamble.stderr)
+acceptance: all model-backed checks passed
+EXIT=0
+```
+
+Raw guard `tool_execution_end` results from that evidence (not the model's
+prose):
+
+```
+[guard:PROTECTED_PATH] "Vangja-project/GUARD_TEST.md" is inside Vangja-project/, the read-only historical audit archive Allowed alternative: read Vangja-project/** as evidence, and write your own analysis under .pi/artifacts/ or a path named by your task brief
+[guard:PROTECTED_PATH] "paper/paper.tex" may only be written in the PAPER state (current state: WORK) Allowed alternative: wait for the conductor to enter PAPER (PI_LOOP_STATE=PAPER) before editing paper/**; until then put results in artifacts/ or a task branch file named by your brief
+[guard:SECRET] ".env" matches a secret-bearing path pattern (/(^|\/)\.env(\.[^/]*)?$/i). … Allowed alternative: keep credentials outside the repository; commit only examples with placeholders
+[guard:DESTRUCTIVE_BASH] recursive forced delete outside the allowed directories: rm -rf /tmp/guard-acceptance-nothing Allowed alternative: delete only under .pi/state/ or .pi/artifacts/; …
+```
+
+Afterwards `Vangja-project/GUARD_TEST.md` and `.env` do not exist and
+`git status --porcelain -- paper/` is empty. (In the `paper/**` case the model
+also ran `read`/`bash` before its write; harmless, and the write itself was still
+blocked.)
+
+### 4. Ledger concurrency → PASS on substance, METHODOLOGY DISCREPANCY
+
+The committed test passes (`node --test .pi/tests/test_ledger_concurrency.test.ts`
+→ 2/2 pass), but it does **not** run the workers concurrently:
+`test_ledger_concurrency.test.ts:17-23` calls `spawnSyncNode` in a `for` loop,
+and `helpers.ts:157` uses `child_process.spawnSync`. The four processes run one
+after another, so the lock is never contended. The report's line "200 concurrent
+appends from 4 processes" and its `jq` evidence therefore describe a sequential
+run.
+
+I re-ran the acceptance criterion honestly — four workers launched in the
+background at once, 50 appends each, against a scratch root:
+
+```
+$ for i in 0 1 2 3; do node .pi/tests/fixtures/append_worker.ts "$SC" event 50 "w$i" & done; wait
+worker w0: appended 50 … worker w3: appended 50
+lines=200   json_valid_lines=200   unique_seqs=200
+actors=worker-w0 worker-w1 worker-w2 worker-w3   leftover_locks=0
+(per-line python parse: parse_errors=0, seqs contiguous 1..200)
+```
+
+`LOOP_STATE.json` under genuinely concurrent writers (4 × 25 writes + reads)
+ends valid: `schema=pi-loop-state/1`, `state=BOOT`, `updated_by=worker-s3`, no
+lock left, no temp file left. So the criterion holds; the test that claims to
+prove it does not. Fix: `spawn` the workers and `await Promise.all(...)` (or
+drive the fixture from bash), or rename the test to say it is sequential.
+
+### 5. PEM fixture → FAIL (file-tool path PASS, shell/commit path not enforced)
+
+The committed fixture check passes:
+
+```
+$ node .pi/tests/acceptance/pem_fixture_check.ts
+fixture written: /tmp/vangja-pem-fixture-WJcE7D/fixture-pem.txt (149 bytes)
+guard denial: [guard:SECRET] content for "src/vangja/leaked-key.ts" contains secret-like material (pem-private-key at offset 0 (114 chars)); the values are not echoed
+PASS: PEM content refused and the key material was not echoed
+```
+
+I then drove the real `toolCallDecision` with the same conversion the extension
+applies to `edit` inputs (`guards/index.ts:212-216`), for both the file tools and
+the shell:
+
+```
+scanForSecrets(pem) findings: pem-private-key
+BLOCKED  write tool, PEM content -> SECRET: content for "src/vangja/x.ts" contains secret-like material (pem-private-key …
+BLOCKED  edit tool, PEM content -> SECRET: content for "src/vangja/x.ts" contains secret-like material (pem-private-key …
+ALLOWED  bash heredoc, PEM -> src file
+ALLOWED  bash redirection -> .env
+ALLOWED  bash cp -> cert.pem
+ALLOWED  bash git add + git commit
+```
+
+Denials never echo the key (checked). The plan is explicit that this must not be
+possible: `plan/05_EXTENSIONS_AND_TOOLS.md` §4 — "Secret scan: blocks
+commits/paths matching `.env`, `*.pem`, private keys, `auth.json`, `hpc.json`,
+tokens" — and `research_agent/README.md` — "no secrets or data commits". Until
+S6 there is no pre-merge hygiene scan, so the guard is the only control and the
+bash path bypasses it.
+
+### 6. Role gates → PASS
+
+```
+$ node --test --test-name-pattern="role" .pi/tests/test_guards_policy.test.ts .pi/tests/test_guards_wiring.test.ts
+✔ role matrix matches plan/05 §7 for every capability
+✔ role preamble is exactly five lines and names the role, state, and task
+✔ role gates refuse merge_pr for phd_candidate and hpc_submit for collector
+✔ the role preamble is injected as a five-line <loop-role> section
+ℹ tests 4  ℹ pass 4  ℹ fail 0
+```
+
+Exact matrix reasons (from `roleGate`, the same text the guard emits):
+`role "phd_candidate" may not use merge_pr; allowed roles: supervisor, conductor`,
+`role "collector" may not use hpc_submit; allowed roles: phd_candidate, conductor`,
+`role "phd_candidate" may not use state_set; allowed roles: conductor`. I also
+read the whole `ROLE_MATRIX` (`.pi/lib/roles.ts:60-80`) against `plan/05` §7:
+matches, including `hpc_cancel` supervisor/conductor, `hpc_requeue`
+collector/conductor, `experiment_update` collector/conductor, `dispatch`
+excluding conductor, `task_close` supervisor/conductor.
+
+### 7. `pi --print` loads warning-free → PASS
+
+```
+$ PI_LOOP_ROLE=scout PI_LOOP_STATE=SELECT_TASK PI_LOOP_ROOT=$PWD pi --print --no-session -a \
+    --provider opencode-go --model opencode-go/deepseek-v4.1-flash --thinking max \
+    "Output only the first line of the <loop-role> section of your system prompt."
+EXIT=0
+stdout: LOOP ROLE: scout | STATE: SELECT_TASK | TASK: none | EXPERIMENT: none | NEXT GATE: none
+stderr: (0 bytes)
+```
+
+The acceptance script additionally proves the ledger tools load and execute in a
+real session (`tool_execution_end toolName=ledger_read isError=false`, token
+`LEDGER-TOOL-OK`) and asserts warning-free startup. The status extension has no
+headless surface; it is covered by `test_status.test.ts` only (minor note, not a
+failure).
+
+### Other checks
+
+- Config vs plan: `budgets.json` equals `plan/02` §6 exactly; `model.json`
+  (`opencode-go/deepseek-v4.1-flash`, `max`, 1 000 000, `enforce:true`) agrees
+  with `settings.json` and every agent in `agents.json`; `project.json` carries
+  base/venue/gates/dirs; `hpc.example.json` has `host:""`, `wallClockHours:24`,
+  `maxParallelJobs:1`. `agents.json` has exactly the 16 agents of `plan/03` §1–2
+  (3 primary + 4 audit phases + 9 workers incl. `meta_review`).
+- Ledger: all 13 tools of `plan/05` §3 are registered
+  (`ledger/index.ts`), views and atomic state verified in the tests above, reads
+  bounded and pointing at the full ledger file.
+- Change scope of `4e23d6c`: `git show --name-only` touches only `.pi/**`,
+  `research_agent/REPORT_BUILD.md`, and `.gitignore`. No `src/`, `tests/`,
+  `fixed_case_studies/`, `paper/`, `docs/` changes.
+- No network calls in `.pi` source (grep hits are guard patterns and test
+  fixtures only). Largest file 386 lines (`ledger/handlers.ts`), under the ~400
+  limit.
+- `.gitignore`: all six required runtime entries verified with
+  `git check-ignore -v` (`.pi/state/`, `.pi/artifacts/*/`, `.pi/config/hpc.json`,
+  `.pi/**/node_modules/`, `.pi/loop/worktrees/`, `.pi/sessions/`).
+
+### Discrepancies vs the report
+
+- **D1 — acceptance 4's "concurrent" test is sequential** (above). The
+  underlying property passes under a true-concurrency re-run; the report's claim
+  about the test is inaccurate, and the commit message repeats it.
+- **D2 — acceptance 5 is not fully enforced** (above). The report's evidence
+  covers only the `write` tool; the shell and commit paths are untested and
+  unenforced. This is the failing acceptance test.
+- **D3 — `.gitignore` `paper/` (CLOSED: intentional, human-confirmed).** The
+  line was added by `4e23d6c` (`.gitignore:184`) and was not announced in the
+  report. The human has now confirmed it is deliberate: the manuscript stays
+  untracked until publication. Recorded as decision **D-001** in
+  `.pi/state/DECISIONS.md`; the rule comment in `.gitignore` states the intent
+  and the condition for removing the block. Consequences accepted: while the
+  block is in place `paper/**` is invisible to `git status`/`git diff`, so the
+  loop's pre-merge protected-path/claims scans cannot see paper changes and the
+  PAPER state will need `git add -f` (or the block removed) before merge. The
+  previously added `!paper/**/*.pdf` negations were inert under an ignored parent
+  directory and have been removed. Not a defect; no longer on the blocker list.
+- **D4 — cosmetic:** `check_env.ts` PASS line "settings pin: model pin,
+  enabledModels, +codemode, …" does not itself assert `defaultTools`; the real
+  assertion is in `test_settings.test.ts`. No behavioural impact.
+- **D5 — derived-view gap (minor):** recording D-001 exposed that
+  `ledger_append(kind="decision")` appends `DECISIONS.jsonl` and refreshes
+  `CONTEXT.md` but **not** `DECISIONS.md`: `updateViews` (`ledger/store.ts:114-133`)
+  has no `decision` case, so only the `decision_record` handler writes that view.
+  The `decision_record` path is consistent; only the generic `ledger_append`
+  escape hatch diverges from plan/05 §3 ("each append also updates the derived
+  … views"). I regenerated `DECISIONS.md` from the ledger with the same
+  serializer. Minimal fix: add the `decision` case to `updateViews` plus a test
+  that appending a decision refreshes `DECISIONS.md`. No acceptance test covers
+  it, so it is not a GO blocker.
+
+### What remains for a GO
+
+D3 is answered (decision D-001) and must not be raised again. One blocking item
+and one methodology item remain; both are small and inside `.pi/**` only.
+
+1. **D2 (blocking, acceptance 5) — close the shell secret bypass.** In
+   `.pi/extensions/guards/bash.ts`:
+   - in `bashWriteTargetDecision`, resolve every shell write target and apply
+     `secretPathDecision` (`.env`, `*.pem`, `auth.json`, `hpc.json`, `id_*`, …)
+     as well as `protectedPathDecision`;
+   - scan the whole command text with `scanForSecrets` (heredoc/inline bodies)
+     and deny `[guard:SECRET]` without echoing the value;
+   - cover `git add`/`git commit`: refuse when the paths named after `git add`,
+     or the staged set (`git diff --cached --name-only`), contain a secret-path
+     file.
+   Add wiring tests in `.pi/tests/test_guards_wiring.test.ts` for the heredoc
+   PEM, `printf … > .env`, and `git add cert.pem && git commit`, then run
+   `make -C .pi verify-env` and `bash .pi/tests/acceptance/run_acceptance.sh`.
+2. **D1 (methodology) — make the concurrency test concurrent.** In
+   `.pi/tests/test_ledger_concurrency.test.ts`, launch the four workers with
+   `spawn` and `await Promise.all(...)` (or rename the test to say it is
+   sequential). No production change needed.
+3. **Optional (D4, D5).** (a) Assert `defaultTools === ["+codemode"]` in
+   `check_env.ts`, so its PASS line matches what it checks. (b) Add a `decision`
+   case to `updateViews` in `.pi/extensions/ledger/store.ts` (with a test), so
+   `ledger_append(kind="decision")` refreshes `DECISIONS.md` exactly like
+   `decision_record` does.
+
+After 1–2, re-run `make -C .pi verify-env`, `bash
+.pi/tests/acceptance/run_acceptance.sh`, the true-concurrency reproduction and
+the `probe_secret_bash` probe from this section. If all pass, append a
+`### S0 re-verification` note; the verdict then flips to **GO** with no waiver
+needed. (A `waiver_record` that accepts file-tool-only secret blocking at S0 and
+names the S6 pre-merge hygiene scan as the compensating control remains the
+alternative if the fix is deferred.)
+
+### S0 re-verification (D1–D5 fixes applied) → GO
+
+Authored and re-verified in the same session at the human supervisor's request.
+All re-verification evidence below is deterministic. If strict author≠verifier
+separation is required for the record, re-run the same four commands in a fresh
+session.
+
+Changes applied:
+
+- `.pi/extensions/guards/bash.ts` — new `bashSecretDecision`: scans the whole
+  command text with `scanForSecrets` (heredoc/inline bodies), applies
+  `secretPathDecision` to every shell write target, and checks the paths named
+  after `git add` plus the staged set (`git diff --cached --name-only`, read-only)
+  and `-a`/`--all` modified files for `git commit`. Denials describe the finding
+  (kind/offset/length) and never echo the value.
+- `.pi/extensions/guards/policy.ts` — the bash branch calls `bashSecretDecision`
+  after the destructive and protected-path checks.
+- `.pi/tests/test_guards_wiring.test.ts` — wiring test: heredoc PEM, `> .env`,
+  `cp cert.pem`, `git add cert.pem`, and a pre-staged `id_rsa` refused at commit
+  time in a real temp repo.
+- `.pi/tests/test_guards_policy.test.ts` — policy test for the same denials plus
+  allow-cases (`uv run pytest`, `git add src/…`, `git commit -m '…'`).
+- `.pi/tests/test_ledger_concurrency.test.ts` + `.pi/tests/helpers.ts` (D1) — the
+  four workers are launched with `spawn` and `await Promise.all(...)`; both tests
+  renamed “concurrently launched”, so they state what they actually do.
+- `.pi/extensions/ledger/store.ts` + `.pi/tests/test_ledger.test.ts` (D5) —
+  `updateViews` now refreshes `DECISIONS.md` for `decision` appends.
+- `.pi/tests/check_env.ts` (D4) — the settings check now asserts
+  `defaultTools === ["+codemode"]`, matching its PASS line.
+- `.pi/README.md` — security notes state that shell writes and `git add`/
+  `git commit` follow the same secret rules.
+
+```
+$ make -C .pi verify-env; echo EXIT=$?
+… ℹ tests 67  ℹ pass 67  ℹ fail 0 … 12/12 checks passed …
+EXIT=0
+
+$ bash .pi/tests/acceptance/run_acceptance.sh; echo EXIT=$?
+PASS  Vangja-project/** write refused for phd_candidate
+PASS  paper/** write refused while PI_LOOP_STATE=WORK
+PASS  .env write refused (secret path)
+PASS  PEM fixture write refused without echoing the key
+PASS  recursive forced delete outside .pi/{state,artifacts} refused
+PASS  trusted session exposes the ledger tools
+PASS  role preamble injected (LOOP ROLE: scout)
+PASS  trusted startup is warning-free
+acceptance: all model-backed checks passed
+EXIT=0
+
+$ node probe_secret_bash3.mjs   # real toolCallDecision, extension-equivalent input conversion
+BLOCKED  write tool, PEM content -> SECRET …
+BLOCKED  edit tool, PEM content -> SECRET …
+BLOCKED  bash heredoc, PEM -> src file -> SECRET: command text contains secret-like material …
+BLOCKED  bash redirection -> .env -> SECRET: command writes to a secret-bearing path ".env" …
+BLOCKED  bash cp -> cert.pem -> SECRET: command writes to a secret-bearing path "cert.pem" …
+BLOCKED  bash git add + git commit -> SECRET: refusing to stage or commit a secret-bearing path "cert.pem" …
+(no denial echoes the key body)
+
+$ node --test .pi/tests/test_ledger_concurrency.test.ts
+✔ 200 concurrently launched appends from 4 processes yield 200 valid lines
+✔ LOOP_STATE.json survives 100 concurrently launched reads and writes
+```
+
+Acceptance after the fixes: **all 7 pass** — (1) exit 0, 67/67 + 12/12;
+(2) wrong model/thinking exit 3 naming `model.json`; (3) 8/8 model-backed;
+(4) genuinely concurrent now; (5) write/edit **and** shell/commit paths refused,
+no echo; (6) role matrix green; (7) stderr 0 bytes.
+
+**Verdict: GO** for S0, with the author/verifier caveat above. D1–D5 are closed
+or documented; D3 is human decision D-001 (intentional, not a defect).
+
+Uncommitted at re-verification time: `.gitignore` (D-001 comment),
+`research_agent/REPORT_BUILD.md` (this section) and the `.pi/**` fixes above.
+Commit them together before starting S1.
