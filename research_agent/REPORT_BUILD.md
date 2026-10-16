@@ -2205,3 +2205,260 @@ template parser/substitutions.
 - `make -C .pi accept` now runs both model-backed acceptance scripts; it made
   real model calls for the first time in S3 (≈$0.02 for the scout run plus the
   small caller turns).
+
+## S3 verification
+
+Independent stage verification by a fresh human-role session that did not build
+S3 (prompt: `research_agent/prompts/03_agents_and_prompts.md`). The report text
+was not trusted: all six acceptance tests were re-run from the committed tree,
+every agent file, prompt template, manifest, tool registry and the dispatch
+engine were inspected directly, and four additional checks were written by the
+verifier against the real spawn path.
+
+- Revision verified: `f5a403f7a9f49e3d5639bbd419ee195275cbeda8` (`S3: agents,
+  prompt templates, dispatch`) on `update_pymc`; base `6d50e80`. Working tree
+  before and after: `?? Vangja-project/` only (pre-existing, untracked).
+  Toolchain: `pi 1.3.0`, `node v24.21.0`, `python3 3.14.4`.
+- Report revision verified: `sha256
+  3b64b14693f3731c2a48eedf9c057b866fbf54149627d0a4b0bff3a55686a93d` before
+  this section was appended.
+- Scope: `git show --name-status f5a403f` → 50 files (42 `A`, 8 `M`), all under
+  `.pi/**` plus `research_agent/REPORT_BUILD.md`; **0** files under
+  `src/ tests/ fixed_case_studies/ paper/ Vangja-project/ case_studies/ docs/`,
+  and no deletions. No existing test was weakened: `.pi/tests/run.sh` only
+  appends the four new agent suites, `.pi/lib/{errors,paths,roles}.ts` only add
+  exports, `check_env.ts` only adds the two new checks.
+- Independent re-run of the full acceptance script (the builder's exact
+  command, model-backed checks on the pinned model):
+
+```
+$ bash .pi/tests/agents/run_agent_acceptance.sh
+== S3 acceptance: agent files, prompt templates, dispatch ==
+workdir: /tmp/vangja-agents.246671
+
+PASS  6. all 16 agent files validate against the manifest + tool registry  (evidence: /tmp/vangja-agents.246671/agents-offline.txt)
+PASS  1a. research-next-task resolves offline with arguments  (evidence: /tmp/vangja-agents.246671/template-resolve.txt)
+PASS  1b. pi expands /research-next-task (tools disabled: resolved, not executed)  (evidence: /tmp/vangja-agents.246671/template-pi.jsonl)
+PASS  2. scout dispatched from phd_candidate: summary + usage + session path in EVENTS.jsonl  (evidence: /home/jovan/repos/vangja/.pi/state/EVENTS.jsonl)
+      session_path=/home/jovan/repos/vangja/.pi/state/sessions/no-run/scout/adhoc/a1/2026-10-16T22-06-05-541Z_01a146c0-3ae4-7451-9907-23d3b2a193ae.jsonl
+  "agent": "scout",
+  "dispatch_mode": "agent",
+  "exit_state": "ok",
+  "session_path": "/home/jovan/repos/vangja/.pi/state/sessions/no-run/scout/adhoc/a1/2026-10-16T22-06-05-541Z_01a146c0-3ae4-7451-9907-23d3b2a193ae.jsonl",
+  "usage": {
+PASS  4. unknown agent name -> explicit error listing available agents  (evidence: /tmp/vangja-agents.246671/dispatch-scout.jsonl)
+PASS  3a. phd_candidate merge_pr refused by the guard  (evidence: /tmp/vangja-agents.246671/merge-refused.jsonl)
+PASS  3b. refused merge_pr appended no merge event  (evidence: /home/jovan/repos/vangja/.pi/state/EVENTS.jsonl)
+PASS  3c. supervisor merge_pr accepted and logged by the orchestrator stub  (evidence: /home/jovan/repos/vangja/.pi/state/EVENTS.jsonl)
+  "merge_stub": true,
+  "merged": false,
+  "pr_id": "PR-001",
+  "summary": "merge_pr STUB accepted for PR-001 (no merge performed; orchestrator arrives in S4)",
+PASS  5. killed child -> aborted outcome, ledger records aborted, partial text not final  (evidence: /tmp/vangja-agents.246671/abort-test.txt)
+
+agent files: 16 (manifest: 16)
+acceptance: all S3 agent/dispatch checks passed
+```
+
+The script exits 0 only in the branch that printed the last line (all
+`FAILURES` are zero). The model-backed calls appended `EV-000014` (scout, `ok`)
+and `EV-000015` (merge stub) to `.pi/state/EVENTS.jsonl`; the earlier report
+run's `EV-000011`/`EV-000012` are still present and unchanged.
+
+- Offline environment suite (re-run in full):
+
+```
+$ make -C .pi verify-env ; echo EXIT=$?          # (condensed; key lines verbatim)
+== node --test (offline) ==
+ℹ tests 100
+ℹ pass 100
+ℹ fail 0
+== skills (offline) ==
+== validate skills ==
+validate_skills: all 15 skills valid
+== python -- skill script tests ==
+Ran 148 tests in 29.050s
+OK
+== environment checks ==
+PASS  agents.json + agent files: 16 agents parsed, tools + pinned model match the roster
+PASS  tools.json: 55 tools in 9 families; every agent tool resolves
+PASS  prompt templates: 11 templates load from .pi/prompts/
+14/14 checks passed
+EXIT=0
+```
+
+### Verdict: GO — all six acceptance tests pass
+
+Four discrepancies/observations were found (D-V1–D-V4 below); none fails an
+acceptance test. D-V1 is a stale table in this report, D-V2 is the
+pre-existing 17-vs-16 prompt typo the report already documents, D-V3 is a weak
+test-1b assertion plus imprecise report wording, and D-V4 is a latent
+session-path accounting gap that the offline suite would only hit with
+duplicate parallel triples and never occurs with real `pi`.
+
+### Per-test results
+
+**1 · template resolution without execution — PASS.** The offline resolver was
+run myself: `node .pi/tests/agents/resolve_prompt.ts
+.pi/prompts/research-next-task.md T-099` → `${@:-none}` resolved to `T-099`,
+the frontmatter was stripped, exit 0. I also read the raw pi stream of the
+script's run and extracted the first user message verbatim; it is the fully
+expanded template ("The origin hint is `T-099`. / Dispatch the `planner` worker
+… enqueue the returned body with `task_enqueue`."). The literal `--dry-run`
+form in the prompt was additionally run by me:
+
+```
+$ PI_LOOP_ROLE=human pi --mode json -p -a --provider opencode-go --model opencode-go/deepseek-v4.1-flash \
+    --thinking max --tools read --name verify-dryrun "/research-next-task T-099 --dry-run"
+EXIT=0 stderr_bytes=0
+event types: {'session': 1, 'agent_start': 1, 'turn_start': 4, 'message_start': 16, 'message_end': 16, 'message_update': 2238, 'tool_execution_start': 10, 'tool_execution_end': 10, 'turn_end': 4, 'agent_end': 1, 'agent_settled': 1}
+tool names used in dry-run: {'read': 10}
+ledger events after: 15 (unchanged)
+final text: "## Dry-run mode — no dispatch performed … no planner dispatch, no `task_enqueue`, no ledger write."
+```
+
+No task was enqueued, no model was dispatched and the ledger did not grow. See
+D-V3 for the two caveats (the model did make 10 read-only calls, not the "no
+tool calls" the template's MODE clause asks for; and the scripted 1b check is a
+grep over the user message).
+
+**2 · scout dispatched from a phd_candidate child — PASS.** `EV-000014` records
+`agent: scout`, `actor: phd_candidate__T-099__1`, `exit_state: ok`,
+`exit_code: 0`, `stop_reason: stop`, usage and a session path. I checked the
+recorded path exists (87,790 bytes), that its file name contains the session id
+reported by the child, and that `agent_file_hash`
+(`9fac09d0494bc51ab70abaa9bd2382e9113c38f1bfcfc9739fd6aa197e3de9c3`) equals
+`sha256(.pi/agents/scout.md)` recomputed by me. The full recorded argv is: `pi
+--mode json -p -na --provider opencode-go --model opencode-go/deepseek-v4.1-flash
+--thinking max -e …/guards/index.ts -e …/ledger/index.ts -e …/dispatch/index.ts -e
+…/orchestrator/index.ts --skill …/vangja-codebase --skill
+…/research-memory-and-handoff --append-system-prompt /tmp/pi-dispatch-rZIcld/scout.md
+--tools read,grep,find,ls --session-dir
+…/.pi/state/sessions/no-run/scout/adhoc/a1 --name scout__adhoc__1 "TASK: Map
+.pi/skills: …"` — pinned provider/model/thinking, task text last, no
+`--continue`/`--resume`/`--session`. As in the report's run, the calling model
+omitted `task_id`, so the ledger default `adhoc` (not `T-099`) was used.
+
+**3 · merge_pr role boundary — PASS.** The raw `merge-refused.jsonl` carries
+`[guard:ROLE] role "phd_candidate" may not use merge_pr; allowed roles:
+supervisor, conductor (matrix: research_agent/plan/05_EXTENSIONS_AND_TOOLS.md
+§7)…` with `isError: true`; the ledger had no new `merge_stub` event between the
+before/after line counts. As `supervisor`, the call reaches the stub: the tool
+result is `{stub: true, merged: false, pr_id: "PR-001", event_id: "EV-000012"}`
+in the old run and `EV-000015` in mine, whose record matches the report's quote.
+A ledger scan shows exactly two `merge_stub` records total (one per supervisor
+run) — the refused call recorded nothing.
+
+**4 · unknown agent — PASS.** The raw tool result (old and new runs) is
+`dispatch refused: unknown agent "no_such_agent". Available agents:
+audit_adjudicator, audit_finder, audit_synthesizer, audit_verifier, collector,
+critic, experimenter, literature_scout, meta_review, methodologist, paper_writer,
+phd_candidate, planner, repro_engineer, scout, supervisor (definitions:
+.pi/agents/, roster: .pi/config/agents.json).` with `isError: true` and
+`success_count: 0`. I confirmed in `.pi/lib/agents.ts:216-250` that unknown
+agents are resolved before the allowlist check (D-S3-7 as reported).
+
+**5 · kill mid-run — PASS.** I re-ran the shipped test myself
+(`node --test --test-name-pattern="killing a child mid-run"
+.pi/tests/agents/test_dispatch_unit.test.ts` → 1 pass) and independently
+reproduced the behaviour with my own script against a real spawned stub process
+killed with `SIGTERM`: `exit_state=aborted`, `final_text=""`, and exactly one
+ledger event for that task id with `exit_state: "aborted"`. The tool layer
+(`.pi/extensions/dispatch/index.ts:101-124`) labels a failed/aborted child's
+partial output as "partial output (not a result)" and sets `isError`, so partial
+text is never presented as the final answer.
+
+**6 · all agent files validate — PASS, intent; the literal "17" is a prompt
+typo.** 16 files exist and 16 roster entries exist; file↔manifest equality,
+name/role/file/tools/skills/model, the ≤120-line cap, the seven mandated body
+sections and the skill-directory existence are all asserted by the shipped
+tests (33 tests across the four suites, all pass — I re-ran the suites
+standalone: `ℹ tests 33  ℹ pass 33  ℹ fail 0`). My own independent parser
+(`python3`, no project code) reached the same result: 16/16, all tools resolve
+against `.pi/config/tools.json` (55 tools, 9 families), all models equal
+`opencode-go/deepseek-v4.1-flash`. The roster is 3 primary + 5 audit + 8 workers
+= 16, matching the S3 deliverable list and `plan/03_AGENTS.md`; the acceptance
+test's "17" is unsatisfiable and is correctly treated as a typo by D-S3-1.
+
+### Independent checks written by the verifier
+
+Beyond the shipped suites, I ran `/tmp/verify_s3_dispatch.mjs`, which imports
+the real dispatch engine and spawns the real `pi`-shaped stub against a scratch
+fixture root (real configs, agents and skill dirs), and independently asserts:
+
+```
+PASS(v) unknown agent throws explicit error listing available agents
+PASS(v) role allowlist: collector->scout and supervisor->audit_finder refused; phd_candidate->experimenter allowed
+PASS(v) successful child: usage, agent hash, session path, pinned argv, one ledger event
+PASS(v) killed child: exit_state=aborted, final_text="", ledger=aborted, error surfaced
+```
+
+It also found the one behaviour the shipped offline suite does not cover
+(D-V4): with two *identical* `(agent, task_id, attempt)` triples in one parallel
+batch and a stub that (unlike real `pi`) emits no `session` stdout event, both
+outcomes resolve to the same `session_path`. Diagnostic output:
+
+```
+child1: exit=ok session_id=null session_dir=/tmp/verifier-s3-par2-KT2LfH/.pi/state/sessions/verify-run/scout/V-300/a1
+        session_file=/tmp/verifier-s3-par2-KT2LfH/.pi/state/sessions/verify-run/scout/V-300/a1/1792188556188_stub-252311-1792188556188.jsonl
+        final_text=STUB OK scout__V-300__1 :: TASK: a
+child2: exit=ok session_id=null session_dir=/tmp/verifier-s3-par2-KT2LfH/.pi/state/sessions/verify-run/scout/V-300/a1
+        session_file=/tmp/verifier-s3-par2-KT2LfH/.pi/state/sessions/verify-run/scout/V-300/a1/1792188556188_stub-252311-1792188556188.jsonl
+        final_text=STUB OK scout__V-300__1 :: TASK: b
+dir listing:
+   1792188556184_stub-252310-1792188556184.jsonl 101
+   1792188556188_stub-252311-1792188556188.jsonl 101
+event: scout ok /tmp/verifier-s3-par2-KT2LfH/.pi/state/sessions/verify-run/scout/V-300/a1/1792188556188_stub-252311-1792188556188.jsonl
+event: scout ok /tmp/verifier-s3-par2-KT2LfH/.pi/state/sessions/verify-run/scout/V-300/a1/1792188556188_stub-252311-1792188556188.jsonl
+```
+
+### Discrepancies
+
+- **D-V1 (report-only, fix before citing the table).** The roster table in
+  "Created" lists stale body-line counts. Recomputing with the loader
+  (`.pi/lib/agents.ts` `lines`, confirmed by running the loader):
+
+  | agent | report | actual |
+  |---|---|---|
+  | `phd_candidate` | 81 | 83 |
+  | `audit_verifier` | 62 | 63 |
+  | `audit_synthesizer` | 64 | 67 |
+  | `audit_adjudicator` | 65 | 71 |
+  | `meta_review` | 58 | 61 |
+
+  The other 11 match. All remain ≤120, so no acceptance criterion changes; the
+  table just predates the final body edits.
+- **D-V2 (prompt inconsistency, already documented).** The S3 prompt's line 70
+  says "All 17 agent files", while its own deliverable list and `plan/03_AGENTS.md`
+  define 16. I verified 16 is right (roster arithmetic above). Test 6's intent —
+  every file validates against the manifest and registry — is asserted and
+  passes; the report's D-S3-1 handling (assert equality, do not invent a 17th
+  role) is correct.
+- **D-V3 (test-1b is weaker than it looks; report wording is imprecise).** The
+  scripted check greps `template-pi.jsonl` for `task_enqueue` and `planner`,
+  strings that appear in the template's own expanded user message, so it would
+  pass even if the model contributed nothing. The report's parenthetical "with
+  `--tools read` only (so the template cannot execute)" is not accurate: `read`
+  is executable, and the model made 28 read calls in the script's 1b run and 10
+  in my `--dry-run` run. The property the test is meant to prove still holds —
+  no state-changing tool existed or was called, `EXIT=0`, `stderr` empty, and
+  the ledger did not grow — and I verified the expansion from the raw stream
+  myself. Recommend the next stage tighten 1b to the `--dry-run` form and
+  assert the absence of `tool_execution_end` for mutating tools rather than
+  grepping the template text.
+- **D-V4 (latent accounting gap, non-blocking).** `findSessionFile`
+  (`.pi/extensions/dispatch/lib.ts:283-301`) falls back to "most recent file"
+  when the child emitted no `session` event. Real `pi --mode json` always emits
+  it (I confirmed the `{type: "session", version: 3, id: …}` record in the
+  captured stream, which is why the real runs' `session_path` values are
+  exact), and no shipped test dispatches duplicate triples in parallel — so no
+  acceptance test fails. But the offline stub never emits the event, and a
+  duplicate `(agent, task_id, attempt)` batch then records the same session path
+  for two children (reproduction above). Since session *inheritance* is
+  independently impossible (no `--continue`/`--resume`/`--session` is ever
+  passed), this is a wrong-pointer risk, not a context leak. A unique nonce in
+  `sessionDir`, or rejecting duplicate triples in `dispatch_parallel`, would
+  close it. Also note the prose in deviation D-S3-2 lists `audit_finder →
+  scout` but the allowlist additionally grants `methodologist` to
+  `audit_finder` (`.pi/lib/agents.ts:63`).
+
