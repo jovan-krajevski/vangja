@@ -1512,3 +1512,463 @@ surface works and the content is accurate.
 - Everything built in this stage was committed at the end of the session
   (`.pi/skills/**`, `.pi/tests/skills/**`, `.pi/skills/{README.md,validate_skills.sh}`,
   `research_agent/REPORT_BUILD.md`).
+
+---
+
+## S2 verification
+
+Independent stage verification by a fresh human-role session that did not build
+S2 (prompt: `research_agent/prompts/02_skills_ops.md`). The report text was not
+trusted: all eight acceptance tests were re-run from the committed tree, the
+nine skills and their references were read, and the scripts were exercised on
+fixtures written by the verifier in addition to the shipped ones.
+
+- Revision verified: `47a9c961526158d485473639a36ea59be6167b3b` (`S2:
+  engineering, writing, review, and process skills`) on `update_pymc`; base
+  `73ce2d358eab3579b68ff8b010f3be1fe5939231`. `git status --porcelain` before
+  and after the verification: `?? Vangja-project/` only (pre-existing,
+  untracked). Toolchain: `pi 1.3.0`, `node v24.21.0`, `python3 3.14.4`,
+  `bash 5.3.9`.
+- Scope of the commit: `git diff --name-only 73ce2d3 47a9c96` → 91 files, all
+  under `.pi/**` plus `research_agent/REPORT_BUILD.md`; **0** files under
+  `src/ tests/ fixed_case_studies/ paper/ Vangja-project/ case_studies/ docs/`
+  (`git diff --name-only 73ce2d3 47a9c96 -- <those paths> | wc -l` → `0`).
+- `git diff --diff-filter=D --name-only 73ce2d3 47a9c96` → empty: nothing was
+  deleted. Only `.gitignore`, `.pi/skills/README.md`,
+  `.pi/skills/validate_skills.sh` and the report were modified; the 76 new
+  tests are additive and the S1 tests are unchanged.
+- Files inspected directly: all 15 `SKILL.md` (85/110/96/76/76/74/99/89/90
+  lines for the nine S2 skills), every S2 `references/`, `templates/` and
+  `scripts/` file, `.pi/skills/README.md`, `.pi/skills/validate_skills.sh`,
+  `.pi/Makefile`, `.pi/tests/run.sh`, `.pi/tests/skills/**`, `.gitignore`,
+  `.pi/lib/**`, the code citations the skills make, and the historical audit
+  files the audit/literature skills cite.
+- `.pi/lib/**` (9 files) is the S0 shared library committed late (report
+  deviation 10), not new S3/S4 work: the exports are config/roles/records/io/
+  state/views/errors/paths/secrets only; `.pi/agents/` and `.pi/prompts/` do
+  not exist and `.pi/loop/*.sh` still print the "not implemented until S4"
+  stub. The "do not implement the loop, agents, dispatch, or HPC tools" rule
+  holds.
+
+### Verdict: GO — all 8 acceptance tests pass
+
+Six discrepancies/observations were found (D1–D6 below). None fails an
+acceptance test; **D1 is the only one worth fixing before S3**, because it is a
+calibration reference the audit skills will read.
+
+### Per-test results
+
+| # | Acceptance test | Verdict |
+|---|---|---|
+| 1 | `validate_skills.sh` → 15 skills valid | PASS |
+| 2 | `make -C .pi verify-env` green with the new skill tests | PASS |
+| 3 | `lint_pymc_names.py`: fixture flagged, `src/vangja` clean | PASS |
+| 4 | `checkpoint_smoke.py`: skip-completed resume proven | PASS |
+| 5 | `parse_sacct.py`: TIMEOUT/OOM/NODE_FAIL mapping + requeue class | PASS |
+| 6 | `check_claims.py`: legacy paper reported (not an error), fixture clean | PASS |
+| 7 | `bib_check.py`: fabricated citation flagged | PASS |
+| 8 | `/skill:` routing for three skills | PASS |
+
+### 1. `validate_skills.sh` → 15 valid (PASS)
+
+```
+$ bash .pi/skills/validate_skills.sh; echo EXIT=$?
+PASS  bayesian-workflow: description 371 chars, 112 lines
+PASS  data-provenance: description 367 chars, 98 lines
+PASS  experiment-protocol-design: description 380 chars, 97 lines
+PASS  forecasting-evaluation: description 363 chars, 89 lines
+PASS  git-and-pr-workflow: description 335 chars, 96 lines
+PASS  hpc-slurm-and-checkpointing: description 386 chars, 110 lines
+PASS  literature-review-and-verification: description 356 chars, 74 lines
+PASS  python-packaging-and-environments: description 360 chars, 76 lines
+PASS  reproducible-experiments: description 336 chars, 101 lines
+PASS  research-memory-and-handoff: description 316 chars, 90 lines
+PASS  scientific-audit-and-adversarial-review: description 348 chars, 89 lines
+PASS  scientific-integrity-and-anti-gaming: description 341 chars, 100 lines
+PASS  scientific-writing-latex: description 343 chars, 76 lines
+PASS  vangja-codebase: description 383 chars, 85 lines
+PASS  venue-norms-and-reviewing: description 329 chars, 99 lines
+
+validate_skills: all 15 skills valid
+EXIT=0
+```
+
+Byte-identical to the report's block. The extended validator was read: it
+checks frontmatter/name/length, the routing trigger, that every backticked path
+resolves, absolute/tilde paths, secret patterns, script
+executability/shebang/`compile()`/`bash -n`, `__pycache__`/`*.pyc` under the
+skills tree, and README coverage — i.e. it checks what the report says it does.
+
+### 2. `make -C .pi verify-env` green (PASS)
+
+```
+$ make -C .pi verify-env; echo EXIT=$?
+== node --test (offline) ==          ℹ tests 67   ℹ pass 67   ℹ fail 0
+== skills (offline) ==               validate_skills: all 15 skills valid
+== python -- skill script tests ==   Ran 148 tests in 28.273s / OK
+== environment checks ==             12/12 checks passed
+STUB (S4): '/loop:verify-env' … has not been built.
+verify-env: environment tests green.
+EXIT=0
+```
+
+The report's counts are confirmed independently: `grep -cE '^\s+def test_'`
+over `.pi/tests/skills/*.py` gives **76** tests in the 10 new modules
+(6/5/10/17/5/8/5/7/5/8) and **148** overall, so "72 → 148" is exact. The new
+modules are discovered through `bash .pi/tests/run.sh skills`, which
+`make -C .pi verify-env` runs. Every one of the 13 new scripts (12 Python + 1
+shell) is covered by at least one test module, as `plan/04_SKILLS.md` requires.
+
+### 3. `lint_pymc_names.py` (PASS)
+
+```
+$ python3 .pi/skills/vangja-codebase/scripts/lint_pymc_names.py \
+    --diff .pi/tests/skills/fixtures/vangja_codebase/bad_names.diff
+[S1] pymc-name src/vangja/components/fourier_seasonality.py:379 name 'fs_{self.model_idx} - beta(p=365.25,n=5)' has parameter part 'beta(p=365.25,n=5)': use lowercase letters/underscores; never encode priors or configuration
+[S1] pymc-name src/vangja/components/fourier_seasonality.py:379 name 'fs_{self.model_idx} - beta(p=365.25,n=5)' contains ',', which PyMC/nutpie parse as a dimension spec
+[S1] pymc-name src/vangja/components/fourier_seasonality.py:380 name 'fs_{self.model_idx} - beta_sd1.0' has parameter part 'beta_sd1.0': …
+[S1] pymc-name src/vangja/components/fourier_seasonality.py:380 name 'fs_{self.model_idx} - beta_sd1.0' contains '.', …
+FINDINGS: 4      EXIT=1
+
+$ python3 .pi/skills/vangja-codebase/scripts/lint_pymc_names.py --root src/vangja
+FINDINGS: 0      EXIT=0
+```
+
+Reproduced exactly. Additionally, a verifier-owned fixture containing the
+literal acceptance string (not the f-string form) is flagged in both modes:
+
+```
+$ cat /tmp/…/bad_own.diff
++    pm.Normal("fs_0 - beta(p=365.25,n=5)", 0, 1)
++    pm.Normal("lt_0 - slope", 0, 1)
+$ python3 …/lint_pymc_names.py --diff /tmp/…/bad_own.diff
+[S1] pymc-name x.py:1 name 'fs_0 - beta(p=365.25,n=5)' … has parameter part 'beta(p=365.25,n=5)' …
+[S1] pymc-name x.py:1 name 'fs_0 - beta(p=365.25,n=5)' contains ',', …
+FINDINGS: 2      EXIT=1
+```
+
+### 4. `checkpoint_smoke.py` (PASS)
+
+```
+$ SMOKE=$(mktemp -d /tmp/s2verify-smoke.XXXXXX)
+$ python3 .pi/skills/hpc-slurm-and-checkpointing/scripts/checkpoint_smoke.py \
+    --out "$SMOKE" --limit 1 -- python3 \
+    .pi/tests/skills/fixtures/hpc/fixture_runner.py --out "$SMOKE" \
+    --units a,b,c,d --sleep 0.2 --linger 30 '{limit}' '{resume}'
+SMOKE PASS: first=['a'] skipped=['a'] refitted=[]      EXIT=0
+
+$ cat smoke.json   # key fields
+"ok": true, "first_returncode": -15, "resume_returncode": 0,
+"first_completed": ["a"], "skipped_on_resume": ["a"],
+"refitted_after_resume": [],
+"completed_after_resume": ["a","b","c","d"]
+$ cat work.log      → fit a | fit b | fit c | fit d
+$ cat skips.log     → skip a
+```
+
+The first run is genuinely SIGTERMed (−15) and the resume skips `a`. The test
+is not vacuous: a verifier-written runner that writes the same contract but
+ignores `--resume` fails the smoke test:
+
+```
+$ python3 …/checkpoint_smoke.py --out "$D" --limit 1 -- python3 /tmp/…/refit_runner.py …
+SMOKE FAIL: first=['a'] skipped=[] refitted=['a']
+REASON: recorded units were not skipped on resume: ['a']      EXIT=1
+```
+
+Reusing a used `--out` is refused (`REFUSED: … is not fresh (progress.json/work.log exist); use --force`, EXIT=2). Note for the record: the
+shipped `fixture_runner_bad.py` fails the first run at argparse (it has no
+`--linger`), so the suite's "bad runner" assertion is weaker than the verifier's
+refit-runner probe, which exercises the actual skip/refit assertion.
+
+### 5. `parse_sacct.py` (PASS)
+
+```
+$ python3 …/parse_sacct.py .pi/tests/skills/fixtures/hpc/sacct_states.json --progress-advanced
+4711 E-0007: completed (exit=0, signal=0) -> collect
+4712 E-0007: timed_out (exit=99, signal=0) -> requeue
+4713 E-0007: oom (exit=0, signal=9) -> failed-final [partition headroom unknown: --memory-can-double not given]
+4714 E-0007: preempted (exit=0, signal=0) -> requeue
+4715 E-0007: running (exit=0, signal=0) -> wait
+4716 E-0007: queued (exit=0, signal=0) -> wait
+4717 E-0007: failed (exit=1, signal=0) -> failed-final
+4718 E-0007: cancelled (exit=0, signal=0) -> stop
+4719 E-0007: completed (exit=0, signal=None) -> collect
+4720 E-0007: oom (exit=137, signal=9) -> failed-final
+JOBS: 10      EXIT=0
+
+$ … --memory-can-double
+4713 … -> retry-once-doubled-memory
+4720 … -> retry-once-doubled-memory
+
+$ … (no --progress-advanced)
+4712 -> requeue-no-progress     4714 -> requeue-no-progress
+
+$ … --progress-advanced --attempt 6
+4712 -> failed-final [attempt 6 >= maxAttempts 6]
+4713 -> failed-final [OOM after a previous attempt; …]
+4714 -> failed-final [attempt 6 >= maxAttempts 6]
+```
+
+A verifier-owned sacct payload (TIMEOUT/99 → `requeue`; NODE_FAIL →
+`preempted`/`requeue`; OOM/137·9 → `failed-final` then
+`retry-once-doubled-memory`) classifies identically, and `{"jobs":[]}` exits 1.
+
+### 6. `check_claims.py` (PASS)
+
+```
+$ python3 …/check_claims.py --paper paper/paper.tex --claims CLAIMS.json --base-ref none; echo EXIT=$?
+… 1178 × [S1] lines …
+FINDINGS: 1178 (S1=1178)
+numbers=589 claims=0
+EXIT=0            # report mode: findings, not an error
+$ grep -o '\[S[0-9]\] [a-z-]*' … | sort | uniq -c
+    589 [S1] dangling-number
+    589 [S1] hand-typed-number
+$ … --gate
+EXIT=1
+```
+
+Clean fixture (verifier-built claims entry for the 1 generated number, real
+artifact SHA-256, real commit):
+
+```
+$ … --paper .pi/tests/skills/fixtures/manuscript/clean/paper.tex --claims /tmp/…/CLAIMS.json --repo . --base-ref HEAD --gate
+FINDINGS: 0 (S1=0)
+numbers=1 claims=1
+EXIT=0
+$ … with artifact_sha256 = "f"*64        → [S1] artifact-hash-mismatch   EXIT=1
+$ … with commit = "0"*40                → [S1] sha-not-ancestor         EXIT=1
+$ … dangling fixture, no registry        → 2 findings (hand-typed + dangling), report mode EXIT=0
+```
+
+The acceptance expectation ("expected large dangling list … reported as a
+finding, not an error") holds, and the gate mode an audit uses fails.
+
+### 7. `bib_check.py` (PASS)
+
+```
+$ python3 …/bib_check.py --bib .pi/tests/skills/fixtures/bib/refs.bib --verified .pi/tests/skills/fixtures/bib/verified.json
+[S2] no-identifier @article{fake2024}:1 no DOI and no URL: cannot be verified
+[S1] unverified-citation @article{fake2024}:1 'fake2024' has no verified.json record
+ENTRIES: 2 FINDINGS: 2      EXIT=1
+
+$ … --verified …/verified_mismatch.json
+[S1] verification-mismatch @article{good2023}:1 'good2023': bib doi '10.1000/xyz' != sidecar '10.9999/other'
+ENTRIES: 2 FINDINGS: 2      EXIT=1
+```
+
+A verifier-owned `.bib` with no sidecar and a second fabricated key is flagged
+(4 findings, exit 1); the clean key is not flagged. See D5 for the limit of an
+offline checker.
+
+### 8. `/skill:` routing (PASS)
+
+```
+$ pi --print --no-session --provider opencode-go \
+    --model opencode-go/deepseek-v4.1-flash --thinking max \
+    "/skill:vangja-codebase What shape must initvals and prediction columns have …"
+EXIT=0  stderr 0 bytes
+→ array initvals for per-group RVs even when n_groups == 1; 1-D (horizon,)
+  predict columns; [group_code] indexing; cites linear_trend.py:783-793 and
+  names scripts/check_pooling_shapes.py ("just ran: FINDINGS: 0, exit 0").
+
+$ … "/skill:hpc-slurm-and-checkpointing What happens on TIMEOUT and on OOM, and when is a submission refused?"
+EXIT=0  stderr 0 bytes
+→ exit 99 = interrupted_clean; TIMEOUT → timed_out/requeue with progress else
+  requeue-no-progress; attempt ≥ 6 → failed-final; OOM → retry once with
+  doubled memory only with headroom, else failed-final; refusal list
+  (single active job, checkpoint metadata + smoke test, clean detached
+  checkout, uv.lock/container SHA).
+
+$ … "/skill:literature-review-and-verification When may I cite a source, and what does bib_check.py flag?"
+EXIT=0  stderr 0 bytes
+→ four required conditions incl. DOI/URL + checked:true sidecar + quote; the
+  S1/S2 rule split and exit codes, matching bib_check.py:173.
+```
+
+All three answers quote the skills' own thresholds and files, so the routing
+surface works. Side effect (recorded for honesty): running these in the repo
+made the child append ledger event `EV-000007` (`read_only_qa`) to
+`.pi/state/EVENTS.jsonl` — runtime state, gitignored, no repo file changed.
+
+### Discrepancies and observations
+
+**D1 · `references/severity-examples.md` re-grades two historical findings
+(minor, should fix before S3).** The file says "Real findings from the
+historical audit … Use these to keep today's scale the same", then lists
+`WS-S-002` and `WS-S-003` under **S0 — correctness-defining** with "→ S0".
+The historical record grades both **S1**:
+`Vangja-project/audit/stage-2/ws-s-stats-simulation/FINDINGS.md:203`
+(`| WS-S-002 | … | S1 | high | verified |`) and `:204` (WS-S-003 S1), confirmed
+by `ws-v-verification/REPORT.md:188-189`. Severity is not cosmetic here —
+`venue-norms-and-reviewing` caps grades differently on S0 vs S1. Smallest fix:
+relabel the two bullets as S1 examples (or add one sentence saying they were
+re-graded, with the reason). Everything else in the file checks out: 89
+findings / 85 confirmed / 0 rejected matches `ws-v-verification/REPORT.md:52`,
+and every quoted ID, location and consequence text matches the archive.
+
+**D2 · `lint_pymc_names.py` is stricter than the codebase convention on
+`tests/` (minor, accepted heuristic).** `--root src/vangja` is clean as the
+acceptance test requires, but `--root tests` reports 8 findings, all of the
+form `tests/test_regularization.py:203 name 'lt_0 - slope - loss' has parameter
+part 'slope - loss'`, i.e. the existing `pm.Potential(f"{slope_key} - loss", …)`
+names (`linear_trend.py:396/571/656`) that contain no `,`, `.`, `[` or `]`.
+A PR diff touching those lines would be flagged. The skill already says the
+scripts are "heuristics: triage every hit", so this is a documented limitation
+rather than a false claim; the S2 report does not mention the `tests/`
+behaviour.
+
+**D3 · some evidence blocks in the S2 report are abbreviated renderings, not
+literal transcripts (cosmetic).** Blocks 2 (verify-env), 3 (path elided and
+wrapped), 4 (`smoke.json` summarised), 5 (`parse_sacct` collapsed into a
+state/action table), 6 (findings line abbreviated) and 8 (routing answers
+summarised) compress the real output; e.g. the raw `parse_sacct` lines are
+`4712 E-0007: timed_out (exit=99, signal=0) -> requeue` and end with
+`JOBS: 10`, and the raw `check_claims` summary is
+`FINDINGS: 1178 (S1=1178)` / `numbers=589 claims=0`. Blocks 1 and 7 are
+verbatim: extracting the fenced blocks and diffing them against the re-run
+outputs shows no differing line. Every number in the abbreviated blocks
+reproduces exactly; only the formatting differs.
+
+**D4 · the README's "scripts default to the repo root" is only true for one
+script (minor doc accuracy).** `.pi/skills/README.md` (Conventions) and the S2
+report say repository/path arguments default to the repo root.
+`check_state_files.sh:56` does resolve the repo root from `${BASH_SOURCE[0]}`,
+but the Python scripts default paths to the current directory
+(`check_claims.py --paper` → `paper/paper.tex`; `--repo` → `Path(".")`), so the
+defaults only work when invoked from the repo root. No acceptance test
+requires otherwise and all documented invocations run from the repo root, but
+the claim should be narrowed ("run from the repo root; `--repo`/`--out`
+resolve relative to the caller") or the defaults changed.
+
+**D5 · `bib_check.py` cannot detect a fabricated DOI whose sidecar lies
+(residual risk, by design).** A verifier-owned entry with an invented DOI plus
+a sidecar asserting `checked: true` and a plausible quote passes clean:
+
+```
+$ python3 …/bib_check.py --bib /tmp/…/invented.bib --verified /tmp/…/verified_lying.json
+ENTRIES: 1 FINDINGS: 0
+EXIT=0
+```
+
+This is inherent to an offline, stdlib-only checker and the skill says the
+sidecar *is* the evidence of the mandatory `source_check`/`fetch_content`
+step, so the acceptance test ("fixture with a fabricated citation → flagged")
+is met. Recorded so that no later stage treats a green `bib_check` as
+source verification by itself.
+
+**D6 · observation on `templates/job.slurm`'s USR1 trap.** With the template's
+exact structure (`set -euo pipefail`, `trap 'echo …; python3 -c "import sys;
+sys.exit(99)"' USR1`, then a long-running child) a verifier harness gives:
+
+```
+$ kill -USR1 $SHELL_PID; wait $SHELL_PID; echo $?
+99
+stdout: "child up" / "USR1 received: flushing checkpoint"      # no "child exit" line
+```
+
+The trap does produce the exit-99 convention promptly (good), but it does not
+stop or flush the child; safety therefore rests on the per-unit atomic
+`progress.json` writes (correctly specified) plus SLURM terminating the job
+step. The skill states the contract correctly (rule 3/4); the S4/S5 collector
+should assert that `--signal=B:` actually reaches the runner, or have the trap
+tear the child down. No acceptance test covers this; low severity.
+
+**Not a discrepancy, for the record:** the prompt names
+`Vangja-project/audit/stage-2/DEFINITIONS.md` as a source for skill 14; that
+path does not exist (the file is `Vangja-project/audit/DEFINITIONS.md`). No
+skill cites the missing path (`grep -rn 'audit/stage-2/DEFINITIONS' .pi/skills/`
+→ nothing), and `validate_skills.sh` would have failed if one did.
+
+### Checked and found correct (spot checks, with citations)
+
+- Code citations in the skills resolve: `linear_trend.py:761-786`
+  (`_get_initval`, array initval for non-complete pooling),
+  `linear_trend.py:397/572/657` (trend potential),
+  `fourier_seasonality.py:288/390/482` (seasonal cap),
+  `tests/test_components.py:430` (name guard), `common.py:44-49` (epsilon and
+  seeds), `stocks/runner.py:307` (unit-level checkpoint hit),
+  `runner.py:442-455` (source-fit pkl cache).
+- `pyproject.toml:17-25` matches `python-packaging-and-environments` and the
+  S0 pin rationale (`pymc[nutpie]~=6.2`, `numba>=0.66`, `numpy>=2.0,<2.5`).
+- `templates/job.slurm` encodes 24 h, `--signal=B:USR1@300`, the
+  checkpoint/`--resume` command and the exit-99 contract; `sbatch --parsable`
+  is named in the SKILL.md command sequence.
+- `diff_scan.py` on the shipped fixtures: `clean.diff` → 0 findings exit 0;
+  `weakened.diff` → protected path, frozen config, removed assertion, added
+  skip, deleted test file, plus the composed `scan_gaming` findings, exit 1;
+  `gaming.diff` → `gaming-metric-reassignment` (S0) — the composition the
+  report claims.
+- `validate_findings.py`: ok fixture `FINDINGS: 2 META: 0` exit 0; bad fixture
+  10 meta-findings (missing command, `verified`+`low` contradiction, bad
+tri-state enums, duplicate id/finding) exit 1.
+- `checked`-sidecar / matrix scripts: `related_work_matrix.py` flags
+  `checked: false` (S1, exit 1) and renders the matrix; `make_job_record.py`
+  refuses without `--smoke-ok` / seeds / expected output, then writes
+  `record.json` with an idempotency key; `make_pr_record.py` refuses identical
+  base/head SHAs and otherwise writes `PR.md` + `footer.json` with the full
+  machine footer; `check_state_files.sh` passes the repo state (CONTEXT.md 44
+  lines) and warns on the missing `LOOP_STATE.json` (expected until S4).
+- All 13 new scripts: `--help` exit 0, stdlib-only imports
+  (`argparse ast datetime hashlib importlib json pathlib platform re shlex
+  signal subprocess sys time`), no network module, and every write is under
+  `--out` or stdout.
+
+### What was not checked
+
+- S4+ behaviour (the orchestrator, agents, dispatch, HPC tools) — out of scope
+  for S2 and correctly absent.
+- The `uv`-synced environment: the repository has no `.venv` in this session,
+  so `freeze_report.py` was run with the ambient interpreter and reports
+  `null` for pymc/pytensor/arviz/numba (its own SKILL.md documents that
+  meaning). No `uv sync` was run (network).
+- Real SLURM, real containers, and real job submission: only the fixtures and
+  the local smoke harness were exercised.
+- Twelve of the fifteen skill routing surfaces (only the three required by
+  acceptance test 8 were routed), and the `docs` build.
+- S0/S1 artifacts were not re-audited; this verification is limited to the S2
+  commit range plus the S2 deliverable's own claims.
+
+**Verdict: GO** for S2 (8/8 acceptance tests pass, no protected path touched,
+no test weakened). The smallest human decision: whether to apply D1 (relabel
+`WS-S-002`/`WS-S-003` as S1 examples in
+`.pi/skills/scientific-audit-and-adversarial-review/references/severity-examples.md`)
+now or before the first audit cycle; D2/D4 are small doc/heuristic follow-ups.
+
+### S2 verification follow-up — D1 applied (uncommitted)
+
+Decision: the human chose "apply now". The fix was applied to
+`.pi/skills/scientific-audit-and-adversarial-review/references/severity-examples.md`
+only; no other file was touched.
+
+- The two bullets were **moved** from the S0 section to the S1 section with
+  their historical grades, keeping the archive's substance: `WS-S-002`
+  (complete `+|·|`, individual `+(·)²` vs. the paper's `−φ(·)²`; S1 because the
+  headline case studies did not exercise the buggy branches, only the stocks
+  `individual`-pool ablation) and `WS-S-003` (`lam` differing across pooling
+  modes, ≈22× for the smart-home yearly term, partial form active for a
+  headline result).
+- The S0 section now states the calibration fact instead of a mis-grade: *"No
+  historical finding was graded S0: the 89-finding register is 27 S1 · 42 S2 ·
+  9 S3 (6 ungraded "—"), and `Severity: S0` never appears"*, and keeps the
+  "signals to listen for" guidance (sign errors, wrong estimand, broken
+  invariance, mis-ordering metric).
+- Counts re-verified before writing them: 89 `### WS-*` headers,
+  `grep -rhoE '\*\*Severity:\*\* [^ ]*' …` → 27 S1 / 42 S2 / 9 S3 / 6 `—`; no
+  `Severity: S0` anywhere in `Vangja-project/audit/stage-2/**`.
+
+Re-run after the change (the acceptance test that covers skill content):
+
+```
+$ make -C .pi verify-env; echo EXIT=$?
+== node --test (offline) ==          ℹ tests 67   ℹ pass 67   ℹ fail 0
+== skills (offline) ==               validate_skills: all 15 skills valid
+== python -- skill script tests ==   Ran 148 tests in 28.076s / OK
+== environment checks ==             12/12 checks passed
+verify-env: environment tests green.
+EXIT=0
+```
+
+D2–D6 remain open as recorded above (D2/D4 documentation or heuristic
+accuracy; D5/D6 residual risks for the audit and collector stages).

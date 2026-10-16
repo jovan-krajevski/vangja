@@ -6,16 +6,16 @@ scale the same; do not copy the findings themselves.
 
 ## S0 — correctness-defining (a result is wrong, or no claim is supportable)
 
-- **WS-S-002** (`linear_trend.py`, all pooling modes): the trend-transfer
-  potential had the wrong sign/form, so the regularisation pulled the target
-  slope *away* from the context slope. Consequence: every regularised
-  transfer result was wrong in a direction that the paper's narrative
-  depended on → S0, confidence high (reproduced by compiling the potential).
-- **WS-S-003**: seasonal regularisation scale differed across pooling modes,
-  making the "same regularisation" claim false by construction → S0.
-- Signals to listen for: sign errors, estimator computing a different
-  quantity than claimed, an invariance that does not hold, a metric that
-  cannot order the arms correctly.
+No historical finding was graded S0: the 89-finding register is 27 S1 · 42 S2 ·
+9 S3 (6 ungraded "—"), and `Severity: S0` never appears
+(`grep -rn 'Severity:\*\* S0' Vangja-project/audit/stage-2/*/FINDINGS.md` → no
+match). S0 is a live category for today's audit, not an inherited one: raise it
+only when the result is wrong or no claim can be supported — and say which
+claim dies with it.
+
+Signals to listen for: sign errors, estimator computing a different quantity
+than claimed, an invariance that does not hold, a metric that cannot order the
+arms correctly.
 
 ## S1 — claim-affecting (a claim is unsupported or overstated)
 
@@ -23,6 +23,18 @@ scale the same; do not copy the findings themselves.
   **mean**, while the paper argues for and prints the **MAP/mode**
   (`linear_trend.py:204`, `fourier_seasonality.py:196`, `flat_trend.py:141`).
   The code is internally consistent; the paper's claim is false → S1, high.
+- **WS-S-002** (`linear_trend.py`, complete and individual pooling): the
+  trend-transfer potential had the wrong sign/form (complete `+|·|`,
+  individual `+(·)²`), so regularisation pulled the target slope *away* from
+  the context slope; the partial branch matched the paper. Historically
+  graded **S1**, not S0, because the headline case studies did not exercise
+  the buggy branches — only the stocks `individual`-pool ablation rows did
+  (`FINDINGS.md:203`; same defect, lower consequence).
+- **WS-S-003**: the Fourier seasonal regularisation scale `lam` differed
+  across pooling modes (a ≈22× ratio for the smart-home yearly term) and was
+  undocumented vs. the paper, with the partial-pooling form active for a
+  headline result → S1 (the inconsistency is certain; the intended fix
+  direction is by analogy with the complete branch).
 - **WS-H-001**: the smart-home "best" and "reference" tables report different
   Vangja configurations (per-series test-best vs one global config) and the
   text does not distinguish them → S1 for the claim (selection-bias severity
