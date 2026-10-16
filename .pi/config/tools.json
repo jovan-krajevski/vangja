@@ -1,0 +1,114 @@
+{
+  "schema": "pi-tools/1",
+  "comment": "Tool registry for .pi agent manifests (plan/05_EXTENSIONS_AND_TOOLS.md). Agent frontmatter may name a concrete tool or a family; families expand to concrete names for the child --tools allowlist. Entries with stage > S3 are declared but not implemented yet; the registry test asserts S0–S3 entries really are registered by a loaded extension.",
+  "families": {
+    "dispatch": ["dispatch_agent", "dispatch_parallel", "dispatch_chain"],
+    "ledger": [
+      "ledger_read",
+      "ledger_append",
+      "task_enqueue",
+      "task_close",
+      "pr_open",
+      "review_write",
+      "experiment_queue",
+      "experiment_update",
+      "decision_record",
+      "waiver_record",
+      "amendment_record",
+      "state_get",
+      "state_set"
+    ],
+    "task": ["task_enqueue", "task_close"],
+    "hpc": [
+      "hpc_config",
+      "hpc_status",
+      "hpc_submit",
+      "hpc_checkpoints",
+      "hpc_fetch",
+      "hpc_tail",
+      "hpc_cancel",
+      "hpc_requeue"
+    ],
+    "verify": [
+      "verify_tests",
+      "verify_artifact",
+      "verify_reproduce",
+      "verify_traceability",
+      "verify_guards"
+    ],
+    "rubric": ["rubric_load", "rubric_autofill", "rubric_score", "rubric_validate"],
+    "auditkit": [
+      "finding_validate",
+      "finding_register",
+      "findings_render",
+      "audit_report_assemble",
+      "audit_grade"
+    ],
+    "paper": ["paper_build", "claims_add", "claims_check", "paper_diff_summary"],
+    "merge": ["merge_pr"]
+  },
+  "tools": [
+    { "name": "read", "kind": "builtin", "stage": "S0" },
+    { "name": "bash", "kind": "builtin", "stage": "S0" },
+    { "name": "edit", "kind": "builtin", "stage": "S0" },
+    { "name": "write", "kind": "builtin", "stage": "S0" },
+    { "name": "grep", "kind": "builtin", "stage": "S0" },
+    { "name": "find", "kind": "builtin", "stage": "S0" },
+    { "name": "ls", "kind": "builtin", "stage": "S0" },
+    { "name": "codemode", "kind": "builtin", "stage": "S0" },
+    { "name": "source_check", "kind": "user-package", "stage": "S0", "extension": "pi-web-access" },
+    { "name": "fetch_content", "kind": "user-package", "stage": "S0", "extension": "pi-web-access" },
+    { "name": "web_search", "kind": "user-package", "stage": "S0", "extension": "pi-web-access" },
+    { "name": "get_search_content", "kind": "user-package", "stage": "S0", "extension": "pi-web-access" },
+
+    { "name": "ledger_read", "kind": "extension", "stage": "S0", "extension": "ledger" },
+    { "name": "ledger_append", "kind": "extension", "stage": "S0", "extension": "ledger" },
+    { "name": "task_enqueue", "kind": "extension", "stage": "S0", "extension": "ledger" },
+    { "name": "task_close", "kind": "extension", "stage": "S0", "extension": "ledger" },
+    { "name": "pr_open", "kind": "extension", "stage": "S0", "extension": "ledger" },
+    { "name": "review_write", "kind": "extension", "stage": "S0", "extension": "ledger" },
+    { "name": "experiment_queue", "kind": "extension", "stage": "S0", "extension": "ledger" },
+    { "name": "experiment_update", "kind": "extension", "stage": "S0", "extension": "ledger" },
+    { "name": "decision_record", "kind": "extension", "stage": "S0", "extension": "ledger" },
+    { "name": "waiver_record", "kind": "extension", "stage": "S0", "extension": "ledger" },
+    { "name": "amendment_record", "kind": "extension", "stage": "S0", "extension": "ledger" },
+    { "name": "state_get", "kind": "extension", "stage": "S0", "extension": "ledger" },
+    { "name": "state_set", "kind": "extension", "stage": "S0", "extension": "ledger" },
+
+    { "name": "dispatch_agent", "kind": "extension", "stage": "S3", "extension": "dispatch" },
+    { "name": "dispatch_parallel", "kind": "extension", "stage": "S3", "extension": "dispatch" },
+    { "name": "dispatch_chain", "kind": "extension", "stage": "S3", "extension": "dispatch" },
+    { "name": "merge_pr", "kind": "extension", "stage": "S3", "extension": "orchestrator" },
+
+    { "name": "hpc_config", "kind": "planned", "stage": "S5", "extension": "hpc" },
+    { "name": "hpc_status", "kind": "planned", "stage": "S5", "extension": "hpc" },
+    { "name": "hpc_submit", "kind": "planned", "stage": "S5", "extension": "hpc" },
+    { "name": "hpc_checkpoints", "kind": "planned", "stage": "S5", "extension": "hpc" },
+    { "name": "hpc_fetch", "kind": "planned", "stage": "S5", "extension": "hpc" },
+    { "name": "hpc_tail", "kind": "planned", "stage": "S5", "extension": "hpc" },
+    { "name": "hpc_cancel", "kind": "planned", "stage": "S5", "extension": "hpc" },
+    { "name": "hpc_requeue", "kind": "planned", "stage": "S5", "extension": "hpc" },
+
+    { "name": "verify_tests", "kind": "planned", "stage": "S6", "extension": "verify" },
+    { "name": "verify_artifact", "kind": "planned", "stage": "S6", "extension": "verify" },
+    { "name": "verify_reproduce", "kind": "planned", "stage": "S6", "extension": "verify" },
+    { "name": "verify_traceability", "kind": "planned", "stage": "S6", "extension": "verify" },
+    { "name": "verify_guards", "kind": "planned", "stage": "S6", "extension": "verify" },
+
+    { "name": "rubric_load", "kind": "planned", "stage": "S6", "extension": "rubric" },
+    { "name": "rubric_autofill", "kind": "planned", "stage": "S6", "extension": "rubric" },
+    { "name": "rubric_score", "kind": "planned", "stage": "S6", "extension": "rubric" },
+    { "name": "rubric_validate", "kind": "planned", "stage": "S6", "extension": "rubric" },
+
+    { "name": "finding_validate", "kind": "planned", "stage": "S6", "extension": "auditkit" },
+    { "name": "finding_register", "kind": "planned", "stage": "S6", "extension": "auditkit" },
+    { "name": "findings_render", "kind": "planned", "stage": "S6", "extension": "auditkit" },
+    { "name": "audit_report_assemble", "kind": "planned", "stage": "S6", "extension": "auditkit" },
+    { "name": "audit_grade", "kind": "planned", "stage": "S6", "extension": "auditkit" },
+
+    { "name": "paper_build", "kind": "planned", "stage": "S6", "extension": "paper" },
+    { "name": "claims_add", "kind": "planned", "stage": "S6", "extension": "paper" },
+    { "name": "claims_check", "kind": "planned", "stage": "S6", "extension": "paper" },
+    { "name": "paper_diff_summary", "kind": "planned", "stage": "S6", "extension": "paper" }
+  ]
+}

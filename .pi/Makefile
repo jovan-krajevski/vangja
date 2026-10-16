@@ -18,9 +18,11 @@ NODE ?= node
 TEST_FILES := .pi/tests/test_settings.test.ts .pi/tests/test_schemas.test.ts \
 	.pi/tests/test_guards_policy.test.ts .pi/tests/test_guards_wiring.test.ts \
 	.pi/tests/test_ledger.test.ts .pi/tests/test_ledger_concurrency.test.ts \
-	.pi/tests/test_status.test.ts .pi/tests/test_child_pi.test.ts
+	.pi/tests/test_status.test.ts .pi/tests/test_child_pi.test.ts \
+	.pi/tests/agents/test_agents_manifest.test.ts .pi/tests/agents/test_tools_registry.test.ts \
+	.pi/tests/agents/test_dispatch_unit.test.ts .pi/tests/agents/test_prompt_templates.test.ts
 
-.PHONY: all test skills-test env-check verify-env verify-env-strict accept help
+.PHONY: all test skills-test env-check verify-env verify-env-strict accept agents-accept help
 
 all: verify-env
 
@@ -51,6 +53,12 @@ verify-env-strict: test skills-test env-check
 accept:
 	@echo "== acceptance checks (uses the pinned model; small token cost) =="
 	bash $(ROOT)/.pi/tests/acceptance/run_acceptance.sh
+	@echo
+	echo "== S3 agent/dispatch acceptance (uses the pinned model) =="
+	bash $(ROOT)/.pi/tests/agents/run_agent_acceptance.sh
+
+agents-accept:
+	bash $(ROOT)/.pi/tests/agents/run_agent_acceptance.sh
 
 stub-orchestrator:
 	@echo

@@ -12,6 +12,7 @@ implementation.
 | `settings.json` | pi project settings: model pin, thinking level, `enabledModels`, `+codemode`, compaction | yes |
 | `config/model.json` | **canonical model pin** (provider, model, thinking, 1M window, `enforce`) | yes |
 | `config/agents.json` | agent manifest: role, file, tools, skills, effort, maxParallel, model | yes |
+| `config/tools.json` | tool registry: concrete tools, families, stage; agent tools are validated against it | yes |
 | `config/budgets.json` | budget caps (exact `plan/02_ARCHITECTURE.md` §6 defaults) | yes |
 | `config/project.json` | repo root, base branch, venue, human-merge gate, sandbox/session/artifact dirs | yes |
 | `config/hpc.example.json` | HPC schema with placeholders (copy to `hpc.json` to enable) | yes |
@@ -19,12 +20,16 @@ implementation.
 | `lib/` | shared, dependency-free TypeScript: config loading, locked JSONL IO, record schemas, roles, secrets, state | yes |
 | `extensions/guards/` | model pin, protected paths, destructive bash, secrets, role gates, role preamble | yes |
 | `extensions/ledger/` | append-only ledger tools + derived `*.md` views | yes |
+| `extensions/dispatch/` | isolated worker sessions (`dispatch_agent`, `dispatch_parallel` ≤4, `dispatch_chain`); provenance in `extensions/README.md` | yes |
+| `extensions/orchestrator/` | S3 `merge_pr` stub (S4 replaces it with the state machine) | yes |
 | `extensions/status/` | TUI status line/widget + ledger `renderResult` | yes |
 | `loop/` | headless shims for the orchestrator (`step.sh`, `status.sh`, `collect.sh`) | yes |
 | `tests/` | offline `node --test` suite, fixtures, acceptance scripts | yes |
 | `state/` | `LOOP_STATE.json`, `*.jsonl` ledgers, derived `*.md` views, sessions, worktrees | **no** (runtime) |
 | `artifacts/` | collected experiment outputs + manifests | **no** (runtime; manifests are the committed part once S5 lands — see open items) |
-| `agents/`, `prompts/`, `rubrics/`, `audit/` | arriving in S2–S6 | yes |
+| `agents/`, `prompts/` | 16 agent definitions and 11 argument-driven slash-command templates (S3) | yes |
+| `tests/agents/` | agent/roster/tool-registry tests plus the offline dispatch engine tests and the S3 acceptance script | yes |
+| `rubrics/`, `audit/` | arriving in S6 | yes |
 | `skills/` | six research & methodology skills (S1): manifests, protocol, Bayesian workflow, evaluation, anti-gaming, provenance | yes |
 
 ## Verify
@@ -35,6 +40,7 @@ make -C .pi skills-test    # validate .pi/skills + python skill-script tests
 make -C .pi env-check      # config/settings/roster/secrets checks with PASS lines
 make -C .pi verify-env     # all three, plus an explicit STUB banner for the S4 command
 make -C .pi verify-env-strict  # same, but fails until /loop:verify-env exists (S4)
+make -C .pi agents-accept      # S3 model-backed acceptance (dispatch a scout, role refusals)
 ```
 
 `verify-env` is green in S0. It prints `STUB (S4)` for the
@@ -104,5 +110,10 @@ with the highest `seq` for that id. Nothing rewrites history.
   to a versioned path (`.pi/artifacts/manifests/`).
 - `pr_open` validates the record shape only; the clean-worktree-at-head-SHA check
   belongs to the S4 orchestrator gate.
+- `merge_pr` is an S3 stub: it records the request and returns `merged: false`.
+  The S4 orchestrator owns the pre-merge gate and the real merge.
+- Tool families `hpc`, `verify`, `rubric`, `auditkit`, `paper` are declared
+  `planned` in `.pi/config/tools.json`; dispatched children ignore those names
+  until the S5/S6 extensions register them.
 - `tests/**` protection (strengthen-only) is implemented in the S6 pre-merge
   scan, not in the write guard.

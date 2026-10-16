@@ -105,6 +105,9 @@ export const TOOL_CAPABILITIES: Record<string, Capability> = {
 	rubric_score: "rubric_score",
 	auditkit_write: "auditkit_write",
 	dispatch: "dispatch",
+	dispatch_agent: "dispatch",
+	dispatch_parallel: "dispatch",
+	dispatch_chain: "dispatch",
 };
 
 export function isLoopRole(value: string): value is LoopRole {

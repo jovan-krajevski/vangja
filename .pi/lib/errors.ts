@@ -13,7 +13,9 @@ export type ErrorCode =
 	| "GUARD_DENIED"
 	| "ROLE_DENIED"
 	| "STATE_INVALID"
-	| "PATH_INVALID";
+	| "PATH_INVALID"
+	| "AGENT_INVALID"
+	| "AGENT_NOT_FOUND";
 
 export class VangjaLoopError extends Error {
 	readonly code: ErrorCode;
@@ -54,4 +56,12 @@ export function guardDenied(reason: string): VangjaLoopError {
 
 export function roleDenied(reason: string): VangjaLoopError {
 	return new VangjaLoopError("ROLE_DENIED", reason);
+}
+
+export function agentInvalid(path: string, detail: string): VangjaLoopError {
+	return new VangjaLoopError("AGENT_INVALID", `invalid agent ${path}: ${detail}`);
+}
+
+export function agentNotFound(detail: string): VangjaLoopError {
+	return new VangjaLoopError("AGENT_NOT_FOUND", detail);
 }

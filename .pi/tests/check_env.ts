@@ -13,9 +13,11 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { loadAgentsManifest, loadBudgetConfig, loadHpcConfig, loadHpcExample, loadModelPin, loadProjectConfig, DEFAULT_BUDGETS } from "../lib/config.ts";
+import { loadAgentDefinitions } from "../lib/agents.ts";
+import { expandTools, loadToolRegistry } from "../lib/toolset.ts";
 import { scanForSecrets } from "../lib/secrets.ts";
 import { readJsonFile } from "../lib/io.ts";
-import { statePath } from "../lib/paths.ts";
+import { promptsDir, statePath } from "../lib/paths.ts";
 import { readStatus } from "../extensions/status/status.ts";
 import { composeStatusLines } from "../extensions/status/status.ts";
 import { PI_DIR, REPO_ROOT, piVersion } from "./helpers.ts";
@@ -92,12 +94,47 @@ check("project.json", () => {
 	return `${project.venue}; base=${project.baseBranch}; requireHumanMerge=${project.requireHumanMerge}; dryRun=${project.dryRun}`;
 });
 
-check("agents.json", () => {
+check("agents.json + agent files", () => {
 	const manifest = loadAgentsManifest(REPO_ROOT);
-	const files = manifest.agents.map((agent) => agent.file);
-	const present = files.filter((file) => fs.existsSync(path.join(REPO_ROOT, file)));
-	return `${manifest.agents.length} agents, all on ${manifest.pinnedModel} thinking=${manifest.pinnedThinking}; ` +
-		`${present.length}/${files.length} definition files present (the rest arrive in S3)`;
+	const definitions = loadAgentDefinitions(REPO_ROOT);
+	assert(
+		definitions.length === manifest.agents.length,
+		`${definitions.length} agent files for ${manifest.agents.length} roster entries`,
+	);
+	for (const agent of manifest.agents) {
+		const definition = definitions.find((candidate) => candidate.name === agent.name);
+		assert(definition, `.pi/agents/${agent.name}.md is missing`);
+		assert(definition.model === agent.model, `${agent.name}: frontmatter model != roster model`);
+		assert(
+			[...definition.tools].sort().join(",") === [...agent.tools].sort().join(","),
+			`${agent.name}: frontmatter tools != roster tools`,
+		);
+		assert(definition.lines <= 120, `${agent.name}: body is ${definition.lines} lines (cap 120)`);
+	}
+	return `${manifest.agents.length} agents parsed, tools + pinned model match the roster`;
+});
+
+check("tools.json", () => {
+	const registry = loadToolRegistry(REPO_ROOT);
+	const manifest = loadAgentsManifest(REPO_ROOT);
+	for (const agent of manifest.agents) {
+		const { unknown } = expandTools(registry, agent.tools);
+		assert(unknown.length === 0, `${agent.name} names unknown tools: ${unknown.join(", ")}`);
+	}
+	return `${registry.tools.length} tools in ${Object.keys(registry.families).length} families; every agent tool resolves`;
+});
+
+check("prompt templates", () => {
+	const dir = promptsDir(REPO_ROOT);
+	assert(fs.existsSync(dir), `${dir} is missing`);
+	const files = fs.readdirSync(dir).filter((file) => file.endsWith(".md")).sort();
+	assert(files.length === 11, `expected 11 prompt templates, found ${files.length}`);
+	for (const file of files) {
+		const text = fs.readFileSync(path.join(dir, file), "utf8");
+		assert(text.startsWith("---"), `${file} has no frontmatter fence`);
+		assert(/description:/.test(text.split("\n---", 1)[0].slice(0, 400)), `${file} has no description`);
+	}
+	return `${files.length} templates load from .pi/prompts/`;
 });
 
 check("hpc.example.json", () => {

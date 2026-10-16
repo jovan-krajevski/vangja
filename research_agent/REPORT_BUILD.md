@@ -1972,3 +1972,236 @@ EXIT=0
 
 D2–D6 remain open as recorded above (D2/D4 documentation or heuristic
 accuracy; D5/D6 residual risks for the audit and collector stages).
+
+---
+
+## S3 — agents, prompt templates, dispatch
+
+Built in one session with the pinned model (`opencode-go/deepseek-v4.1-flash`,
+thinking `max`), on branch `update_pymc`. Only `.pi/**` and this report were
+touched; `Vangja-project/` remains the pre-existing untracked archive. The
+state machine (S4) and the HPC tools (S5) were not started; `merge_pr` is the
+sanctioned stub.
+
+### Created
+
+| Path | What it is |
+|---|---|
+| `.pi/agents/*.md` | 16 agent definitions (3 primary, 5 audit, 8 workers) with frontmatter `name, description, tools, model` and a ≤120-line body encoding purpose, inputs, procedure, output contract, prohibitions, stop conditions, and the skills to load |
+| `.pi/prompts/*.md` | 11 pi prompt templates (6 research, 4 audit, `loop-status`), ≤22 lines each, argument-driven, each naming the agent it drives and the acceptance evidence |
+| `.pi/config/tools.json` | versioned tool registry: 55 concrete tools in 9 families, each tagged `builtin`/`user-package`/`extension`/`planned` with its plan stage |
+| `.pi/lib/toolset.ts` | registry loader/validator and family expansion (typos land in `unknown` and fail loudly) |
+| `.pi/lib/agents.ts` | dependency-free frontmatter parser/loader, the dispatch allowlist (`DISPATCH_ALLOWLIST`, `DISPATCH_CONCURRENCY = 4`, `MAX_DISPATCH_DEPTH = 2`), session-name sanitisation |
+| `.pi/extensions/dispatch/lib.ts` | the spawn engine: argv construction, pinned model/tools/skills, per-child session dir, JSONL parsing, usage aggregation, 50 KB model cap, abort/timeout handling, one validated `dispatch` event per child |
+| `.pi/extensions/dispatch/index.ts` | `dispatch_agent`, `dispatch_parallel` (≤4 concurrent), `dispatch_chain` (`{previous}`), role checks, `content` + `structuredContent` |
+| `.pi/extensions/orchestrator/{index,stub}.ts` | S3 `merge_pr` stub: capability-checked, logs an event, returns `{stub: true, merged: false}` |
+| `.pi/extensions/README.md` | extension inventory + the `subagent` example licence note (MIT, `@earendil-works/pi-coding-agent`) and the dispatch contract |
+| `.pi/tests/agents/` | `test_agents_manifest`, `test_tools_registry`, `test_dispatch_unit`, `test_prompt_templates`, `resolve_prompt.ts`, `run_agent_acceptance.sh` |
+| `.pi/tests/fixtures/stub_pi.mjs` | deterministic `pi --mode json` stand-in for the offline dispatch tests |
+| `.pi/lib/{errors,paths,roles}.ts` | `AGENT_INVALID`/`AGENT_NOT_FOUND` errors, `agentsDir`/`promptsDir`, `dispatch_*` capabilities in the role matrix |
+| `.pi/Makefile`, `.pi/tests/run.sh`, `.pi/tests/check_env.ts`, `.pi/README.md` | the four new suites wired into `test`/`verify-env`; `agents-accept` target; env checks now parse every agent file and the registry (14 checks) |
+
+Agent roster (name · body lines · manifest tools):
+
+```
+phd_candidate 81 tools=14   collector 66 tools=5    supervisor 74 tools=8
+audit_finder  66 tools=9    audit_verifier 62 tools=5
+audit_synthesizer 64 tools=5 audit_adjudicator 65 tools=5 meta_review 58 tools=6
+scout 48 tools=4   planner 53 tools=4   methodologist 62 tools=5
+experimenter 62 tools=7   repro_engineer 53 tools=5   literature_scout 56 tools=4
+paper_writer 57 tools=6   critic 55 tools=6
+```
+
+### Acceptance tests (all six green)
+
+Run: `bash .pi/tests/agents/run_agent_acceptance.sh` (model-backed checks use
+the pinned model; runtime output goes to `.pi/state/`, gitignored).
+
+The "small fixture repo" wording maps to two checks: the offline dispatch tests
+run the real spawn path against a stub `pi` on a scratch fixture repo (roster,
+tools, skills, state; they assert the returned summary and the `dispatch` event
+with usage), and acceptance test 2 runs a real model-backed scout on the
+repository's `.pi/skills/`.
+
+```
+== S3 acceptance: agent files, prompt templates, dispatch ==
+workdir: /tmp/vangja-agents.220240
+
+PASS  6. all 16 agent files validate against the manifest + tool registry  (evidence: .../agents-offline.txt)
+PASS  1a. research-next-task resolves offline with arguments  (evidence: .../template-resolve.txt)
+PASS  1b. pi expands /research-next-task (tools disabled: resolved, not executed)  (evidence: .../template-pi.jsonl)
+PASS  2. scout dispatched from phd_candidate: summary + usage + session path in EVENTS.jsonl
+PASS  4. unknown agent name -> explicit error listing available agents
+PASS  3a. phd_candidate merge_pr refused by the guard
+PASS  3b. refused merge_pr appended no merge event
+PASS  3c. supervisor merge_pr accepted and logged by the orchestrator stub
+PASS  5. killed child -> aborted outcome, ledger records aborted, partial text not final
+agent files: 16 (manifest: 16)
+acceptance: all S3 agent/dispatch checks passed
+```
+
+**1 · template resolution without execution.**
+`node .pi/tests/agents/resolve_prompt.ts .pi/prompts/research-next-task.md T-099`
+prints the frontmatter-stripped body with `${@:-none}` resolved to `T-099` and
+exit 0. pi itself expands project templates: with `--tools read` only (so the
+template cannot execute), the JSON-mode user message is the fully expanded
+template —
+
+```
+PI_LOOP_ROOT=$ROOT PI_LOOP_ROLE=human PI_LOOP_STATE=WORK PI_AGENT_NAME=accept-template \
+  pi --mode json -p -a --provider opencode-go --model opencode-go/deepseek-v4.1-flash \
+  --thinking max --tools read --session-dir ... --name accept-template "/research-next-task T-099"
+```
+
+observed in `template-pi.jsonl` (user message): "Dispatch the `planner` worker …
+enqueue the returned body with `task_enqueue` … Acceptance evidence: a new
+`T-###` open in `.pi/state/TASKS.jsonl`".
+
+**2 · dispatch a scout from a phd_candidate child.** The calling session ran with
+`PI_LOOP_ROLE=phd_candidate`, `PI_AGENT_NAME=phd_candidate__T-099__1` and
+`--tools read,bash,dispatch_agent,ledger_read`; the child was spawned with the
+recorded argv (pinned provider/model/thinking, explicit `-e` extensions, both
+scout skills, its own `--session-dir`, `--name scout__adhoc__1`). The event in
+`.pi/state/EVENTS.jsonl` is verbatim (abridged to the checked fields; the argv is
+stored in full):
+
+```json
+{
+  "summary": "dispatch scout completed: **Answer:** `.pi/skills` holds **15 skill directories**, …",
+  "task_id": "adhoc", "agent": "scout", "dispatch_mode": "agent",
+  "exit_state": "ok", "exit_code": 0, "stop_reason": "stop",
+  "usage": {"input": 30312, "output": 10596, "cacheRead": 112640, "cacheWrite": 0,
+            "cost": 0.01124232, "contextTokens": 32811, "turns": 8},
+  "session_path": "/home/jovan/repos/vangja/.pi/state/sessions/no-run/scout/adhoc/a1/2026-10-16T21-37-24-263Z_01a146a5-f727-7120-b101-609794832a47.jsonl",
+  "session_dir": "…/no-run/scout/adhoc/a1", "agent_file": ".pi/agents/scout.md",
+  "agent_file_hash": "9fac09d0494bc51ab70abaa9bd2382e9113c38f1bfcfc9739fd6aa197e3de9c3",
+  "attempt": 1, "duration_ms": 63358, "actor": "phd_candidate__T-099__1", "id": "EV-000011"
+}
+```
+
+The tool result also carries machine-readable `structuredContent`:
+
+```
+"structuredContent":{"tool":"dispatch_agent","success_count":1,"results":[{"agent":"scout",
+ "exit_state":"ok","exit_code":0,"stop_reason":"stop","session_path":"…/…jsonl",
+ "truncated":false,"usage":{"input":30312,…,"turns":8}}]}
+```
+
+The scout session file exists at the recorded path; the model chose to omit
+`task_id`, so the name is `scout__adhoc__1` (the event records what actually ran).
+
+**3 · `merge_pr` role boundary.** As `phd_candidate` the guard refuses the call
+and no merge event is appended:
+
+```
+[guard:ROLE] role "phd_candidate" may not use merge_pr; allowed roles: supervisor, conductor
+(matrix: research_agent/plan/05_EXTENSIONS_AND_TOOLS.md §7). … Allowed alternative: ask the conductor
+to set PI_LOOP_ROLE for this session …
+```
+
+As `supervisor__PR-001__1` the same call reaches the stub and appends:
+
+```json
+{"summary": "merge_pr STUB accepted for PR-001 (no merge performed; orchestrator arrives in S4)",
+ "pr_id": "PR-001", "merge_stub": true, "merged": false, "reason": "S3 acceptance stub",
+ "actor": "supervisor__PR-001__1", "id": "EV-000012"}
+```
+
+**4 · unknown agent name** — the dispatch tool returns, without spawning:
+
+```
+dispatch refused: unknown agent "no_such_agent". Available agents: audit_adjudicator,
+audit_finder, audit_synthesizer, audit_verifier, collector, critic, experimenter,
+literature_scout, meta_review, methodologist, paper_writer, phd_candidate, planner,
+repro_engineer, scout, supervisor (definitions: .pi/agents/, roster: .pi/config/agents.json).
+```
+
+**5 · kill mid-run** — deterministic (a real OS process killed with SIGTERM; the
+stub stands in for `pi` so the test is not timing-flaky):
+
+```
+$ node --test --test-name-pattern="killing a child mid-run" .pi/tests/agents/test_dispatch_unit.test.ts
+✔ killing a child mid-run yields aborted, never a final result (277ms)
+ℹ tests 1  ℹ pass 1  ℹ fail 0
+```
+
+The test asserts `exit_state === "aborted"`, `final_text === ""`, and exactly one
+ledger event with `exit_state: "aborted"`; the tool layer labels partial output
+as "not a result" for any failed/aborted child.
+
+**6 · offline validation.**
+
+```
+$ make -C .pi verify-env ; echo EXIT=$?
+== node --test (offline) ==          ℹ tests 100   ℹ pass 100   ℹ fail 0
+== skills (offline) ==               validate_skills: all 15 skills valid
+== python -- skill script tests ==   Ran 148 tests in 27.869s
+== environment checks ==             14/14 checks passed
+EXIT=0
+```
+
+The 33 new node tests cover: every agent file parses, matches the roster
+(name/role/file/tools/skills/model), stays ≤120 lines, keeps the mandated
+sections, and names its skills; the dispatcher's argv pinning and session
+isolation; usage/hash/argv accounting in `EVENTS.jsonl`; the 50 KB cap; failure
+surfacing; abort handling; the ≤4 concurrency cap; chain substitution and stop;
+unknown-agent and role-denial errors; the tool registry cross-checked against
+every `index.ts` (`name: "…"`) so registry drift fails both ways; and the
+template parser/substitutions.
+
+### Deviations and decisions
+
+- **D-S3-1 — "17 agent files" vs. 16.** `research_agent/prompts/03_agents_and_prompts.md`
+  acceptance test 6 says 17, but the roster (`.pi/config/agents.json`), the S3
+  deliverable list, and `plan/03_AGENTS.md` define **16** (3 primary + 5 audit +
+  8 workers). Built 16; the test asserts file↔manifest equality plus the exact
+  roster, and the acceptance script prints `agent files: 16 (manifest: 16)`. The
+  count in the prompt is treated as a typo, recorded here rather than satisfied
+  by inventing a 17th role.
+- **D-S3-2 — `audit_*` dispatch narrowed to audit roles.** `plan/03_AGENTS.md`
+  §1.3 lets the supervisor dispatch "critic/meta-review"; the S3 prompt says
+  "only audit roles may dispatch `audit_*`". Implemented: supervisor → `critic`
+  only; `audit_synthesizer` → `meta_review` (as `plan/03` §1.4 requires);
+  `audit_finder` → `scout`; phd_candidate → the eight workers, never an audit
+  agent.
+- **D-S3-3 — parallel cap 4, not 8.** `plan/05_EXTENSIONS_AND_TOOLS.md` §2 says
+  "audit finders parallel (≤8)", but the S3 prompt specifies `dispatch_parallel`
+  ≤4 and `budgets.json` caps `maxParallelWorkers` at 4. The stricter cap wins.
+- **D-S3-4 — `experimenter` has `dispatch` in its tool list but not the role
+  matrix.** The manifest lists `dispatch` for `experimenter`; `plan/05` §7 and
+  the guard's matrix allow dispatch only for phd_candidate/supervisor/audit
+  roles, so an experimenter's dispatch call is refused. The tool is declared,
+  the boundary is enforced, and this is recorded rather than silently widening
+  the matrix.
+- **D-S3-5 — children run `-na` with explicit resources.** plan/05 §2 sketches
+  `--skill <skills> -e <extensions> --prompt-template <templates>`; the child is
+  spawned with `-na` (ignore trust-gated project resources) plus explicit
+  `-e` for guards/ledger/dispatch/orchestrator and `--skill` for each manifest
+  skill. This makes a child's tool/skill surface independent of project-trust
+  state and of any later `.pi/settings.json` edit; prompt templates are not
+  needed by children. Verified in the recorded argv.
+- **D-S3-6 — session directory includes task and attempt.** The prompt writes
+  `--session-dir .pi/state/sessions/<run_id>/<agent>/`; the stricter
+  `plan/05` §2 layout `<run_id>/<agent>/<task>/<attempt>/` is used so two
+  dispatches of the same agent cannot share a directory, and no
+  `--continue`/`--resume`/`--session` flag is ever passed.
+- **D-S3-7 — unknown agents fail as unknown before the allowlist check.** A typo
+  must not be reported as a role violation; `resolveDispatchTarget` resolves the
+  file first, then applies the primary/allowlist rules.
+- **D-S3-8 — acceptance test 5 is offline, by design.** "Kill a child mid-run"
+  is exercised against a real spawned process with the stub `pi`, so the result
+  is deterministic; a model-backed kill would depend on timing and provider
+  latency. The model-backed path (real child) is covered by test 2.
+
+### Open items for later stages
+
+- `merge_pr` is a stub (records + logs, never merges); S4 replaces
+  `.pi/extensions/orchestrator/` with the state machine and the pre-merge gate.
+- `hpc_*`, `verify_*`, `rubric_*`, `auditkit_*`, `paper_*` are declared
+  `kind: "planned"` in `.pi/config/tools.json`; a dispatched child's `--tools`
+  ignores the unregistered names until S5/S6 register them. The registry test
+  fails if a planned tool is registered without flipping its kind, and if an
+  extension registers a tool missing from the registry.
+- `make -C .pi accept` now runs both model-backed acceptance scripts; it made
+  real model calls for the first time in S3 (≈$0.02 for the scout run plus the
+  small caller turns).

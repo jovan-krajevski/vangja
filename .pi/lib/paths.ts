@@ -66,6 +66,14 @@ export function statePath(root: string, name: string): string {
 	return path.join(stateDir(root), name);
 }
 
+export function agentsDir(root: string): string {
+	return path.join(root, ".pi", "agents");
+}
+
+export function promptsDir(root: string): string {
+	return path.join(root, ".pi", "prompts");
+}
+
 export function ledgerPath(root: string, fileName: string): string {
 	return statePath(root, fileName);
 }

@@ -22,6 +22,10 @@ TEST_FILES=(
 	.pi/tests/test_ledger_concurrency.test.ts
 	.pi/tests/test_status.test.ts
 	.pi/tests/test_child_pi.test.ts
+	.pi/tests/agents/test_agents_manifest.test.ts
+	.pi/tests/agents/test_tools_registry.test.ts
+	.pi/tests/agents/test_dispatch_unit.test.ts
+	.pi/tests/agents/test_prompt_templates.test.ts
 )
 
 run_node() {
