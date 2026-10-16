@@ -1,0 +1,13 @@
+{
+  "schema": "vangja-shape-report-1.0",
+  "component": "LinearTrend",
+  "pool_type": "partial",
+  "n_groups": 1,
+  "initvals": {
+    "lt_0 - slope": {"shape": [1]},
+    "lt_0 - intercept": {"shape": [1]}
+  },
+  "predict_columns": {
+    "lt_0_0": {"ndim": 1, "shape": [10]}
+  }
+}

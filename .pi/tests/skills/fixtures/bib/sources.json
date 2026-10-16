@@ -1,0 +1,10 @@
+[
+  {"key": "T_prophet", "level": "primary", "claim": "Prophet is a GAM with changepoints",
+   "method": "piecewise linear trend + Fourier", "dataset": "internal benchmarks",
+   "limitation": "no hierarchical pooling", "relevance": "baseline",
+   "doi_or_url": "10.1080/00031305.2017.1380080", "checked": true},
+  {"key": "AI_attention", "level": "secondary", "claim": "attention is all you need",
+   "method": "transformer", "dataset": "WMT", "limitation": "fixed horizon",
+   "relevance": "motivation for long horizons",
+   "doi_or_url": "arXiv:1706.03762", "checked": false}
+]

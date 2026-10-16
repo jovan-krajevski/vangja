@@ -4,9 +4,13 @@
 # Checks per skill directory with SKILL.md:
 #   * frontmatter parses and declares name + description
 #   * name matches the directory, is a valid skill name, description <= 1024
+#   * description contains a "Use when" trigger (the routing surface)
 #   * SKILL.md <= 120 lines
 #   * every path mentioned in SKILL.md resolves (skill dir, repo root, or basename)
 #   * no absolute paths outside the repo and no secret material in any file
+#   * scripts are executable, start with a shebang, compile (python) / pass
+#     `bash -n` (shell)
+#   * no __pycache__ or .pyc files under the skills tree
 #   * .pi/skills/README.md mentions every skill
 #
 # Exit 0 only when every check passes.
@@ -18,6 +22,7 @@ REPO_ROOT="${2:-$ROOT}"
 
 exec python3 - "$SKILLS_DIR" "$REPO_ROOT" <<'PY'
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -126,6 +131,11 @@ for skill_dir in skill_dirs:
     if len(data.get("description", "")) > 1024:
         fail(name, "description longer than 1024 characters")
         ok = False
+    if not re.search(r"\buse (when|for|before|after|during|at|in)\b",
+                     data.get("description", ""), re.IGNORECASE):
+        fail(name, "description has no 'Use when/for/before …' trigger "
+                  "(the routing surface)")
+        ok = False
 
     n_lines = len(text.splitlines())
     if n_lines > 120:
@@ -174,8 +184,38 @@ for skill_dir in skill_dirs:
     scripts = skill_dir / "scripts"
     if scripts.is_dir():
         for script in sorted(scripts.iterdir()):
-            if script.is_file() and not script.stat().st_mode & 0o111:
-                print(f"WARN  {name}: {script.name} is not executable")
+            if not script.is_file():
+                continue
+            if not script.stat().st_mode & 0o111:
+                fail(name, f"{script.name} is not executable")
+                ok = False
+            try:
+                script_text = script.read_text()
+            except (UnicodeDecodeError, OSError):
+                continue
+            if not script_text.startswith("#!"):
+                fail(name, f"{script.name} has no shebang")
+                ok = False
+            if script.suffix == ".py":
+                try:
+                    compile(script_text, str(script), "exec")
+                except SyntaxError as exc:
+                    fail(name, f"{script.name} does not compile: {exc}")
+                    ok = False
+            elif script.suffix == ".sh":
+                proc = subprocess.run(["bash", "-n", str(script)],
+                                      capture_output=True, text=True)
+                if proc.returncode != 0:
+                    fail(name, f"{script.name} fails bash -n: {proc.stderr.strip()}")
+                    ok = False
+
+    for cache in sorted(skill_dir.rglob("__pycache__")):
+        fail(name, f"__pycache__ under the skill tree: {cache.relative_to(skill_dir)}")
+        ok = False
+    for bytecode in sorted(skill_dir.rglob("*.pyc")):
+        fail(name, f"compiled bytecode committed under the skill tree: "
+                  f"{bytecode.relative_to(skill_dir)}")
+        ok = False
 
     if readme_text and name not in readme_text:
         fail(name, "not listed in .pi/skills/README.md")

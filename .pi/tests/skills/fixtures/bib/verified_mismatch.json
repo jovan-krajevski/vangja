@@ -1,0 +1,15 @@
+{
+  "records": {
+    "good2023": {
+      "checked": true,
+      "doi": "10.9999/other",
+      "level": "primary",
+      "quote": "some quote"
+    },
+    "fake2024": {
+      "checked": true,
+      "level": "primary",
+      "quote": "invented"
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "findings": [
+    {
+      "id": "WS-S-001",
+      "title": "Trend transfer potential has the wrong sign",
+      "location": "src/vangja/components/linear_trend.py:397",
+      "snapshot": "audit-cycle/3@abc1234",
+      "command": "uv run pytest tests/test_regularization.py -k trend -q",
+      "expected": "the potential is -loss*(slope-target)^2 in every pooling mode",
+      "observed": "the compiled potential increases with distance in 2 of 3 modes",
+      "consequence": "every regularised transfer result is wrong in direction",
+      "severity": "S0",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes",
+      "evidence": ["tests/test_regularization.py:112"],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 3
+    },
+    {
+      "id": "WS-S-002",
+      "title": "Docstring promises MAP but code uses the mean",
+      "location": "src/vangja/components/linear_trend.py:70",
+      "snapshot": "audit-cycle/3@abc1234",
+      "command": "static reading of lines 60-80 and 200-210",
+      "expected": "the docstring describes the computed centre",
+      "observed": "docstring says posterior mean; code uses .mean(); consistent",
+      "consequence": "no impact; recorded to avoid duplicate work",
+      "severity": "S3",
+      "confidence": "high",
+      "status": "refuted",
+      "reproducible": "yes",
+      "evidence": ["src/vangja/components/linear_trend.py:204"],
+      "cross_refs": ["WS-H-002"],
+      "owner": "docs",
+      "found_in_cycle": 3
+    }
+  ]
+}

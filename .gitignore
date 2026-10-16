@@ -200,3 +200,8 @@ paper/
 # (no !paper/** re-inclusions: they cannot take effect while paper/ is ignored)
 *.sif
 *.pdf
+
+# .pi/lib is hand-written TypeScript (the S0 shared library), not a Python
+# build output: the generic lib/ rule above must not swallow it.
+!.pi/lib/
+!.pi/lib/**

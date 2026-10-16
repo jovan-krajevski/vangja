@@ -1,0 +1,30 @@
+{
+  "jobs": [
+    {"job_id": 4711, "name": "E-0007", "state": {"current": ["COMPLETED"], "reason": "None"},
+     "exit_code": {"return_code": 0, "signal": 0},
+     "time": {"elapsed": 3600, "start": "2026-01-01T09:00:00", "end": "2026-01-01T10:00:00"},
+     "nodes": "gpgpu02", "alloc_cpus": 8},
+    {"job_id": 4712, "name": "E-0007", "state": {"current": ["TIMEOUT"], "reason": "TimeLimit"},
+     "exit_code": {"return_code": 0, "signal": 0},
+     "derived_exit_code": {"return_code": 99, "signal": 0},
+     "time": {"elapsed": 86400, "start": "2026-01-01T09:00:00", "end": "2026-01-02T09:00:00"},
+     "nodes": {"list": ["gpgpu02"]}},
+    {"job_id": 4713, "name": "E-0007", "state": {"current": ["OUT_OF_MEMORY"]},
+     "exit_code": {"return_code": 0, "signal": 9},
+     "time": {"elapsed": "0-00:12:00"}},
+    {"job_id": 4714, "name": "E-0007", "state": {"current": ["NODE_FAIL"]},
+     "exit_code": {"return_code": 0, "signal": 0}},
+    {"job_id": 4715, "name": "E-0007", "state": {"current": ["RUNNING"]},
+     "exit_code": {"return_code": 0, "signal": 0}},
+    {"job_id": 4716, "name": "E-0007", "state": {"current": ["PENDING"]},
+     "exit_code": {"return_code": 0, "signal": 0}},
+    {"job_id": 4717, "name": "E-0007", "state": {"current": ["FAILED"]},
+     "exit_code": {"return_code": 1, "signal": 0}},
+    {"job_id": 4718, "name": "E-0007", "state": {"current": ["CANCELLED"]},
+     "exit_code": {"return_code": 0, "signal": 0}},
+    {"job_id": 4719, "name": "E-0007", "state": "COMPLETED",
+     "exit_code": "0:0"},
+    {"job_id": 4720, "name": "E-0007", "state": {"current": ["FAILED"]},
+     "exit_code": {"return_code": 137, "signal": 9}}
+  ]
+}

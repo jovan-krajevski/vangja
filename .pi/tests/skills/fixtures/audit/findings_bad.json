@@ -1,0 +1,32 @@
+{
+  "findings": [
+    {
+      "id": "WS-S-001",
+      "title": "Duplicate of the first finding",
+      "location": "src/vangja/components/linear_trend.py:397",
+      "snapshot": "audit-cycle/3@abc1234",
+      "command": "",
+      "expected": "x",
+      "observed": "y",
+      "consequence": "z",
+      "severity": "S1",
+      "confidence": "low",
+      "status": "verified",
+      "reproducible": "yes"
+    },
+    {
+      "id": "WS-S-001",
+      "title": "Duplicate of the first finding",
+      "location": "src/vangja/components/linear_trend.py:397",
+      "snapshot": "audit-cycle/3@abc1234",
+      "command": "it seems wrong",
+      "expected": "x",
+      "observed": "y",
+      "consequence": "z",
+      "severity": "S9",
+      "confidence": "certain",
+      "status": "maybe",
+      "reproducible": "probably"
+    }
+  ]
+}

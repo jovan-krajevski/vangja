@@ -1,0 +1,32 @@
+% Claim template. Copy the pattern, not the numbers.
+%
+% 1. The number lives in a generated include, never in this file:
+%      \input{generated/tables/<name>.tex}
+% 2. CLAIMS.json holds the traceability entry:
+%      {
+%        "id": "C-007",
+%        "value": "0.31",
+%        "tex": "paper/sections/results.tex",
+%        "artifact": "fixed_case_studies/stocks/results/<run>/manifest_main__2023-01-01__seed42.json",
+%        "artifact_sha256": "<sha256 of the manifest>",
+%        "commit": "<commit that produced it>",
+%        "status": "verified"
+%      }
+% 3. Prose cites the claim:
+%
+%      Vangja reaches a median relative MAE of 0.31~[C-007] over the
+%      confirmation origins (24 target$\times$origin units, persistence
+%      denominator above the $\varepsilon=10^{-3}$ floor, scaled target),
+%      against a frozen configuration -- no test-horizon selection.
+%
+% 4. Check: check_claims.py --paper paper/paper.tex --claims CLAIMS.json --gate
+
+\begin{table}[htbp]
+    \centering
+    \input{generated/tables/stocks_relmae.tex}
+    \caption{Relative MAE against persistence (median over target$\times$origin
+    units). Values below 1 are better than persistence. Confirmation origins;
+    frozen configuration; includes are machine-generated from
+    \texttt{manifest\_*.json} at commit \texttt{[C-007.commit]}.}
+    \label{tab:stocks_relmae}
+\end{table}

@@ -1,0 +1,10 @@
+diff --git a/src/vangja/components/fourier_seasonality.py b/src/vangja/components/fourier_seasonality.py
+index 1111111..2222222 100644
+--- a/src/vangja/components/fourier_seasonality.py
++++ b/src/vangja/components/fourier_seasonality.py
+@@ -378,6 +378,8 @@ class FourierSeasonality(TimeSeriesModel):
+             beta_key = f"fs_{self.model_idx} - beta"
++            legacy_key = f"fs_{self.model_idx} - beta(p=365.25,n=5)"
++            config_key = f"fs_{self.model_idx} - beta_sd1.0"
+             other = pm.Normal(f"nc_0 - mu", 0, 1)
+             good = pm.Normal(f"lt_{self.model_idx} - slope", 0, 1)

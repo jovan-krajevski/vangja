@@ -1,0 +1,20 @@
+diff --git a/fixed_case_studies/common.py b/fixed_case_studies/common.py
+--- a/fixed_case_studies/common.py
++++ b/fixed_case_studies/common.py
+@@ -42,7 +42,7 @@ from __future__ import annotations
+-REL_MAE_EPSILON = 1e-3
++REL_MAE_EPSILON = 1e-6
+ BASE_SEED = 42
+ 
+ 
+ if __name__ == "__main__":
+     pass
+diff --git a/paper/paper.tex b/paper/paper.tex
+--- a/paper/paper.tex
++++ b/paper/paper.tex
+@@ -1,4 +1,5 @@
+ \documentclass[runningheads, reqno]{amsart}
++\usepackage{booktabs}
+ \title{Long Horizons from Short Histories}
+ \begin{document}
+ \end{document}

@@ -1224,3 +1224,291 @@ $ patch scans                                   → "seed constant deleted/added
 The fixes are uncommitted at the time of writing; commit them with the rest of
 `.pi/**` before S2. `research_agent/REPORT_BUILD.md` was the only file modified
 by the verification itself.
+
+---
+
+## S2 — engineering, writing, review, process skills
+
+Built in one session with the pinned model (`opencode-go/deepseek-v4.1-flash`,
+thinking `max`) on branch `update_pymc`, per
+`research_agent/prompts/02_skills_ops.md`. Read-only sources were not
+modified: `src/`, `tests/`, `fixed_case_studies/`, `paper/`, `case_studies/`,
+`docs/` and `Vangja-project/` are untouched; every change is under `.pi/**`
+(`git status --porcelain` at the end of the session lists only `.pi/**` plus
+this report; `Vangja-project/` remains untracked and is not committed).
+
+### Created
+
+| Skill | SKILL.md | Bundled artifacts |
+|---|---|---|
+| `vangja-codebase` | 85 lines | `references/architecture.md`, `references/datasets.md`, `references/failure-modes.md`, `scripts/lint_pymc_names.py`, `scripts/check_pooling_shapes.py` |
+| `hpc-slurm-and-checkpointing` | 110 lines | `references/slurm-fields.md`, `templates/job.slurm`, `scripts/make_job_record.py`, `scripts/parse_sacct.py`, `scripts/checkpoint_smoke.py` |
+| `git-and-pr-workflow` | 96 lines | `templates/PR.md`, `templates/review.md`, `scripts/make_pr_record.py`, `scripts/diff_scan.py` |
+| `python-packaging-and-environments` | 76 lines | `references/pins.md`, `scripts/freeze_report.py` |
+| `scientific-writing-latex` | 76 lines | `references/house-style.md`, `templates/claim.tex`, `templates/limitations.md`, `scripts/check_claims.py` |
+| `literature-review-and-verification` | 74 lines | `references/source-hierarchy.md`, `templates/related_work_matrix.md`, `scripts/bib_check.py`, `scripts/related_work_matrix.py` |
+| `venue-norms-and-reviewing` | 99 lines | `references/grades.md`, `references/venues.md`, `templates/review_form.md` |
+| `scientific-audit-and-adversarial-review` | 89 lines | `references/severity-examples.md`, `templates/{finding,workstream_brief,verify,synthesis}.md`, `scripts/validate_findings.py` |
+| `research-memory-and-handoff` | 90 lines | `templates/{handoff,adr,brief}.md`, `scripts/check_state_files.sh` |
+
+Every skill states the project's real rules with `file:line` citations —
+pooling shape invariants (`linear_trend.py:761-786`), the transfer potentials
+(`linear_trend.py:397/572/657`, `fourier_seasonality.py:288/390/482`), the
+PyMC variable-naming rule and its guard (`tests/test_components.py:430`), seeds and
+checkpoints (`fixed_case_studies/common.py:44-49`,
+`stocks/runner.py:307/397/405`), the 24h/exit-99/one-job rules
+(`plan/06_HPC_AND_COLLECTOR.md`), the pin rationale (`pyproject.toml` +
+comments), the seven-grade ladder and blocking rules (`plan/07` §7), the
+nine-field audit schema (`Vangja-project/audit/stage-2/_PROTOCOL.md` §3), and
+the historical mistakes that must not be repeated
+(`Vangja-project/audit/stage-2/ws-h-docs-hygiene/FINDINGS.md`). Where a skill
+restates `AGENTS.md` it links to the section instead of copying it.
+
+Cross-cutting:
+
+- `.pi/skills/validate_skills.sh` — extended: the frontmatter description must
+  contain a routing trigger (`Use when/for/before/after/during/at/in`), every
+  bundled script must be executable, start with a shebang, compile (`python3`
+  `compile()`, no bytecode written) or pass `bash -n` (shell), and the skills
+  tree must contain no `__pycache__`/`.pyc`. `__pycache__` directories
+  under `.pi/skills` (one pre-existing under `bayesian-workflow/scripts/`, two
+  created by this session's debugging imports) were removed; the new check
+  keeps the tree clean.
+- `.pi/skills/README.md` — 15 rows in two tables (S1 research/methodology,
+  S2 engineering/writing/review/process), each with its trigger and stage.
+- `.pi/tests/skills/` — 10 new unittest modules, 76 new tests (72 → 148),
+  fixtures under `fixtures/{vangja_codebase,hpc,git,packaging,manuscript,bib,audit}/`;
+  discovered automatically by `run.sh skills`, hence by `make -C .pi verify-env`.
+- All scripts take `--help`, are stdlib-only, offline, and write only under an
+  explicit `--out` (or stdout); repository/path arguments default to the repo
+  root. `diff_scan.py` composes the S1 `scan_gaming.py` scanner via subprocess.
+
+### Acceptance
+
+**1. `bash .pi/skills/validate_skills.sh` → all fifteen valid**
+
+```
+PASS  bayesian-workflow: description 371 chars, 112 lines
+PASS  data-provenance: description 367 chars, 98 lines
+PASS  experiment-protocol-design: description 380 chars, 97 lines
+PASS  forecasting-evaluation: description 363 chars, 89 lines
+PASS  git-and-pr-workflow: description 335 chars, 96 lines
+PASS  hpc-slurm-and-checkpointing: description 386 chars, 110 lines
+PASS  literature-review-and-verification: description 356 chars, 74 lines
+PASS  python-packaging-and-environments: description 360 chars, 76 lines
+PASS  reproducible-experiments: description 336 chars, 101 lines
+PASS  research-memory-and-handoff: description 316 chars, 90 lines
+PASS  scientific-audit-and-adversarial-review: description 348 chars, 89 lines
+PASS  scientific-integrity-and-anti-gaming: description 341 chars, 100 lines
+PASS  scientific-writing-latex: description 343 chars, 76 lines
+PASS  vangja-codebase: description 383 chars, 85 lines
+PASS  venue-norms-and-reviewing: description 329 chars, 99 lines
+
+validate_skills: all 15 skills valid
+EXIT=0
+```
+
+**2. `make -C .pi verify-env` → green with the new skill tests**
+
+```
+== node --test (offline) ==        67 tests, 67 pass, 0 fail
+== skills (offline) ==             validate_skills all 15 valid
+== python -- skill script tests == Ran 148 tests in 28.089s, OK
+== environment checks ==           12/12 checks passed
+verify-env: environment tests green.   (S4 orchestrator stub printed, expected)
+EXIT=0
+```
+
+**3. `lint_pymc_names.py` → fixture flagged, `src/vangja` clean**
+
+```
+$ python3 .pi/skills/vangja-codebase/scripts/lint_pymc_names.py \
+    --diff .pi/tests/skills/fixtures/vangja_codebase/bad_names.diff
+[S1] pymc-name …:379 name 'fs_{self.model_idx} - beta(p=365.25,n=5)' has parameter
+     part 'beta(p=365.25,n=5)': use lowercase letters/underscores; never encode priors
+[S1] pymc-name …:379 name … contains ',', which PyMC/nutpie parse as a dimension spec
+[S1] pymc-name …:380 name 'fs_{self.model_idx} - beta_sd1.0' has parameter part 'beta_sd1.0' …
+[S1] pymc-name …:380 name … contains '.', which PyMC/nutpie parse as a dimension spec
+FINDINGS: 4        EXIT=1
+
+$ python3 .pi/skills/vangja-codebase/scripts/lint_pymc_names.py --root src/vangja
+FINDINGS: 0        EXIT=0
+```
+
+**4. `checkpoint_smoke.py` on a fixture runner → skip-completed resume proven**
+
+```
+$ python3 .pi/skills/hpc-slurm-and-checkpointing/scripts/checkpoint_smoke.py \
+    --out <scratch>/smoke --limit 1 -- python3 <fixture_runner> --out <scratch>/smoke \
+    --units a,b,c,d --sleep 0.2 --linger 30 {limit} {resume}
+SMOKE PASS: first=['a'] skipped=['a'] refitted=[]        EXIT=0
+smoke.json: ok=true, first_returncode=-15 (SIGTERM kill), resume_returncode=0,
+            first_completed=['a'], skipped_on_resume=['a'], refitted_after_resume=[],
+            completed_after_resume=['a','b','c','d']
+```
+
+The first run is genuinely killed (exit −15) after recording unit `a`; the
+resume run skips `a`, completes `b,c,d`, and never refits. A fixture runner
+that ignores `--resume` fails the smoke test (asserted in
+`test_hpc_checkpointing.py`).
+
+**5. `parse_sacct.py` on the state fixtures → correct mapping and requeue class**
+
+```
+$ python3 …/parse_sacct.py .pi/tests/skills/fixtures/hpc/sacct_states.json --progress-advanced
+ 4711 COMPLETED      -> completed         collect
+ 4712 TIMEOUT        -> timed_out         requeue
+ 4713 OUT_OF_MEMORY  -> oom               failed-final
+ 4714 NODE_FAIL      -> preempted         requeue
+ 4715 RUNNING        -> running           wait
+ 4716 PENDING        -> queued            wait
+ 4717 FAILED         -> failed            failed-final
+ 4718 CANCELLED      -> cancelled         stop
+ 4719 COMPLETED      -> completed         collect          (flat "0:0" form)
+ 4720 FAILED (137/9) -> oom               failed-final
+
+$ … --memory-can-double
+ 4713 … oom -> retry-once-doubled-memory
+ 4720 … oom -> retry-once-doubled-memory
+```
+
+Without `--progress-advanced`, TIMEOUT and NODE_FAIL map to
+`requeue-no-progress`; at `--attempt 6` (`maxAttemptsPerExperiment`) every
+would-be requeue becomes `failed-final` (all asserted in tests).
+
+**6. `check_claims.py` → legacy paper reported, fixture clean**
+
+```
+$ python3 .pi/skills/scientific-writing-latex/scripts/check_claims.py \
+    --paper paper/paper.tex --claims CLAIMS.json --base-ref none
+… 1178 × [S1] dangling-number / [S1] hand-typed-number …
+FINDINGS: 1178 (S1=1178)
+numbers=589 claims=0        EXIT=0        # report mode: findings, not an error
+
+$ … --gate                  EXIT=1        # the gate mode an audit uses
+
+$ … --paper fixtures/paper/clean/paper.tex --claims <generated CLAIMS.json> --gate
+FINDINGS: 0                 EXIT=0        # clean fixture: 1 number, 1 verified claim
+```
+
+The legacy paper has no claims registry (and no `.bib` at all), so the
+expected large dangling list appears as findings while the checker exits 0;
+`--gate` turns the same findings into a failure. The clean fixture also proves
+the ancestor check (`git merge-base --is-ancestor`) and artifact SHA-256
+verification; a fabricated commit and a wrong artifact hash are flagged in
+tests.
+
+**7. `bib_check.py` on a fabricated-citation fixture → flagged**
+
+```
+$ python3 .pi/skills/literature-review-and-verification/scripts/bib_check.py \
+    --bib .pi/tests/skills/fixtures/bib/refs.bib --verified …/verified.json
+[S2] no-identifier @article{fake2024}:1 no DOI and no URL: cannot be verified
+[S1] unverified-citation @article{fake2024}:1 'fake2024' has no verified.json record
+ENTRIES: 2 FINDINGS: 2      EXIT=1
+```
+
+The verified entry in the same file (`good2023`, DOI + sidecar with a quote)
+is not flagged; missing sidecars, `checked: false`, DOI/URL mismatches and
+missing quotes each have their own rule and test.
+
+**8. `/skill:` routing through pi (three skills)**
+
+```
+$ pi --print --model opencode-go/deepseek-v4.1-flash --thinking max \
+    "/skill:vangja-codebase What shape must initvals and prediction columns have …"
+EXIT=0  STDERR 0 bytes   → answered from the skill: array initvals for
+non-complete pooling even when n_groups == 1, 1-D (horizon,) prediction
+columns, `check_pooling_shapes.py` as the checker, `linear_trend.py:781-786`.
+
+$ … "/skill:hpc-slurm-and-checkpointing What happens on TIMEOUT and on OOM …"
+EXIT=0  STDERR 0 bytes   → TIMEOUT/exit-99 → requeue with progress, otherwise
+requeue-no-progress; OOM → retry once with doubled memory only when the
+partition allows, else failed-final; submission refused without checkpoint
+metadata + smoke test + clean detached checkout + matching lock/container SHA.
+
+$ … "/skill:literature-review-and-verification When may I cite a source …"
+EXIT=0  STDERR 0 bytes   → DOI/URL + `checked: true` sidecar + quote + passing
+bib_check; and the eight flag rules with their severities.
+```
+
+Each answer quoted the skill's own files and thresholds, i.e. the routing
+surface works and the content is accurate.
+
+### Deviations and decisions
+
+1. **`check_pooling_shapes.py` is a heuristic (static AST + JSON report), not
+   a runtime model-builder.** The skill scripts must run stdlib-only/offline
+   in the test suite, so the script parses `_get_initval`/`_predict_columns`
+   patterns and validates a `vangja-shape-report-1.0` JSON description; the
+   real guards remain the existing pytest tests (`tests/test_time_series.py`,
+   `tests/test_regularization.py`). Both modes are documented as heuristics
+   and are asserted clean on `src/vangja/components`.
+2. **`check_claims.py` defaults to report mode (exit 0); `--gate` exits 1.**
+   This is the reading of acceptance test 6: the legacy paper's missing
+   registry is a finding, not a tool error. Audits and the pre-review gate use
+   `--gate`.
+3. **`diff_scan.py` composes `scan_gaming.py --patch` but also has its own
+   protected-path/frozen-config/test-weakening rules.** `scan_gaming.py`'s
+   patch mode has no test-metric-selection rule (that rule is AST-based), so
+   the composed-gaming fixture exercises a metric reassignment; the gap is
+   recorded as an open item rather than worked around.
+4. **`validate_skills.sh` routing check accepts `Use when/for/before/…`**, not
+   only "Use when": two S1 descriptions legitimately say "Use for"/"Use
+   before". Scripts are now required to be executable and to compile or pass
+   `bash -n`; the pre-existing `__pycache__` directories under `.pi/skills`
+   (untracked artifacts) were deleted to satisfy the new hygiene rule.
+5. **`checkpoint_smoke.py` kills the runner for real.** The fixture runner
+   gained `--linger` so the first run stays alive after `--limit 1` and is
+   SIGTERMed (returncode −15) — the same shape as a 24h wall-limit kill. The
+   smoke script itself is runner-agnostic: `{limit}`/`{resume}` placeholders
+   and the `progress.json`/`work.log`/`skips.log` contract are documented in
+   the skill.
+6. **`make_job_record.py` drops a proposed "checkpoint dir must be a scratch
+   path" validation** that would have falsely refused legitimate local runs
+   and test paths; the mandatory parts (checkpoint dir, progress file,
+   `--resume` command, `--smoke-ok`) are enforced.
+7. **`bib_check.py` classifies DOI/URL mismatch as S1**, not S2: a verification
+   record that does not belong to the citation is claim-affecting.
+8. **`Vangja-project/` remains untracked and is excluded from the commit**
+   (read-only audit archive; committing it would add a foreign tree to
+   `update_pymc`).
+9. **Two stale-citation traps were avoided by construction**: skills reference
+   only paths that exist at this revision. Where a real path was absent
+   (`.pi/config/hpc.json` is gitignored, the worktree directory and
+   `paper/CLAIMS.json`/`.bib` do not exist yet), the skills name the example
+   or describe the path in prose; `validate_skills.sh` resolves every
+   backticked path in `SKILL.md` and would have failed otherwise.
+10. **`.pi/lib/**` is now tracked.** The S0 shared library was caught by the
+    generic `lib/` rule in `.gitignore` and had never been committed, so the
+    Node suite could not have run from a clean clone. Two negations
+    (`!.pi/lib/`, `!.pi/lib/**`) were appended after the Python section; the
+    nine files are staged here. This is an S0 omission fixed in S2, not a
+    scope change.
+11. **Two test fixtures were renamed to respect deliberate ignore rules.**
+    `fixtures/paper/` → `fixtures/manuscript/` (the `paper/` ignore block is
+    intentional and documented in `.gitignore`), and `fake.sif` →
+    `fake_container.img` (`*.sif` is ignored). Tests and this report were
+    updated; the full suite was re-run after the renames.
+
+### Open items
+
+- `AGENTS.md` claims entry points `fixed_case_studies/stocks/0{1..9}_*.py`;
+  at this revision `stocks/` ships only `01_fetch_data.py`, `config.py`,
+  `runner.py` (recorded in S1 and now in
+  `vangja-codebase/references/architecture.md` §8). The skills describe the
+  documented commands rather than the missing files.
+- `paper/paper.tex` ends with `\bibliography{my_paper}` but no `.bib` exists in
+  `paper/`; the literature skill records this as a task, not a citation
+  source to invent.
+- `scan_gaming.py` patch mode should gain a test-metric-selection rule (or an
+  AST pass over the changed files) so `diff_scan.py` catches it in a PR diff;
+  proposed for the S6 audit harness rather than patched here (S1 script,
+  outside this brief).
+- The agent definitions (S3) must name the new skills; `.pi/config/agents.json`
+  already lists them.
+- `make -C .pi verify-env` still prints the S4 orchestrator stub banner; that
+  is expected until prompt 04 lands.
+- Everything built in this stage was committed at the end of the session
+  (`.pi/skills/**`, `.pi/tests/skills/**`, `.pi/skills/{README.md,validate_skills.sh}`,
+  `research_agent/REPORT_BUILD.md`).
