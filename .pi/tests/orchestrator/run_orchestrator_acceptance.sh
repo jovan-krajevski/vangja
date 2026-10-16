@@ -29,7 +29,9 @@ bad() { say "FAIL  $1"; FAILURES=$((FAILURES + 1)); }
 REAL_SHA_BEFORE="$(git -C "$ROOT" rev-parse update_pymc)"
 REAL_REFS_BEFORE="$(git -C "$ROOT" for-each-ref --format='%(refname) %(objectname)')"
 REAL_DIRTY_BEFORE=0
-[[ -n "$(git -C "$ROOT" status --porcelain)" ]] && REAL_DIRTY_BEFORE=1
+# Tracked-file dirt is what the conductor refuses; untracked, gitignored archives
+# (Vangja-project/) are reported but are not a dirty checkout.
+[[ -n "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]] && REAL_DIRTY_BEFORE=1
 
 make_sandbox() {
 	local dir="$1"
@@ -178,11 +180,13 @@ REAL_REFS_AFTER="$(git -C "$ROOT" for-each-ref --format='%(refname) %(objectname
 if [[ "$REAL_SHA_AFTER" == "$REAL_SHA_BEFORE" ]]; then ok "real update_pymc SHA unchanged ($REAL_SHA_AFTER)"; else bad "real update_pymc moved"; fi
 if [[ "$REAL_REFS_AFTER" == "$REAL_REFS_BEFORE" ]]; then ok "no branch or tag created in the real repository"; else bad "real repository refs changed"; fi
 if [[ "$REAL_DIRTY_BEFORE" == "1" ]]; then
-	say "NOTE  the real checkout was already dirty before this run (S4 work in progress);"
+	say "NOTE  the real checkout had tracked-file changes before this run (build in progress);"
 	say "      this script asserts only that it changed nothing (see the two checks above)."
 else
-	if [[ -z "$(git -C "$ROOT" status --porcelain)" ]]; then ok "real working tree clean"; else bad "real working tree is dirty"; fi
+	if [[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]]; then ok "real working tree clean (no tracked-file changes)"; else bad "real working tree is dirty"; fi
 fi
+say "git status --porcelain (informational; Vangja-project/ is the pre-existing untracked archive):"
+git -C "$ROOT" status --porcelain | sed 's/^/      /'
 
 say
 if [[ "$FAILURES" -eq 0 ]]; then
