@@ -2728,3 +2728,273 @@ new orchestrator tests.
 - The `/loop:*` commands are registered by the orchestrator extension and share
   `commands.ts` with the CLI, but the TUI rendering is deliberately minimal
   (`ui.notify`/`ui.setWidget`); a richer widget is not part of S4.
+
+---
+
+## S4 verification
+
+Independent stage verification by a fresh human-role session that did not build
+S4 (prompt: `research_agent/prompts/04_orchestrator_and_state.md`). The report
+text was not trusted: every acceptance test was re-run from the committed tree,
+the orchestrator modules and tests were inspected file by file, and six
+additional checks were driven by the verifier against scratch clones (a full
+cycle, a stale-lock resume, a live-child refusal, a six-cap budget matrix, a
+literal `/loop:step` ↔ `step.sh` parity run, and a child env/argv dump).
+
+- Revision verified: `1ed441ea2c505dc99a469c7142c503a4300ef8b9` (`S4: report +
+  /loop:* delegation test`) on `update_pymc`. The report names `b37053f` and
+  `28b5ed9` as the S4 commits; the report itself landed in `1ed441e`, whose only
+  non-report change is the 24-line `/loop:*` delegation test. Working tree
+  before and after all runs: `?? Vangja-project/` only (pre-existing,
+  untracked). Toolchain: `pi 1.3.0`, `node v24.21.0`.
+- Report revision verified: `sha256
+  f6036680a0beab02f749c00fd1458df696fa5960fc05cca895634b854deb94ea` before this
+  section was appended.
+- Scope: `git show --name-status` over `b37053f 28b5ed9 1ed441e` → 39 changed
+  paths, **all** under `.pi/**` plus `research_agent/REPORT_BUILD.md`; **0**
+  files under `src/ tests/ fixed_case_studies/ paper/ Vangja-project/
+  case_studies/ docs/`. `b37053f` deletes `.pi/extensions/orchestrator/stub.ts`
+  and adds `.pi/tests/fixtures/orchestrator_stub_child.mjs`; no other deletion.
+- Files inspected directly: all twelve `.pi/extensions/orchestrator/*.ts`
+  modules, all six orchestrator test files, `orchestrator_helpers.ts`, the stub
+  fixture and acceptance script, `.pi/loop/{step,status,collect}.sh` +
+  `README.md`, `.pi/lib/{records,state,views}.ts`, and the changed
+  `Makefile`/`run.sh`/`check_env.ts`.
+
+### Verdict: GO — all six acceptance tests pass; five non-blocking discrepancies (D-S4V-1 … D-S4V-5)
+
+### Per-test results
+
+**1 · `bash .pi/tests/run.sh orchestrator` → all green — PASS.**
+
+```
+$ bash .pi/tests/run.sh orchestrator
+== node --test orchestrator (offline, sandbox only) ==
+ℹ tests 58
+ℹ pass 58
+ℹ fail 0
+ℹ duration_ms 59721.312908
+
+== orchestrator acceptance transcript ==
+PASS  merge commit message contains the review id
+PASS  exactly one run/<run_id>/merge/1 tag
+PASS  the sandbox update_pymc advanced by exactly the task commit + the merge commit
+PASS  exactly one pre-merge gate run recorded
+PASS  the merge event records the gate result and the merge sha
+-- 2. pause/resume + idempotency --
+PASS  replay/kill/pause-resume tests green (3 cases)
+-- 3. budget caps --
+PASS  six budget caps pause with the reason + resume command
+-- 4. .pi/loop/step.sh ↔ CLI parity --
+PASS  step.sh and the CLI append identical events for the same starting state
+-- 5. real repository invariant --
+PASS  real update_pymc SHA unchanged (1ed441ea2c505dc99a469c7142c503a4300ef8b9)
+PASS  no branch or tag created in the real repository
+PASS  real working tree clean (no tracked-file changes)
+acceptance: all S4 orchestrator checks passed
+```
+
+Per-file re-count (each file run separately, `grep -c '^✔'`):
+`test_state_machine 26`, `test_budget 7`, `test_gates 12`, `test_cli_status 8`,
+`test_pause_resume 3`, `test_sandbox_cycle 2` = **58**, matching the report. The
+report's `make -C .pi verify-env` claim also reproduces exactly: `ℹ tests 158 /
+ℹ pass 158 / ℹ fail 0`, `Ran 150 tests … OK`, `15/15 checks passed`, `4/4
+orchestrator checks passed`, exit 0.
+
+**2 · Sandbox cycle transcript — PASS.** Re-driven by the verifier in a fresh
+`/tmp` clone with the real CLI and the stub child (not the report's transcript):
+
+```
+$ … cli.ts step   → booted run run-20261016234344-1ed441ea on base 1ed441ea2c50
+$ … cli.ts step   → SELECT_TASK → WORK: selected T-001 (P2): verify task
+$ PI_STUB_MODE=work … step → phd_candidate ok in 0.6s (1 tool calls, $0.0020)
+$ … cli.ts step   → WORK → REVIEW: T-001 has a PR (PR-001); supervise it
+$ PI_STUB_MODE=review … step → supervisor ok in 0.1s (1 tool calls, $0.0020)
+$ … cli.ts step   → REVIEW → MERGE: PR-001 accepted; run the pre-merge gate and merge
+$ … cli.ts step   → human gate G-001 (merge) is pending: merge PR-001 (work/T-001-stub → update_pymc)
+--- update_pymc while gate pending: 1ed441ea2c505dc99a469c7142c503a4300ef8b9 (unchanged) ---
+$ cli.ts gate approve G-001 "verifier: independent reproduction"
+$ … cli.ts step   → merged PR-001 → POST_MERGE at d4bd28077d4d (tag run/run-20261016234344-1ed441ea/merge/1)
+$ … cli.ts step   → POST_MERGE → SELECT_TASK: post-merge bookkeeping
+
+=== merge commit ===
+d4bd28077d4de5e14f8628e0d0a6fee312fb13a9 merge PR-001 (review RV-001): stub PR for T-001
+7ad09a71199e246f7c54bfc3425d517ef307af88 T-001: stub implementation
+=== tags ===  run/run-20261016234344-1ed441ea/merge/1
+=== gate-runs ===  PR-001-2026-10-16T23-43-46-042Z.json
+=== real repo SHA ===  1ed441ea2c505dc99a469c7142c503a4300ef8b9
+```
+
+The gate-run file holds all seven checks (`tests, protected-paths, test-diff,
+integrity, provenance, hygiene, claims`), `ok: true`, `waived: []`, started
+`23:43:46.042Z` and ended `23:43:51.615Z`; the merge completion event is
+`23:43:51.671Z` — the gate ran **before** the merge, and no merge happened while
+the gate was pending. The event stream shows exactly one `work:T-001:1`
+completion, one `gate:merge:PR-001`, one `merge:PR-001:RV-001` completion. The
+report's transcript numbers (SHAs, run ids) are from its build-time run and
+legitimately differ; every asserted property reproduces.
+
+**3 · Pause/resume matrix — PASS (property); method deviation D-S4V-3.** The
+suite replays every transition boundary and SIGKILLs one live child; my
+additional runs:
+
+```
+$ node --test .pi/tests/orchestrator/test_pause_resume.test.ts
+✔ replaying a completed action is a no-op at every transition boundary
+✔ killing the conductor mid-child leaves a stale lock, and the resumed run has one PR and one completion
+✔ pausing before the merge and resuming produces exactly one merge commit
+ℹ tests 3   ℹ pass 3   ℹ fail 0
+
+# verifier: fake dead child lock (pid 4000001) after WORK was reached
+$ PI_STUB_MODE=work … cli.ts step
+phd_candidate ok in 0.6s (1 tool calls, $0.0020)
+stale events: 1 | stale child lock (pid 4000001, key work:T-001:1, started 2026-01-01T00:00:00Z) — the process is dead; resuming work:T-001:1
+work completions: 1 ['work:T-001:1']
+PR records: 1 | lock exists: False
+
+# verifier: child effect applied, conductor completion missing (simulated crash in the effect→event window)
+PRs before next step: 1
+$ … cli.ts step   → WORK → REVIEW: T-001 has a PR (PR-001); supervise it
+work start events: 0 | distinct PR ids: ['PR-001'] | state: REVIEW
+
+# verifier: live child refuses a second spawn
+lock: {"pid": 376587, "action_key": "work:T-001:1", …}
+$ … cli.ts step   → skipped(child-alive) refusing to start phd_candidate: child pid 376587 is still alive (key work:T-001:1).  exit=1
+```
+
+No duplicated side effect was produced in any of these: one PR, one merge
+commit, one tag, one completion per action key.
+
+**4 · Budget caps — PASS.** `test_budget.test.ts` → 7/7; the verifier then
+exceeded each cap in a scratch clone through the real CLI and checked the
+`PAUSED` reason + resume command:
+
+```
+PASS maxSessionsPerDay       paused: maxSessionsPerDay cap reached: today's child sessions (120 ≥ 120); … Resume with: node .pi/extensions/orchestrator/cli.ts resume --sandbox <sb>
+PASS maxTaskWallClockMinutes paused: maxTaskWallClockMinutes cap reached: wall-clock minutes spent on the current task (360 ≥ 360); …
+PASS maxCostUsdPerRun        paused: maxCostUsdPerRun cap reached: cost in USD for this run (250 ≥ 250); …
+PASS maxConsecutiveFailures  paused: maxConsecutiveFailures cap reached: consecutive child failures (3 ≥ 3); …
+PASS maxNoProgressCycles     paused: maxNoProgressCycles cap reached: completed actions that changed no ledger (2 ≥ 2); …
+PASS maxAuditCycles          paused: maxAuditCycles cap reached: audit cycles already run (6 ≥ 5); …
+```
+
+The first attempt of my matrix reported FAIL for `maxSessionsPerDay`; the cause
+was my harness setting `dayKey` to a future date, which correctly resets the
+daily counter — re-run with the module's own `saveBudget` it passes (above). The
+verifier-side error is recorded so the “FAIL” is not mistaken for a product
+failure.
+
+**5 · `.pi/loop/step.sh` ↔ `/loop:step` parity — PASS.**
+
+```
+$ node --test .pi/tests/orchestrator/test_cli_status.test.ts
+✔ step.sh and the CLI produce identical events for the same starting state
+✔ every /loop:* command delegates to the shared command layer
+ℹ tests 8   ℹ pass 8   ℹ fail 0
+
+# verifier, literal invocation (two identical /tmp clones):
+== A: /loop:step (boot) ==   exit=0
+== B: step.sh (boot) ==     booted run run-20261016234528-1ed441ea on base 1ed441ea2c50
+== A: /loop:step again (assign) ==
+== B: step.sh again (assign) ==  SELECT_TASK → WORK: selected T-001 (P2): loopcmd parity
+stable events: /loop:step=2 step.sh=2 | identical: True
+OK  boot complete UNINITIALIZED -> SELECT_TASK
+OK  book:SELECT_TASK->WORK:T-001:a0 complete SELECT_TASK -> WORK
+A state: WORK | B state: WORK
+```
+
+The literal `/loop:step` (a real `pi` command invocation, no model call) and the
+shim produce field-identical events after normalising timestamps, sandbox paths
+and run ids. The report's structural test is a superset, not a substitute.
+
+**6 · Real repository invariant — PASS.**
+
+```
+HEAD:        1ed441ea2c505dc99a469c7142c503a4300ef8b9
+update_pymc: 1ed441ea2c505dc99a469c7142c503a4300ef8b9
+git status --porcelain               → ?? Vangja-project/
+git status --porcelain -uno         → (empty)
+git tag | grep -cE 'run/|audit-cycle|submission' → 0
+git worktree list | wc -l           → 1   (the real checkout only)
+git stash list | wc -l              → 0
+```
+
+### Discrepancies (none fails an acceptance test)
+
+- **D-S4V-1 — stale line count in the report.** “tests + fixtures + acceptance
+  script 2129 lines” is 2153 now (per-file: 221 helpers + 147/202/357/224/159/467
+  tests + 198 script + 178 fixture). The 24-line difference is exactly the
+  `/loop:*` delegation test added to `test_cli_status.test.ts` by `1ed441e`, the
+  same commit that wrote the report. All twelve module line counts match the
+  report exactly.
+- **D-S4V-2 — the `loadSkills` verification has no committed test.** The report
+  says pi's loader was “verified by importing pi's `loadSkills` and asserting an
+  empty diagnostics array”; no file under `.pi/tests/` references `loadSkills`.
+  I re-ran the claim independently against the installed pi:
+  `loadSkillsFromDir({dir: ".pi/skills", source: "project"})` → **15 skills, 0
+  diagnostics** (all 15 names listed). The fact is true; the evidence is ad hoc,
+  not a test.
+- **D-S4V-3 — acceptance test 3 is a replay matrix plus one real SIGKILL, not a
+  kill at every boundary.** `test_pause_resume.test.ts` does `execute` then
+  `replay` at eight boundaries, one real mid-child kill, and one
+  pause→resume→merge. The property asked for (one completion per action, one
+  PR/merge/tag) holds and I strengthened it with a dead-lock resume, a crash
+  after a child’s ledger effect but before the completion event, and a live-child
+  refusal (all above). A kill in the bookkeep effect→event window (e.g. a
+  double-applied `bump_attempt`) remains untested; it cannot duplicate a PR,
+  job, or merge because those effects are keyed/idempotent, but it can shift an
+  attempt counter.
+- **D-S4V-4 — `tagAuditCycle()` / `tagSubmission()` have no call sites.** The
+  prompt lists `audit-cycle/<n>` and `submission/<n>` as `git.ts` tags; only
+  `run/<run_id>/merge/<n>` is created in S4 (via `tagMerge`). The helpers exist
+  and are tested in isolation, but the AUDIT and submission paths that would
+  call them arrive with S6/S7. The report’s “Not done (by design)” covers those
+  stages but does not call the tags out explicitly.
+- **D-S4V-5 — gate-run evidence wording.** The report says a gate run “holds all
+  seven checks with their commands and raw output tails”. It holds all seven
+  checks; only the command-based ones (`tests`, `integrity`) carry
+  `command`/`output_tail`, while `protected-paths`, `test-diff`, `provenance`,
+  `hygiene` and `claims` are in-process checks with `detail` only. Verified in
+  the run file above; the checks are all present and replayable, the wording is
+  just broader than the artifact.
+
+### Additional verifier checks (beyond the six acceptance tests)
+
+- **Child invocation contract, runtime:** a dump child showed
+  `PI_LOOP_ROLE=phd_candidate`, `PI_AGENT_NAME=phd_candidate__T-001__1`,
+  `PI_LOOP_STATE=WORK`, `PI_LOOP_RUN=run-…`, `PI_LOOP_ROOT` = `PI_LOOP_SANDBOX` =
+  the sandbox, `PI_DISPATCH_DEPTH=1`, and the inherited `SSH_AUTH_SOCK`.
+- **argv recorded before spawn:** the child’s `process.argv` equals the `argv`
+  stored in the `start` event (seq 3 < completion seq 4), together with
+  `prompt_hash` and `agent_file_hash`.
+- **Purity of `state-machine.ts`:** it imports only `records.ts` (no I/O),
+  `config.ts` types, `state.ts` types and `budget.ts`’s pure
+  `budgetViolations`/`budgetViolationReason`/`resumeCommand`; the purity test
+  (`same snapshot → same action`, snapshot unmutated) passes. The table has 39
+  ordered rules + fallback, and I traced every transition in `plan/02 §2` to a
+  rule.
+- **Refusals:** BOOT refuses a dirty checkout (exit 1, no `LOOP_STATE.json`
+  written); `--dry-run` writes exactly `state/DRYRUN.jsonl` and nothing else;
+  `--sandbox <real root>` is refused by name; `--sandbox` inside a shim is
+  refused; `merge` refuses a dirty checkout and a missing branch.
+- **No push / no GitHub:** `grep` over `.pi/extensions/**` finds no `git push`
+  call, no `gh`, and no `useGitHub`; `collect`/`collect.sh` exit 2 pointing at
+  S5, and `hpcGate()` reports `not-configured`.
+- **Status surface:** `status` prints state, run, task/pr/experiment + attempt,
+  budget vs caps, stop flag, child-lock state, open human gates, last 5 events
+  and `nextAction`.
+- **Derived views:** `refreshViews` writes `CONTEXT.md` (52 lines in a completed
+  cycle; the renderer caps at 200),
+  `TASKS.md`/`PRS.md`/`REVIEWS.md`/`EXPERIMENTS.md` from the shared ledger
+  renderers.
+- **Skills fix (D-S4-11):** re-verified as above (D-S4V-2);
+  `validate_skills.sh` and the 150 Python skill tests are green in `verify-env`.
+
+### Residual risk carried forward
+
+- Attempt counters (not deliverables) can double-apply if the conductor is
+  killed inside a bookkeep’s effect→event window (D-S4V-3); no PR, job, gate run
+  or merge is duplicated by that window.
+- The HPC path, the audit-cycle/four-phase orchestration, GitHub PR creation
+  (`useGitHub`) and the `audit-cycle/`/`submission/` tags are S5–S7 by design;
+  the S4 state machine references them only as read surfaces and spawn targets.
