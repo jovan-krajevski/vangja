@@ -80,6 +80,39 @@ class TestScanGaming(unittest.TestCase):
         proc = run_script(SCAN, ["--root", REPO_ROOT])
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
 
+    def test_builtin_and_pandas_selection_is_detected(self):
+        cases = {
+            "min": 'best = min(rows, key=lambda r: r["test_mape"])\n',
+            "max": 'best = max(runs, key=lambda r: r["holdout_rmse"])\n',
+            "sorted": 'best = sorted(runs, key=lambda r: r["oos_loss"])[0]\n',
+            "nsmallest": 'best = frame.nsmallest(1, "test_mape")\n',
+            "largest": 'best = frame.nlargest(1, "test_score")\n',
+            "argmax": 'best = frame["test_mae"].argmax()\n',
+        }
+        for selector, source in cases.items():
+            with self.subTest(selector=selector):
+                with tempfile.TemporaryDirectory() as tmp:
+                    Path(tmp, "runner.py").write_text(source)
+                    findings = findings_for(Path(tmp))
+                self.assertEqual(
+                    [f["category"] for f in findings], ["test-metric-selection"], findings
+                )
+                self.assertEqual(findings[0]["severity"], "S0")
+
+    def test_builtin_selection_negative_controls(self):
+        source = (
+            "a = min(rows, key=lambda r: r['dev_mape'])\n"
+            "b = max(elpds)\n"
+            "c = min(0.0, value)\n"
+            "d = sorted(names)\n"
+            "e = max(rows, key=lambda r: r['validation_mae'])\n"
+            "f = sorted(table, key=lambda r: r['series'])[0]\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "runner.py").write_text(source)
+            findings = findings_for(Path(tmp))
+        self.assertEqual(findings, [])
+
 
 if __name__ == "__main__":
     unittest.main()

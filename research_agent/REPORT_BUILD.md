@@ -3678,7 +3678,9 @@ $ node --test .pi/tests/audit/test_rubrics.test.ts
 **2. `run_gates` on the seeded fixture; tampered artifact.** All 13 gates
 report; `artifacts-complete` has `hash_ok=true` on the clean fixture; a tampered
 `numbers.json`/`metrics.csv` makes `hash_ok=false` and `verify_reproduce` prints
-the drift.
+the drift. The fixture's `gaming-scan` fails with the planted selector
+(`S0 test-metric-selection runners/run_grid.py:9`) — the D4 scanner fix applied
+after verification; the transcript below is the post-fix output.
 
 ```
 $ node --experimental-strip-types .pi/tests/audit/acceptance_probe.ts gates <fixture-copy>
@@ -3686,7 +3688,7 @@ PASS  all gates report: 13/13
 PASS  every status is set: tests=pass protocol-hashes=pass confirmation-frozen=fail
       no-test-selection=fail test-diff=fail no-failures-hidden=fail context-excluded=fail
       artifacts-complete=pass reproduce-headline=fail traceability=fail env-pinned=pass
-      gaming-scan=pass canary=pass
+      gaming-scan=fail canary=pass
 PASS  artifacts hash_ok: hash_ok=true
 
 $ node --experimental-strip-types .pi/tests/audit/acceptance_probe.ts tamper <fixture-copy>
@@ -3708,7 +3710,7 @@ PASS  negative controls clean: 0 false positive(s)
 PASS  grade ≤ weak reject: grade=weak reject
 PASS  GRADE.md cites the failing gates:
       failed=confirmation-frozen,no-test-selection,test-diff,no-failures-hidden,
-      context-excluded,reproduce-headline,traceability
+      context-excluded,reproduce-headline,traceability,gaming-scan
 ```
 
 Seeded-defect detection matrix (`node --test .pi/tests/audit/test_canary.test.ts`):
@@ -3943,9 +3945,9 @@ that prompt plus `research_agent/plan/07_AUDIT_HARNESS.md` and plan/08 §S6.
 ### Verdict: **GO** — all seven acceptance tests pass on independent re-run
 
 No acceptance test failed. Nine discrepancies are recorded below; none of them
-invalidates a test result. D1, D2, D3 and D5 were report-accuracy/provenance
-issues and are corrected in the S6 section after verification (see "Corrections
-applied after verification" at the end of this section).
+invalidates a test result. D1–D5 were report-accuracy/provenance/coverage issues
+and are corrected after verification (see "Corrections applied after
+verification" at the end of this section).
 
 ### Acceptance tests, re-run
 
@@ -4086,14 +4088,20 @@ enforced, recall is **4/7 = 0.571 < 0.6**, i.e. the run would be UNCALIBRATED on
 recall threshold alone. The report's "S 3/2 0.67" and 6/7 stand only under the
 undisclosed severity-blind policy. (The canary, by contrast, requires exact severity.)
 
-**D4 (S2, gaming-scan coverage).** `scan_gaming.py`'s static selector list is
-`SELECTORS = {idxmin, idxmax, argmin, argmax}`; `min`/`max`/`sorted(key=…)` are absent,
-so the scanner returns `n_findings 0` on the seeded fixture that contains exactly
-`min(rows, key=lambda row: row["test_mape"])` (`runners/run_grid.py:9`). The S6
-transcript therefore shows `gaming-scan=pass` on a repo with a planted gaming defect.
-Mitigated elsewhere: the `no-test-selection` gate fails on it and the E canary probe
-detects it — but the gate under-implements the plan/07 §6 catalogue and its "pass"
-line should not be read as evidence of a clean scan.
+**D4 (S2, gaming-scan coverage) — FIXED after verification.** At verification
+time `scan_gaming.py`'s static selector list was
+`SELECTORS = {idxmin, idxmax, argmin, argmax}`; `min`/`max`/`sorted(key=…)` were
+absent, so the scanner returned `n_findings 0` on the seeded fixture containing
+exactly `min(rows, key=lambda row: row["test_mape"])` (`runners/run_grid.py:9`),
+and the transcript in the S6 section (as recorded at verification time) showed
+`gaming-scan=pass`. The scanner now also detects builtin `min`/`max`/`sorted`
+and pandas `nsmallest`/`nlargest`; the same fixture reports
+`gaming-scan=fail` with `1 hit(s): S0 test-metric-selection
+runners/run_grid.py:9`, and the S6 transcript has been updated to the post-fix
+output. Tests: `test_builtin_and_pandas_selection_is_detected` (six selectors)
+and `test_builtin_selection_negative_controls` in
+`.pi/tests/skills/test_scan_gaming.py`; the real-repository static scan stays
+clean (0 findings), and `verify-env` is green (277 node, 158 python).
 
 **D5 (S1 for the merge gate, reporting).** `verify_guards` on the S6 commit itself
 returns `ok=false` with 12× S1 gaming hits, including three
@@ -4151,8 +4159,9 @@ the artifacts are machine-specific.
 
 ### Corrections applied after verification
 
-The S6 section was corrected in place in the commit that adds this verification
-section; the discrepancy text above records what was wrong at verification time.
+The S6 section was corrected in place (D1–D3 and D5 in `0c91dc6`, D4 in the
+follow-up scanner commit); the discrepancy text above records what was wrong at
+verification time.
 
 - **D2** — the WS-R-004 hit is now reported as `R-002` *by the scorer's
   first-match rule*, with the note that the register's dedicated seed finding is
@@ -4162,6 +4171,9 @@ section; the discrepancy text above records what was wrong at verification time.
 - **D5** — new deviation 10 explains all 12 S1 `verify_guards` hits on
   `c8ea377`, including the three assertion deletions (net strengthening).
 - **D1** — "eight audit test files" corrected to nine.
+- **D4** — `scan_gaming.py` now detects builtin `min`/`max`/`sorted` and pandas
+  `nsmallest`/`nlargest` over test/metric tokens (constants, rule, catalogue,
+  two new tests); the seeded fixture's `gaming-scan` gate now fails on the
+  planted selector and the S6 transcript shows the post-fix output.
 
-D4, D6, D7, D8 and D9 remain open: D4 is a scanner-coverage change for the next
-cycle (code + tests), and D6–D9 are recorded here without a code edit.
+D6, D7, D8 and D9 remain open and are recorded here without a code edit.

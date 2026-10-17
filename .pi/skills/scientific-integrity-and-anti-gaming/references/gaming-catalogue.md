@@ -8,7 +8,9 @@ inline. Each entry: pattern → detection → required countermeasure.
 
 - **Seen:** F-1 — a large grid selected per target on the retrospective test
   horizon.
-- **Detect:** `idxmin`/`idxmax`/`argmin`/`argmax` or `sort_values(...).head(1)`
+- **Detect:** `idxmin`/`idxmax`/`argmin`/`argmax`/`nsmallest`/`nlargest`,
+  builtin `min`/`max`/`sorted` over test/metric tokens, or
+  `sort_values(...).head(1)`
   over a frame with `test`/confirmation metric columns; per-target "best"
   config maps.
 - **Countermeasure:** one frozen global config; selection only on development

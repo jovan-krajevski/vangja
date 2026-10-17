@@ -23,7 +23,8 @@ from pathlib import Path
 
 EXCLUDE_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache",
                 ".ruff_cache", ".ipynb_checkpoints", "fixtures"}
-SELECTORS = {"idxmin", "idxmax", "argmin", "argmax"}
+SELECTORS = {"idxmin", "idxmax", "argmin", "argmax", "nsmallest", "nlargest"}
+BUILTIN_SELECTORS = {"min", "max", "sorted"}
 TEST_TOKENS = ("test", "confirm", "holdout", "hold_out", "out_of_sample", "oos")
 METRIC_TOKENS = ("mae", "rmse", "mape", "elpd", "score", "metric", "error", "loss")
 SWALLOW_FUNCS = re.compile(
@@ -111,14 +112,22 @@ def scan_python_static(root: Path) -> list[dict]:
 
         for node in ast.walk(tree):
             # --- test-metric selection ---
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                if node.func.attr in SELECTORS:
+            # Methods (.idxmin/.argmax/.nsmallest/...) and builtins
+            # (min/max/sorted) all select a row; a key over a test-horizon
+            # metric is the classic "best config" search (plan/07 §6).
+            if isinstance(node, ast.Call):
+                selector = None
+                if isinstance(node.func, ast.Attribute) and node.func.attr in SELECTORS:
+                    selector = f".{node.func.attr}()"
+                elif isinstance(node.func, ast.Name) and node.func.id in BUILTIN_SELECTORS:
+                    selector = f"{node.func.id}()"
+                if selector is not None:
                     segment = ast.get_source_segment(source, node) or ""
                     low = segment.lower()
                     if any(t in low for t in TEST_TOKENS) and any(m in low for m in METRIC_TOKENS):
                         out.append(finding(
                             "test-metric-selection", "S0", f"{rel}:{node.lineno}",
-                            f"selects by .{node.func.attr}() over test/metric tokens",
+                            f"selects by {selector} over test/metric tokens",
                             segment,
                             "configuration/metric chosen on the test horizon; the result is "
                             "selection-biased (FINDINGS F-1)",
