@@ -1,6 +1,6 @@
 {
   "schema": "pi-tools/1",
-  "comment": "Tool registry for .pi agent manifests (plan/05_EXTENSIONS_AND_TOOLS.md). Agent frontmatter may name a concrete tool or a family; families expand to concrete names for the child --tools allowlist. Entries with stage > S3 are declared but not implemented yet; the registry test asserts S0–S3 entries really are registered by a loaded extension.",
+  "comment": "Tool registry for .pi agent manifests (plan/05_EXTENSIONS_AND_TOOLS.md). Agent frontmatter may name a concrete tool or a family; families expand to concrete names for the child --tools allowlist. `kind: \"extension\"` entries (S0-S5) are registered by a loaded extension; `kind: \"planned\"` entries (S6) are declared but not implemented yet — the registry test asserts both directions.",
   "families": {
     "dispatch": ["dispatch_agent", "dispatch_parallel", "dispatch_chain"],
     "ledger": [
