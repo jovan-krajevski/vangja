@@ -1,59 +1,63 @@
 #!/bin/bash
-# Job template for one Vangja experiment. Copy to scratch, fill every
-# {{PLACEHOLDER}}, and submit with `sbatch --parsable`. Do not invent a new
-# script: the USR1/exit-99 contract below is what makes requeue safe.
+# Vangja SLURM job template. `hpc_submit` renders every {{PLACEHOLDER}} and
+# uploads the result; do not hand-edit a rendered copy in place.
 #
-# Contract: exit 0 = complete, exit 99 = cleanly interrupted (checkpoint
-# flushed, safe to requeue), anything else = failure. See the
-# hpc-slurm-and-checkpointing skill and plan/06_HPC_AND_COLLECTOR.md.
-{{SBATCH_DIRECTIVES}}
-#SBATCH --job-name={{EXPERIMENT_ID}}
+# Exit-code contract: 0 = complete, 99 = cleanly interrupted (checkpoints
+# flushed, safe to requeue), anything else = failure. The USR1 trap below is
+# what makes the requeue path safe at the 24-hour wall limit.
+#SBATCH --job-name={{JOB_NAME}}
 #SBATCH --time=24:00:00
 #SBATCH --signal=B:USR1@300
-#SBATCH --output={{LOG_DIR}}/%j.out
-#SBATCH --error={{LOG_DIR}}/%j.err
+#SBATCH --cpus-per-task={{CPUS}}
+#SBATCH --mem={{MEM_GB}}G
+#SBATCH --partition={{PARTITION}}
+#SBATCH --gres={{GRES}}
+#SBATCH --output={{LOG_DIR}}/slurm-%j.out
+#SBATCH --error={{LOG_DIR}}/slurm-%j.err
+#SBATCH --comment={{KIND}}/{{EXPERIMENT_ID}}/attempt-{{ATTEMPT}}
 
 set -euo pipefail
 export PYTHONUNBUFFERED=1
+export PYTHONDONTWRITEBYTECODE=1
 
-REPO_DIR="{{REMOTE_REPO_DIR}}"
-CKPT="{{CHECKPOINT_DIR}}"
+RUN_DIR={{RUN_DIR}}
+CKPT={{CHECKPOINT_DIR}}
 mkdir -p "$CKPT" "{{LOG_DIR}}"
 
-# --- checkpoint flush on the wall-limit warning --------------------------
-# The runner updates progress.json after every completed unit; on USR1 we
-# only need to leave the process cleanly with code 99.
-trap 'echo "USR1 received: flushing checkpoint"; python3 -c "import sys; sys.exit(99)"' USR1
+# `--signal=B:USR1@300` gives us a 5-minute warning before the 24h wall limit.
+# The runner writes progress.json after every completed unit; here we only
+# need to leave a marker and exit 99 so the collector knows the state is
+# consistent and the job may be requeued.
+on_usr1() {
+    echo "USR1 received: wall limit in 5 minutes; flushing checkpoints and exiting 99 (safe to requeue)"
+    touch "$CKPT/INTERRUPTED"
+    exit 99
+}
+trap on_usr1 USR1
 
+echo "=== {{EXPERIMENT_ID}} attempt {{ATTEMPT}} ==="
+echo "run dir:     $RUN_DIR"
+echo "checkpoints: $CKPT"
+echo "started:     $(date --iso-8601=seconds 2>/dev/null || date)"
 echo "========================================"
-echo "experiment:  {{EXPERIMENT_ID}}"
-echo "commit:      {{COMMIT_SHA}}"
-echo "started:     $(date --iso-8601=seconds)"
-echo "checkpoints: ${CKPT}"
-echo "========================================"
 
-cd "$REPO_DIR"
-git checkout --detach "{{COMMIT_SHA}}" >/dev/null
-test -f uv.lock
+cd "$RUN_DIR"
 
-# Frozen environment. No network beyond this sync.
+# Frozen environment. No network beyond this sync; never resolve dependencies
+# at run time (the lock hash is checked by the submission gate).
 uv sync --frozen --no-dev
 
-# --- run -----------------------------------------------------------------
-# `--resume "$CKPT"` makes the second and later attempts skip completed
-# units. THE COMMAND MUST ACCEPT --resume; verify with the checkpoint smoke
-# test before submitting.
+# The resume command is the experiment record's `checkpoints.resumeCommand`.
+# `--resume "$CKPT"` makes this and every later attempt skip completed units.
 set +e
-{{CONTAINER_PREFIX}} uv run python "{{ENTRYPOINT}}" \
-    {{ENTRYPOINT_ARGS}} \
-    --resume "$CKPT"
+{{CONTAINER_PREFIX}}{{RESUME_COMMAND}}
 EXIT_CODE=$?
 set -e
 
 echo "========================================"
-echo "finished:  $(date --iso-8601=seconds)"
+echo "finished:  $(date --iso-8601=seconds 2>/dev/null || date)"
 echo "exit code: ${EXIT_CODE}"
 echo "========================================"
 
-# 0 = complete; 99 = interrupted-clean; anything else = failure.
+# 0 = complete · 99 = interrupted-clean · anything else = failure.
 exit "${EXIT_CODE}"

@@ -13,6 +13,7 @@
 
 import { parseFlags, resolveRunContext, type CliFlags, type RunContext } from "./sandbox.ts";
 import {
+	commandCollect,
 	commandGate,
 	commandPause,
 	commandResume,
@@ -22,7 +23,6 @@ import {
 	commandVerifyEnv,
 	loadLoopOptions,
 } from "./commands.ts";
-import { hpcGate } from "./gates.ts";
 import { describeAction } from "./state-machine.ts";
 
 const USAGE = `orchestrator CLI (plan/05_EXTENSIONS_AND_TOOLS.md §2)
@@ -37,7 +37,7 @@ commands:
   status [--json]  state, task/PR/experiment, budget, gates, last 5 events, nextAction
   verify-env       run the environment checks plus the orchestrator's own checks
   gate list|approve <id> <note>|reject <id> <why>
-  collect          S5 collector entry point (not implemented yet; exits 2)
+  collect          one collector pass: poll, record evidence, fetch; disabled → one hpc-disabled event
 
 flags:
   --sandbox <path>  run against a scratch clone (never the real repository)
@@ -129,12 +129,9 @@ async function main(argv: string[]): Promise<number> {
 			return 0;
 		}
 		case "collect": {
-			const hpc = hpcGate(context.root);
-			process.stderr.write(
-				`collect: the collector arrives in stage S5 (research_agent/prompts/05_hpc_and_collector.md).\n` +
-					`hpc gate: ${hpc.status} — ${hpc.reason}\n`,
-			);
-			return 2;
+			const result = await commandCollect({ context });
+			process.stdout.write(`${result.message}\n`);
+			return 0;
 		}
 		default:
 			process.stderr.write(`unknown command "${command}"\n\n${USAGE}`);

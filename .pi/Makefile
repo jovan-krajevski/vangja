@@ -23,9 +23,12 @@ TEST_FILES := .pi/tests/test_settings.test.ts .pi/tests/test_schemas.test.ts \
 	.pi/tests/agents/test_dispatch_unit.test.ts .pi/tests/agents/test_prompt_templates.test.ts \
 	.pi/tests/orchestrator/test_state_machine.test.ts .pi/tests/orchestrator/test_budget.test.ts \
 	.pi/tests/orchestrator/test_gates.test.ts .pi/tests/orchestrator/test_cli_status.test.ts \
-	.pi/tests/orchestrator/test_pause_resume.test.ts .pi/tests/orchestrator/test_sandbox_cycle.test.ts
+	.pi/tests/orchestrator/test_pause_resume.test.ts .pi/tests/orchestrator/test_sandbox_cycle.test.ts \
+	.pi/tests/hpc/test_hpc_disabled.test.ts .pi/tests/hpc/test_hpc_config.test.ts \
+	.pi/tests/hpc/test_hpc_submit_gate.test.ts .pi/tests/hpc/test_hpc_lifecycle.test.ts \
+	.pi/tests/hpc/test_hpc_retry_rules.test.ts
 
-.PHONY: all test skills-test env-check verify-env verify-env-strict orchestrator-check orchestrator-accept accept agents-accept help
+.PHONY: all test skills-test env-check verify-env verify-env-strict orchestrator-check orchestrator-accept hpc-accept accept agents-accept help
 
 all: verify-env
 
@@ -56,6 +59,11 @@ orchestrator-check:
 # The full S4 acceptance transcript (sandbox only; no model calls).
 orchestrator-accept:
 	bash $(ROOT)/.pi/tests/orchestrator/run_orchestrator_acceptance.sh
+
+# The full S5 mock-cluster acceptance transcript (mock shims only; no network,
+# no model calls). Not part of verify-env: it takes ~1 minute.
+hpc-accept:
+	bash $(ROOT)/.pi/tests/hpc/run_mock_cluster.sh
 
 # Not part of verify-env: these make real model calls.
 accept:

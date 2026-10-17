@@ -177,18 +177,18 @@ test("WORK spawns phd_candidate with a keyed, attempt-numbered action", () => {
 	assert.equal(completions(after === null ? [] : [event({ action_key: "work:T-001:1", action_phase: "complete" })], "work:"), 1);
 });
 
-test("WAITING_HPC returns to WORK when no experiment is active, else spawns the collector", () => {
+test("WAITING_HPC returns to WORK when no experiment is unfinished, else gives the collector a pass", () => {
 	const back = nextAction(loopState({ state: "WAITING_HPC" }), view(), loopOptions());
 	assert.equal(back.kind, "bookkeep");
 	assert.equal(back.to, "WORK");
 	const collect = nextAction(
 		loopState({ state: "WAITING_HPC", task_id: "T-001" }),
-		view({ experiments: [experiment({ status: "requeue_requested", attempt: 2 })] }),
+		view({ experiments: [experiment({ status: "running", attempt: 2, job_id: "900001" })] }),
 		loopOptions(),
 	);
 	assert.equal(collect.kind, "spawn");
 	assert.equal(collect.agent, "collector");
-	assert.equal(collect.key, "collect:E-0001:2");
+	assert.equal(collect.key, "collect:E-0001:a2:running");
 });
 
 test("REVIEW decisions: accept → MERGE, changes → WORK, reject → SELECT_TASK, none → supervisor", () => {

@@ -12,7 +12,7 @@ bash .pi/loop/step.sh [--forever] [--max-steps N] [--dry-run] [--sandbox P]
 bash .pi/loop/status.sh [--json] [--sandbox P]
   →  node .pi/extensions/orchestrator/cli.ts status --headless …
 
-bash .pi/loop/collect.sh [--sandbox P]      # stage S5: exits 2 until the collector exists
+bash .pi/loop/collect.sh [--sandbox P]      # one collector pass (hpc_* tools); disabled → one event
   →  node .pi/extensions/orchestrator/cli.ts collect --headless …
 ```
 
@@ -31,7 +31,7 @@ clone and is refused if the path is the real repository.
 | `status` | state, current task/PR/experiment + attempt, budget vs caps, open human gates, last 5 events, stale child lock, and the `nextAction` |
 | `verify-env` | `.pi/tests/check_env.ts` plus the orchestrator's own checks (HPC gate state, human-gate config) |
 | `gate list\|approve\|reject` | human gates: `merge`, `confirmation`, `audit`, `submission`, `enqueue` |
-| `collect` | S5 collector entry point (exits 2 until it exists — a stub that succeeds would make a dead loop look alive) |
+| `collect` | one collector pass: `hpc_status` → evidence → transition/fetch, or (with no HPC host) exactly one `hpc-disabled` event and a clean exit |
 | `peek` | read-only: prints the action a `step` would perform |
 
 ## Always available

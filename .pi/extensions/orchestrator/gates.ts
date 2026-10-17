@@ -22,6 +22,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { appendRecord } from "../ledger/store.ts";
 import { loadHpcConfig } from "../../lib/config.ts";
+import { resolveHpc } from "../hpc/config.ts";
 import { readJsonFile, writeFileAtomic } from "../../lib/io.ts";
 import { statePath } from "../../lib/paths.ts";
 import { readLedger } from "../ledger/store.ts";
@@ -556,7 +557,7 @@ export function runPreMergeGates(options: PreMergeOptions): GateRun {
 }
 
 // ---------------------------------------------------------------------------
-// HPC gate hook (S5 implements the real one)
+// HPC gate hook (S5: real checks; submission itself lives in .pi/extensions/hpc)
 // ---------------------------------------------------------------------------
 
 export interface HpcGateResult {
@@ -564,13 +565,27 @@ export interface HpcGateResult {
 	reason: string;
 }
 
-/** S4 stub: reports the configured/disabled state; submission is S5's job. */
+/**
+ * Reports whether the HPC path is usable. `not-configured` (empty host) is a
+ * valid state: `hpc_*` tools return `{enabled:false}`, the collector writes one
+ * `hpc-disabled` event, and the loop skips `WAITING_HPC`. An invalid config is
+ * `blocked` — never silently treated as disabled.
+ */
 export function hpcGate(root: string): HpcGateResult {
 	try {
 		const loaded = loadHpcConfig(root);
-		return loaded.enabled
-			? { status: "ok", reason: loaded.reason }
-			: { status: "not-configured", reason: `${loaded.reason}; submission is disabled until S5 implements the collector` };
+		if (!loaded.enabled) {
+			return {
+				status: "not-configured",
+				reason: `${loaded.reason}; hpc_* tools return {enabled:false} and WAITING_HPC is skipped (plan/06 §1)`,
+			};
+		}
+		// Full validation: required fields, readable keys, single-slot amendment.
+		const runtime = resolveHpc(root);
+		if (!runtime.enabled) {
+			return { status: "not-configured", reason: `${runtime.reason}; hpc_* tools return {enabled:false}` };
+		}
+		return { status: "ok", reason: runtime.runtime.reason };
 	} catch (error) {
 		return { status: "blocked", reason: (error as Error).message };
 	}

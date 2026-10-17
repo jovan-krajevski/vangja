@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Mock scp: never touches a network; see mock_cluster.py and the S5 tests.
+exec python3 "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/mock_cluster.py" "scp" "$@"

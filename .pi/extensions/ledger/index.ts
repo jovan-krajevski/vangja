@@ -170,16 +170,19 @@ export default function (pi: ExtensionAPI) {
 			name: "experiment_update",
 			label: "Experiment update",
 			description:
-				"Append an experiment status transition with raw evidence. Only legal lifecycle transitions are accepted. Collector/conductor only.",
+				"Append an experiment status transition with raw evidence (or a metadata-only update when status is " +
+				"omitted: progress, job_id, lastState, exitCode, …). Only legal lifecycle transitions are accepted. " +
+				"Collector/conductor only.",
 			parameters: Type.Object({
 				experiment_id: Type.String(),
-				status: Type.String(),
+				status: Type.Optional(Type.String({ description: "Omit for a metadata-only update" })),
 				evidence: Type.String({ description: "Raw squeue/sacct/exit-code evidence" }),
+				fields: Type.Optional(JSON_OBJECT),
 			}),
 			executionMode: "sequential",
 			async execute(_id, params, _signal, _update, ctx) {
 				return guard(handleExperimentUpdate)(
-					params as { experiment_id: string; status: string; evidence: string },
+					params as { experiment_id: string; status?: string; evidence: string; fields?: Record<string, unknown> },
 					contextFor(ctx),
 				);
 			},

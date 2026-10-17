@@ -9,21 +9,49 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { appendRecord } from "../ledger/store.ts";
-import { loadBudgetConfig, loadProjectConfig } from "../../lib/config.ts";
+import { loadBudgetConfig, loadHpcConfig, loadProjectConfig } from "../../lib/config.ts";
 import { loadLoopState, saveLoopState, type LoopState } from "../../lib/state.ts";
+import { recordHpcDisabled } from "../hpc/handlers.ts";
 import { refreshViews, composeStatus, renderStatus, renderStatusLine, type StatusReport } from "./context.ts";
 import { executeAction, type ExecutionResult } from "./execute.ts";
 import { approveGate, listGates, rejectGate, runCommand, hpcGate, type HpcGateResult } from "./gates.ts";
 import { loadLedgerView } from "./ledgers.ts";
-import { nextAction, type Action, type LedgerView, type LoopOptions } from "./state-machine.ts";
+import {
+	findUnfinishedExperiment,
+	nextAction,
+	type Action,
+	type LedgerView,
+	type LoopOptions,
+} from "./state-machine.ts";
 import type { RunContext } from "./sandbox.ts";
 
 export function loadLoopOptions(context: RunContext): LoopOptions {
 	const project = loadProjectConfig(context.root);
+	// HPC off means WAITING_HPC is skipped entirely (plan/06 §1). An HPC config
+	// that is present but invalid is not silently "off": the loop blocks with the
+	// config error instead of guessing.
+	let hpcEnabled = false;
+	let hpcError: string | null = null;
+	let maxPolls = 40;
+	let maxAttempts = 6;
+	try {
+		const hpc = loadHpcConfig(context.root);
+		hpcEnabled = hpc.enabled;
+		if (hpc.config) {
+			maxPolls = hpc.config.maxPolls;
+			maxAttempts = hpc.config.maxAttemptsPerExperiment;
+		}
+	} catch (error) {
+		hpcError = (error as Error).message;
+	}
 	return {
 		requireHumanMerge: project.requireHumanMerge,
 		budgets: loadBudgetConfig(context.root),
 		sandbox: context.sandbox ?? undefined,
+		hpcEnabled,
+		hpcError,
+		maxPolls,
+		maxAttempts,
 	};
 }
 
@@ -119,6 +147,53 @@ export function commandResume(context: RunContext): { state: LoopState; action: 
 	refreshViews(context.root);
 	const action = nextAction(next, loadLedgerView(context.root), loadLoopOptions(context));
 	return { state: next, action, message: `resumed to ${target}; next: ${action.kind} — ${action.summary}` };
+}
+
+export interface CollectResult {
+	performed: boolean;
+	disabled: boolean;
+	action: Action;
+	message: string;
+}
+
+/**
+ * The collector entry point (`.pi/loop/collect.sh`, `cli.ts collect`).
+ *
+ * With no HPC host it records exactly one `hpc-disabled` event and exits cleanly
+ * — the conductor then skips WAITING_HPC and the experiment runs locally
+ * (plan/06 §1/§7). With a configured host it performs one collector pass
+ * (poll → evidence → transition/fetch), never a second job.
+ */
+export async function commandCollect(deps: StepDeps): Promise<CollectResult> {
+	const options = deps.options ?? loadLoopOptions(deps.context);
+	const state = loadLoopState(deps.context.root).state;
+	const ledgers: LedgerView = loadLedgerView(deps.context.root);
+	const action = nextAction(state, ledgers, options);
+	const experiment = findUnfinishedExperiment(ledgers.experiments);
+	if (!experiment) {
+		return { performed: false, disabled: false, action, message: "no unfinished experiment; nothing to collect" };
+	}
+	if (!options.hpcEnabled) {
+		const already = ledgers.events.some((event) => event.hpc_disabled === true);
+		if (!already) {
+			recordHpcDisabled(
+				deps.context.root,
+				"collector",
+				options.hpcError ?? ".pi/config/hpc.json has no host; the HPC path is disabled",
+			);
+		}
+		return {
+			performed: false,
+			disabled: true,
+			action,
+			message:
+				`hpc-disabled: ${options.hpcError ?? "no host configured"}; ` +
+				(already ? "event already recorded" : "one hpc-disabled event recorded") +
+				`; experiment ${experiment.id} runs locally (plan/06 §7)`,
+		};
+	}
+	const result = await commandStep({ ...deps, options });
+	return { performed: result.performed, disabled: false, action: result.action, message: result.message };
 }
 
 export interface StatusOutput {

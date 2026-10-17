@@ -9,7 +9,8 @@ make -C .pi skills-test   # validate .pi/skills + python skill-script tests
 make -C .pi env-check     # config/roster/secrets checks with PASS lines
 make -C .pi verify-env    # all three
 make -C .pi accept        # model-backed acceptance checks (~4 short model turns)
-bash .pi/tests/run.sh [all|node|skills]
+make -C .pi hpc-accept    # S5 mock-cluster acceptance transcript (offline, no cluster)
+bash .pi/tests/run.sh [all|node|skills|orchestrator|hpc]
 ```
 
 | File | What it proves |
@@ -24,12 +25,13 @@ bash .pi/tests/run.sh [all|node|skills]
 | `test_child_pi.test.ts` | Real `pi` children with a drifted model/thinking are blocked before any model turn (offline; exit 3, no stdout, stderr names `model.json`). |
 | `check_env.ts` | Environment summary with PASS/FAIL lines; `--status` prints the headless status fallback. |
 | `skills/test_*.py` | One unittest module per skill script (manifest, protocol compliance, diagnostics, metrics, bootstrap, gaming scan, hashing, sidecars) plus the skill validator. Fixtures under `skills/fixtures/`. |
+| `hpc/test_hpc_*.test.ts` | S5: disabled-HPC no-I/O, the submit gate (single slot, checkpoint metadata, smoke test, remote checkout, uv.lock/container, wall clock), the experiment lifecycle on the mock cluster (happy path, timeout/exit 99 requeue, OOM with doubled memory, no progress, missing output), the retry table, secret hygiene, and TS/Python `sacct` classifier parity. Shims: `hpc/fixtures/mockbin/`. |
+| `orchestrator/test_*.test.ts` | S4: pure state machine, budget caps, pre-merge gates, pause/resume, sandbox cycle. |
 | `fixtures/` | Worker scripts used by the concurrency test. |
 | `acceptance/run_acceptance.sh` | Model-backed checks: protected/secret/destructive tool calls refused in a real session, role preamble visible to the model, trusted startup warning-free. |
 
 Scratch roots are created under the system temp directory; the suite never writes
 inside the repository (the Python tests use `tempfile` and set
-`PYTHONDONTWRITEBYTECODE=1`).
-
-Scratch roots are created under the system temp directory; the suite never writes
-inside the repository.
+`PYTHONDONTWRITEBYTECODE=1`). The S4/HPC suites create gitignored scratch clones
+under `.pi/state/orchestrator-tests/` and `.pi/state/hpc-tests/` and remove them
+when the test finishes; the S5 acceptance uses `$TMPDIR`.

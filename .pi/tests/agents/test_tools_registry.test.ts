@@ -58,10 +58,10 @@ test("every manifest tool resolves to concrete names", () => {
 	}
 });
 
-test("declared S0/S3 extension tools are actually registered; planned ones are not yet", () => {
+test("declared extension tools are actually registered; planned ones are not yet", () => {
 	const registered = registeredToolNames();
 	for (const tool of registry.tools) {
-		if (tool.kind === "extension" && (tool.stage === "S0" || tool.stage === "S3")) {
+		if (tool.kind === "extension") {
 			assert.ok(registered.has(tool.name), `registry declares ${tool.name} (${tool.stage}) but no extension registers it`);
 		}
 		if (tool.kind === "planned") {

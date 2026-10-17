@@ -221,6 +221,32 @@ export function handleExperimentQueue(
 				{},
 			);
 		}
+		const checkpoints = record.checkpoints;
+		if (typeof checkpoints !== "object" || checkpoints === null || Array.isArray(checkpoints)) {
+			return fail(
+				`refused: "checkpoints" must be an object with dir, progressFile, resumeCommand and flushOnSignal ` +
+					`(plan/06_HPC_AND_COLLECTOR.md §5). A job without a checkpoint block does not run.`,
+				{},
+			);
+		}
+		const checkpointRecord = checkpoints as Record<string, unknown>;
+		for (const field of ["dir", "progressFile", "resumeCommand"]) {
+			const value = checkpointRecord[field];
+			if (typeof value !== "string" || value.trim() === "") {
+				return fail(
+					`refused: checkpoints.${field} is missing; the checkpoint contract requires dir, progressFile, ` +
+						`resumeCommand and flushOnSignal=true (plan/06_HPC_AND_COLLECTOR.md §5).`,
+					{ missing: `checkpoints.${field}` },
+				);
+			}
+		}
+		if (checkpointRecord.flushOnSignal !== true) {
+			return fail(
+				`refused: checkpoints.flushOnSignal must be true; the USR1 trap flushes the checkpoint and exits 99, ` +
+					`which is what makes a requeue safe (plan/06_HPC_AND_COLLECTOR.md §3).`,
+				{ missing: "checkpoints.flushOnSignal" },
+			);
+		}
 		const appended = appendRecord(ctx.root, "experiment", { ...record, status: "queued", attempt: record.attempt ?? 1 }, ctx);
 		return ok(
 			`experiment ${String(appended.id)} queued (idempotency ${String(appended.idempotencyKey)}); ` +
@@ -232,36 +258,84 @@ export function handleExperimentQueue(
 	}
 }
 
-export function handleExperimentUpdate(
-	args: { experiment_id: string; status: string; evidence: string },
-	ctx: LedgerContext,
-): ToolTextResult {
+/** Fields the collector/conductor may attach to an experiment record. */
+export const EXPERIMENT_UPDATE_FIELDS = [
+	"job_id",
+	"previous_job_id",
+	"submit",
+	"progress",
+	"progressHistory",
+	"lastState",
+	"exitCode",
+	"stderrTail",
+	"missingOutputs",
+	"checkpointsFetched",
+	"checkpointListing",
+	"collection",
+	"memoryDoubled",
+	"requeue",
+] as const;
+
+export interface ExperimentUpdateArgs {
+	experiment_id: string;
+	/** Omit for a metadata-only update; when present it must be a legal transition. */
+	status?: string;
+	evidence: string;
+	/** Allowlisted machine-readable fields (progress, job_id, …). */
+	fields?: Record<string, unknown>;
+}
+
+export function handleExperimentUpdate(args: ExperimentUpdateArgs, ctx: LedgerContext): ToolTextResult {
 	try {
 		checkCapability(ctx, "experiment_update");
 		const experimentId = requireString(args as unknown as Record<string, unknown>, "experiment_id", "e.g. E-0007");
-		const status = requireString(args as unknown as Record<string, unknown>, "status", "see plan/06 §4 lifecycle");
 		const evidence = requireString(args as unknown as Record<string, unknown>, "evidence", "raw squeue/sacct/exit evidence");
+		const fields = args.fields ?? {};
+		for (const key of Object.keys(fields)) {
+			if (!(EXPERIMENT_UPDATE_FIELDS as readonly string[]).includes(key)) {
+				return fail(
+					`field "${key}" is not updatable through experiment_update. Allowed: ${EXPERIMENT_UPDATE_FIELDS.join(", ")}. ` +
+						`The experiment contract (commit_sha, command, checkpoints, expectedOutputs, idempotencyKey) is immutable; ` +
+						`a change of contract needs a new record.`,
+					{ key },
+				);
+			}
+		}
 		const experiments = readLedger(ctx.root, "experiment");
 		const latest = projectLatest(experiments as Array<{ id?: string; seq: number }>).find(
 			(experiment) => experiment.id === experimentId,
 		);
 		if (!latest) return fail(`unknown experiment ${experimentId}`);
 		const from = String(latest.status);
-		const allowed = EXPERIMENT_TRANSITIONS[from] ?? [];
-		if (!allowed.includes(status)) {
-			return fail(
-				`illegal experiment transition ${from} → ${status} for ${experimentId}; allowed: ${allowed.join(", ") || "none (terminal)"}. ` +
-					`The lifecycle is in plan/06_HPC_AND_COLLECTOR.md §4 — do not invent a transition.`,
-				{ from, status },
-			);
+		const status = typeof args.status === "string" && args.status.trim() !== "" ? args.status : from;
+		if (status !== from) {
+			const allowed = EXPERIMENT_TRANSITIONS[from] ?? [];
+			if (!allowed.includes(status)) {
+				return fail(
+					`illegal experiment transition ${from} → ${status} for ${experimentId}; allowed: ${allowed.join(", ") || "none (terminal)"}. ` +
+						`The lifecycle is in plan/06_HPC_AND_COLLECTOR.md §4 — do not invent a transition.`,
+					{ from, status },
+				);
+			}
 		}
 		const record = appendRecord(
 			ctx.root,
 			"experiment",
-			{ ...latest, id: experimentId, status, evidence: [...(Array.isArray(latest.evidence) ? latest.evidence : []), evidence] } as Record<string, unknown>,
+			{
+				...latest,
+				...fields,
+				id: experimentId,
+				status,
+				evidence: [...(Array.isArray(latest.evidence) ? latest.evidence : []), evidence],
+			} as Record<string, unknown>,
 			ctx,
 		);
-		return ok(`experiment ${experimentId}: ${from} → ${status}; evidence recorded`, { kind: "experiment", record });
+		return ok(
+			status === from
+				? `experiment ${experimentId}: metadata update (status stays ${from}); evidence recorded`
+				: `experiment ${experimentId}: ${from} → ${status}; evidence recorded`,
+			{ kind: "experiment", record },
+		);
 	} catch (error) {
 		return fail((error as Error).message, {});
 	}

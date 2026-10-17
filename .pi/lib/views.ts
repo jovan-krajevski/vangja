@@ -40,15 +40,26 @@ export function renderTasksMd(tasks: Array<Record<string, unknown>>): string {
 	].join("\n");
 }
 
+function progressCell(experiment: Record<string, unknown>): string {
+	const progress = experiment.progress as { completed?: unknown[] } | undefined;
+	if (progress && Array.isArray(progress.completed)) return `${progress.completed.length} units`;
+	const history = experiment.progressHistory as Array<{ completed?: number }> | undefined;
+	if (Array.isArray(history) && history.length > 0) {
+		const last = history[history.length - 1];
+		return `${Number(last?.completed ?? 0)} units`;
+	}
+	return "";
+}
+
 export function renderExperimentsMd(experiments: Array<Record<string, unknown>>): string {
 	const rows = projectLatest(experiments as Array<{ id?: string; seq: number }>)
 		.sort(byId)
-		.map((e) => [e.id, e.task_id, e.status, e.attempt, e.commit_sha, e.idempotencyKey]);
+		.map((e) => [e.id, e.task_id, e.status, e.attempt, progressCell(e), e.job_id, e.commit_sha, e.idempotencyKey]);
 	return [
 		"# Experiments",
 		GENERATED_BY,
 		"",
-		...table(["id", "task", "status", "attempt", "commit", "idempotencyKey"], rows),
+		...table(["id", "task", "status", "attempt", "progress", "job", "commit", "idempotencyKey"], rows),
 		"",
 	].join("\n");
 }

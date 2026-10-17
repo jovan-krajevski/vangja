@@ -2998,3 +2998,193 @@ git stash list | wc -l              → 0
 - The HPC path, the audit-cycle/four-phase orchestration, GitHub PR creation
   (`useGitHub`) and the `audit-cycle/`/`submission/` tags are S5–S7 by design;
   the S4 state machine references them only as read surfaces and spawn targets.
+
+## S5 — HPC tools, experiment ledger, collector
+
+Stage S5 of `research_agent/plan/08_BUILD_PLAN.md`, built in a fresh session on
+top of S4 (`1ed441e`, working tree ahead, HEAD at build time `9f21300`). Scope:
+`.pi/**` plus this report; no file outside those paths was touched
+(`git status --porcelain` lists only `.pi/**` changes and the pre-existing
+untracked `Vangja-project/`).
+
+### What was built
+
+| Path | What it is |
+|---|---|
+| `.pi/extensions/hpc/index.ts` | registers the eight `hpc_*` tools (`hpc_config`, `hpc_status`, `hpc_submit`, `hpc_checkpoints`, `hpc_fetch`, `hpc_tail`, `hpc_cancel`, `hpc_requeue`) with the exact role/parameter surface of plan/05 §5 |
+| `.pi/extensions/hpc/handlers.ts` | pi-free tool behaviour: disabled short-circuit, evidence files under `.pi/state/hpc/`, submit marker + crash-resume adoption, checkpoint listing, fetch + manifest, tail, cancel instruction check, requeue |
+| `.pi/extensions/hpc/config.ts` | config resolution/validation (required fields, readable keys, `maxParallelJobs` amendment via `loadHpcConfig`), host redaction, secret redaction |
+| `.pi/extensions/hpc/ssh.ts` | one private `ssh-agent` per loop run that adds **only** `gitKey`; `SSH_AUTH_SOCK` is deleted for every child unless it is that socket; `ssh -A -o IdentitiesOnly=yes -o ForwardAgent=yes -p … -i … user@host`; every command is timeouted and transcripted |
+| `.pi/extensions/hpc/slurm.ts` | job-template rendering, `sbatch --parsable` command + id parsing, `squeue` rows, `sacct --json` parsing and the Vangja state classifier (parity-tested against `parse_sacct.py`) |
+| `.pi/extensions/hpc/gate.ts` | the submission gate: single slot, schema, checkpoint block incl. `flushOnSignal`, resume smoke test, local `uv.lock`, container hash, wall clock ≤ 24h (staged if split), clean remote detached checkout at `commit_sha` with matching `uv.lock` |
+| `.pi/extensions/hpc/manifest.ts` | SHA-256 hashing, missing-output detection (glob-aware), `.pi/artifacts/<id>/manifest.json` with the `sacct` accounting fields |
+| `.pi/extensions/hpc/retry.ts` | the conductor's retry table (plan/06 §6) as a pure function + progress-streak computation |
+| `.pi/skills/hpc-slurm-and-checkpointing/templates/job.slurm` | final template: `--time=24:00:00`, `--signal=B:USR1@300`, USR1 trap → `INTERRUPTED` marker + exit 99, `uv sync --frozen --no-dev`, optional `apptainer exec` prefix, unbuffered logs |
+| `.pi/agents/collector.md` | final collector contract: poll → evidence → heartbeat / collecting → fetch → collected / checkpoints-first → requeue_requested; prohibitions |
+| `.pi/tests/hpc/fixtures/mockbin/` | `ssh`, `scp`, `rsync`, `sbatch`, `squeue`, `sacct`, `scancel`, `ssh-agent`, `ssh-add` shims backed by `mock_cluster.py` + `scenario.json`; nothing touches a network |
+| `.pi/tests/hpc/` | 24 tests, `run_mock_cluster.sh` acceptance transcript, `acceptance_snippets.mjs`, `seed_disabled_loop.mjs` |
+
+Conductor wiring: `LoopOptions` now carries `hpcEnabled`/`hpcError`/`maxPolls`/
+`maxAttempts`; `WAITING_HPC` decides submit / collect / requeue / failed-final /
+block from the retry table; with `host: ""` the conductor skips `WAITING_HPC`
+entirely, records one `hpc-disabled` event, marks the experiment
+`resources.kind = "local"` and hands the same checkpoint contract to
+`phd_candidate` (plan/06 §7). The `hpc` action kind executes `hpc_submit` /
+`hpc_requeue` in the conductor, and a refused gate moves the loop to `BLOCKED`
+with the named missing items instead of retrying silently.
+
+Ledger/view changes: `experiment_update` accepts an allowlisted metadata form
+(status omitted) so the collector can record `progressHistory`, `lastState`,
+`exitCode`, `missingOutputs`, … without inventing a transition; the immutable
+contract fields are rejected. `EXPERIMENTS.md` gained `progress` and `job`
+columns. `experiment_queue` now also requires `checkpoints.flushOnSignal = true`.
+
+### Acceptance evidence
+
+**1. `bash .pi/tests/hpc/run_mock_cluster.sh` → exit 0.** Raw transcript:
+
+```
+== S5 mock-cluster: unit + scenario matrix ==
+
+ok 1 - hpc.example.json parses and documents the single-slot schema
+ok 2 - host: "" disables the whole path without requiring keys
+ok 3 - an enabled config names every missing required field
+ok 4 - keys must exist and be readable when the host is set
+ok 5 - maxParallelJobs > 1 needs a recorded amendment
+ok 6 - config summaries redact the host and never contain key material
+ok 7 - every hpc_* tool returns {enabled:false} and never calls ssh
+ok 8 - the collector records one hpc-disabled event and exits cleanly
+ok 9 - the loop skips WAITING_HPC and runs the experiment locally (plan/06 §7)
+ok 10 - scenario 2: happy path — submit, poll, complete, collect with a hashed manifest
+ok 11 - scenario 3: timeout (exit 99) fetches checkpoints first, refuses a second job, and requeues at attempt 2
+ok 12 - scenario 4: OOM requeues once with doubled memory, then failed-final + BLOCKED
+ok 13 - scenario 5: no progress across two attempts → failed-final + BLOCKED
+ok 14 - scenario 6: a missing declared output is collection-failed, a task is opened, nothing is fabricated
+ok 15 - hpc_checkpoints lists hashes and progress while the job runs
+ok 16 - progressStats detects advancement and consecutive no-progress attempts
+ok 17 - the retry table: requeue with progress, failed-final without, OOM doubled once
+ok 18 - the retry table: collector statuses, stuck polls, code bugs, collection failures
+ok 19 - state-machine helpers see unfinished experiments, heartbeats, and the disabled event
+ok 20 - classifySacctJob matches parse_sacct.py on the recorded fixture
+ok 21 - scenario 7/8: queue-time refusals name the exact missing checkpoint field
+ok 22 - scenario 8: the submit gate refuses missing smoke-test evidence and missing flushOnSignal
+ok 23 - the submit gate checks the remote checkout, uv.lock, container, wall clock, and single slot
+ok 24 - scenario 9: fake key material never reaches output, ledgers, evidence, or transcripts
+
+PASS  node --test (all offline HPC tests + the recorded-fixture parity check)
+
+== required scenarios (research_agent/prompts/05_hpc_and_collector.md) ==
+PASS  1  disabled: every tool {enabled:false}, no ssh
+PASS  1b disabled: collector one hpc-disabled event
+PASS  1c disabled: loop skips WAITING_HPC (unit)
+PASS  2  happy path: submit → collect + hashed manifest
+PASS  3  timeout exit 99: checkpoints first, requeue attempt 2
+PASS  4  OOM: one doubled-memory requeue, then failed-final
+PASS  5  no progress across two attempts
+PASS  6  missing declared output: collection-failed + task
+PASS  7  missing checkpoint metadata named field
+PASS  8  missing smoke-test evidence refused
+PASS  9  no key material in outputs/ledgers/evidence
+PASS  S  single-slot: gate checks + second submit refused
+PASS  R  retry table: collector/stuck/code-bug/collection-failed
+PASS  P  sacct classifier parity with parse_sacct.py
+PASS  C  config schema: host:"" disabled, amendment for >1 slot
+
+== acceptance snippets ==
+      disabled: 8/8 tools returned {enabled:false}; 0 ssh invocations
+      second-submit refusal names E-0001: submission refused for E-0002: 1 check(s) failed
+      - single-slot: experiment E-0001(queued) is active
+      acceptance snippets: OK
+PASS  disabled 8/8 + second-submit refusal
+
+== literal /loop:step with a queued experiment and no HPC host ==
+seeded T-001 + E-0001 and set state WORK
+$ cd <sandbox> && pi --print -a "/loop:step"   # 1st step: bookkeep
+$ cd <sandbox> && pi --print -a "/loop:step"   # 2nd step: local fallback
+PASS  pi /loop:step ran twice offline
+PASS  one hpc-disabled event in EVENTS.jsonl
+PASS  the loop never entered WAITING_HPC
+PASS  the loop proceeded to a local phd_candidate run
+PASS  final loop state is not WAITING_HPC (WORK)
+-- raw hpc-disabled event --
+{
+"summary": "hpc-disabled: E-0001 runs locally \u2014 host is empty; the HPC path is disabled",
+"experiment_id": "E-0001",
+"hpc_disabled": true
+}
+-- raw second-step event --
+{
+"action_key": "work-local:T-001:1",
+"summary": "start phd_candidate (work-local:T-001:1)",
+"agent": "phd_candidate",
+"exit_state": null
+}
+
+all S5 mock-cluster checks passed
+```
+
+**2. `node --test .pi/tests/hpc/*.test.ts` → 24/24 pass.** The classifier parity
+test runs the Python reference on the recorded fixture and compares
+`state/action/exit_code/signal/elapsed_seconds/node` for every job and every flag
+combination.
+
+**3. The prompt's acceptance checks:**
+
+| Check | Command | Result |
+|---|---|---|
+| all scenarios green, printed matrix | `bash .pi/tests/hpc/run_mock_cluster.sh` | exit 0; 14/14 required-scenario rows PASS + config row |
+| `hpc_submit` twice → second refusal names the active id | inside scenario 3 and `acceptance_snippets.mjs` | `submission refused for E-0002: 1 check(s) failed - single-slot: experiment E-0001(queued) is active` |
+| `pi --print "/loop:step"` with a queued experiment and no HPC host skips `WAITING_HPC` | section 4 of the script (literal `pi --print -a "/loop:step"`, child stub, no model call) | state stays `WORK`; one `hpc_disabled` event; step 2 spawns `phd_candidate` with `work-local:T-001:1`; `LOOP_STATE.json` never `WAITING_HPC` |
+| single job at a time | scenario 3 + snippets | E-0002 refused while E-0001 is active; `hpc_requeue` refuses while the previous job is still `RUNNING` |
+| checkpoint or it does not run | scenarios 7/8 | queue refuses missing `dir`/`progressFile`/`resumeCommand`/`flushOnSignal`/`resumeSmokeTest` naming the field; the submit gate refuses missing smoke-test evidence |
+| no key material anywhere | scenario 9 | the fake PEM body never appears in any tool result, ledger, evidence file, or mock transcript (grep assertion) |
+| `--time=24:00:00`, USR1 trap, `uv sync --frozen`, container exec | template + gate | wall-clock > 24h refused unless staged; template rendered by `hpc_submit` |
+
+**4. `make -C .pi verify-env` → exit 0** (101 node tests earlier; 24 HPC tests now
+part of `make test`, 15/15 env checks, 4/4 orchestrator checks). The S4
+orchestrator suite is 58/58 with the updated gate test, and the S4 acceptance
+transcript still passes.
+
+### Deliberate changes to existing tests (no weakening)
+
+- `test_state_machine.test.ts:180` — the collector-pass case now uses a
+  `running` experiment; the `requeue_requested` case moved to the conductor's
+  retry decision, which is the S5 behaviour the plan assigns to the conductor.
+- `test_gates.test.ts:257` — the S4 stub assertion became the real gate
+  assertion: no `hpc.json` → `not-configured` and `collect` exits cleanly with
+  "nothing to collect"; a configured-but-invalid `hpc.json` → `blocked`.
+- `test_ledger.test.ts` / `test_status.test.ts` — experiment fixtures gained
+  `flushOnSignal: true`, which the queue gate now enforces; a new assertion
+  proves the refusal names `flushOnSignal`.
+- `test_tools_registry.test.ts` — strengthened: every `kind: "extension"` tool
+  (not just S0/S3) must be registered by a loaded extension. The `hpc_*`
+  entries flipped from `planned` to `extension` (S5) in `.pi/config/tools.json`.
+
+### Deviations from the plan and why
+
+| # | Deviation | Reason |
+|---|---|---|
+| D-S5-1 | The remote work tree is created with `git fetch origin` + `git worktree add --force --detach <sha>` instead of `git checkout` in a shared directory, and the cleanliness check is `git status --porcelain --untracked-files=no` | one worktree per experiment avoids cross-experiment checkout races; job outputs land in the run dir, so untracked files must not block a legitimate requeue (tracked-file dirt still does) |
+| D-S5-2 | The conductor executes `hpc_submit`/`hpc_requeue` as deterministic actions; the collector only records evidence and writes `requeue_requested` | plan/06 §6.3 puts the retry decision on the conductor; keeping `hpc_requeue` restricted to `requeue_requested` makes an LLM unable to resubmit on its own |
+| D-S5-3 | `experiment_update` gained a metadata-only form with a field allowlist | the collector must record progress/job ids; without it the only legal way would be to invent status transitions. Contract fields stay immutable |
+| D-S5-4 | `hpc_cancel` refuses without an instruction record (a decision naming the experiment or an event with `instruction: "cancel"`) | plan/06 §4: no cancelling without an instruction record |
+| D-S5-5 | A `hpc` action refused by the gate moves the loop to `BLOCKED` with the missing items; it is never retried silently | a gate failure is a human/task decision, and the loop must not spin |
+| D-S5-6 | Local fallback: the conductor marks the record `resources.kind = "local"` + `running` and hands the run to `phd_candidate`; the conductor does not itself collect the local run in S5 | plan/06 §7 requires the same contract locally; a local collector (hashing + manifest) is the natural S6 `verify_artifact` extension |
+| D-S5-7 | `hpc_status` polls only the **latest** revision's `job_id` per experiment | older revisions carry terminal jobs; polling them made a requeued job look timed out (found and fixed by scenario 5) |
+| D-S5-8 | The USR1 trap writes `checkpoints/INTERRUPTED` and exits 99; the runner's own flush logic is unchanged | keeps the exit-code contract explicit and leaves a marker the collector can report |
+| D-S5-9 | `hpc.example.json` is unchanged, but `resolveHpc` additionally requires readable `hpcKey` and non-empty `user`/`remoteRepoDir`/`remoteScratchDir` | plan/06 §1 "required fields present when enabled; keys exist and are readable"; the example stays the schema |
+| D-S5-10 | The mock cluster executes the ssh remote command locally in a fake remote root (`$MOCK_CLUSTER_DIR/remote`, a real git repo) and drives SLURM from `scenario.json` | the tools are exercised with the real `ssh`/`scp`/`rsync`/`sbatch` command lines while remaining offline and deterministic |
+
+### Open items for the human
+
+- No real host was contacted and no credential was written (the acceptance runs
+  only against the mock shims; scenario 9 asserts the absence of key material).
+  The first real submission should be a human-run `hpc_config` +
+  `hpc_checkpoints` smoke check on the configured cluster.
+- `hpc_fetch` uses `rsync` and falls back to nothing else; plan/06 §2 mentions
+  scp as an alternative. The scp shim exists and `HpcSession.scp` is used for the
+  job script, but output collection is rsync-only (a missing rsync must be
+  treated as a collection failure, never a silent partial fetch).
+- The collector is an LLM agent; the deterministic `collectorPass` in the tests
+  and `run_mock_cluster.sh` is the executable specification of its protocol, not
+  a replacement for the agent definition.

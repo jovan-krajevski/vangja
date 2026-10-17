@@ -21,10 +21,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { appendRecord } from "../ledger/store.ts";
+import { handleHpcRequeue, handleHpcSubmit } from "../hpc/handlers.ts";
 import { emptyUsage, parseStreamLine, type DispatchUsage } from "../dispatch/lib.ts";
 import { readJsonlFile, removeFileBestEffort, writeJsonAtomic } from "../../lib/io.ts";
 import { VangjaLoopError } from "../../lib/errors.ts";
 import { loadAgentsManifest, loadBudgetConfig, loadModelPin, loadProjectConfig, type AgentManifestEntry } from "../../lib/config.ts";
+import { EXPERIMENT_TRANSITIONS, projectLatest } from "../../lib/records.ts";
 import { assertNoUnknownTools, loadToolRegistry } from "../../lib/toolset.ts";
 import { dispatchSessionName, sanitizeSegment } from "../../lib/agents.ts";
 import { loadAgentDefinitions } from "../../lib/agents.ts";
@@ -482,6 +484,11 @@ export function effectApplied(action: Action, currentState: string): boolean {
 		case "gate":
 		case "spawn":
 			return true;
+		case "hpc":
+			// The effect lands in the experiment ledger, not in LOOP_STATE; a
+			// completed key is a no-op and the submit marker/adoption path covers a
+			// crash between the effect and the event.
+			return true;
 		default:
 			return true;
 	}
@@ -529,6 +536,8 @@ export async function executeAction(options: ExecuteOptions): Promise<ExecutionR
 			return executePause(context, action, actor);
 		case "block":
 			return executeBlock(context, action, actor);
+		case "hpc":
+			return executeHpc(context, action, actor);
 		default:
 			throw new VangjaLoopError("STATE_INVALID", `executeAction cannot handle kind "${(action as Action).kind}"`);
 	}
@@ -713,8 +722,8 @@ async function executeSpawn(context: RunContext, action: Action, options: Execut
 }
 
 function applyEffects(context: RunContext, action: Action, actor: string): void {
-	if (action.kind !== "bookkeep") return;
-	for (const effect of action.effects) {
+	if (action.kind !== "bookkeep" && action.kind !== "block") return;
+	for (const effect of action.effects ?? []) {
 		switch (effect.type) {
 			case "task_status": {
 				const events = readJsonlFile<Record<string, unknown>>(statePath(context.root, "TASKS.jsonl"));
@@ -768,8 +777,86 @@ function applyEffects(context: RunContext, action: Action, actor: string): void 
 			case "clear_pr":
 				saveLoopState(context.root, { pr_id: null, next_gate: null }, { actor });
 				break;
+			case "hpc_disabled": {
+				const events = readJsonlFile<Record<string, unknown>>(statePath(context.root, "EVENTS.jsonl"));
+				const already = events.some(
+					(event) => event.experiment_id === effect.experiment_id && event.hpc_disabled === true,
+				);
+				if (already) break;
+				appendRecord(
+					context.root,
+					"event",
+					{
+						summary: `hpc-disabled: ${effect.experiment_id} runs locally — ${effect.reason}`,
+						experiment_id: effect.experiment_id,
+						hpc_disabled: true,
+					},
+					{ root: context.root, role: "conductor", actor },
+				);
+				break;
+			}
+			case "local_fallback": {
+				const latest = latestExperimentRecord(context.root, effect.experiment_id);
+				if (!latest) break;
+				const resources = (latest.resources ?? {}) as Record<string, unknown>;
+				const status = String(latest.status ?? "");
+				appendRecord(
+					context.root,
+					"experiment",
+					{
+						...latest,
+						id: effect.experiment_id,
+						status: status === "queued" ? "running" : status,
+						resources: { ...resources, kind: "local" },
+						evidence: [
+							...(Array.isArray(latest.evidence) ? latest.evidence : []),
+							`HPC disabled (${effect.reason}); the conductor marked this experiment as a local run (plan/06 §7)`,
+						],
+					},
+					{ root: context.root, role: "conductor", actor },
+				);
+				break;
+			}
+			case "experiment_status": {
+				const latest = latestExperimentRecord(context.root, effect.experiment_id);
+				if (!latest) break;
+				const from = String(latest.status ?? "");
+				if (from === effect.status) break;
+				const allowed = EXPERIMENT_TRANSITIONS[from] ?? [];
+				if (!allowed.includes(effect.status)) {
+					throw new VangjaLoopError(
+						"STATE_INVALID",
+						`conductor effect would make an illegal experiment transition ${from} → ${effect.status} for ${effect.experiment_id}`,
+					);
+				}
+				appendRecord(
+					context.root,
+					"experiment",
+					{
+						...latest,
+						id: effect.experiment_id,
+						status: effect.status,
+						evidence: [...(Array.isArray(latest.evidence) ? latest.evidence : []), effect.evidence],
+					},
+					{ root: context.root, role: "conductor", actor },
+				);
+				break;
+			}
+			case "enqueue_task": {
+				const task = effect.task ?? {};
+				appendRecord(context.root, "task", { ...task, status: task.status ?? "open" }, { root: context.root, role: "conductor", actor });
+				break;
+			}
 		}
 	}
+}
+
+function latestExperimentRecord(root: string, experimentId: string): Record<string, unknown> | null {
+	const records = readJsonlFile<Record<string, unknown>>(statePath(root, "EXPERIMENTS.jsonl"));
+	const latest = projectLatest(records as Array<{ id?: string; seq: number }>).find(
+		(record) => record.id === experimentId,
+	);
+	return (latest as Record<string, unknown> | undefined) ?? null;
 }
 
 function executeBookkeep(context: RunContext, action: Action, actor: string): ExecutionResult {
@@ -960,13 +1047,84 @@ function executePause(context: RunContext, action: Action, actor: string): Execu
 function executeBlock(context: RunContext, action: Action, actor: string): ExecutionResult {
 	if (action.kind !== "block") throw new VangjaLoopError("STATE_INVALID", "executeBlock needs a block action");
 	const from = loadLoopState(context.root).state.state;
+	applyEffects(context, action, actor);
 	const next = saveLoopState(context.root, { state: "BLOCKED", reason: action.reason }, { actor });
 	appendConductorEvent(
 		context,
 		action,
-		{ action_phase: "complete", from, to: "BLOCKED", reason: action.reason, question: action.question },
+		{ action_phase: "complete", from, to: "BLOCKED", reason: action.reason, question: action.question, effects: action.effects ?? [] },
 		actor,
 	);
 	refreshViews(context.root);
 	return { performed: true, skipped: null, action, transition: { from, to: "BLOCKED" }, message: `blocked: ${action.reason} — decision needed: ${action.question}` };
+}
+
+/**
+ * One HPC side effect: `hpc_submit` or `hpc_requeue`, executed by the conductor
+ * through the same handlers the tools use. On refusal the loop goes BLOCKED with
+ * the handler's message (which names every missing item) — it never retries
+ * silently, and never issues a second job.
+ */
+function executeHpc(context: RunContext, action: Action, actor: string): ExecutionResult {
+	if (action.kind !== "hpc") throw new VangjaLoopError("STATE_INVALID", "executeHpc needs an hpc action");
+	const from = loadLoopState(context.root).state.state;
+	const ctx = { root: context.root, role: "conductor" as const, actor };
+	const result =
+		action.op === "submit"
+			? handleHpcSubmit({ experiment_id: action.experiment_id }, ctx)
+			: handleHpcRequeue(
+					{ experiment_id: action.experiment_id, reason: action.reason, memoryGb: action.memoryGb },
+					ctx,
+				);
+	const message = result.content[0]?.text ?? "(no output)";
+	if (result.isError) {
+		saveLoopState(context.root, { state: "BLOCKED", reason: message }, { actor });
+		appendConductorEvent(
+			context,
+			action,
+			{
+				action_phase: "complete",
+				from,
+				to: "BLOCKED",
+				hpc_op: action.op,
+				hpc_ok: false,
+				experiment_id: action.experiment_id,
+				hpc_missing: Array.isArray(result.details.missing) ? result.details.missing : [message],
+				question: `fix the refusal above, then resume ${action.experiment_id}`,
+			},
+			actor,
+		);
+		refreshViews(context.root);
+		return {
+			performed: true,
+			skipped: null,
+			action,
+			transition: { from, to: "BLOCKED" },
+			message: `blocked: ${action.op} ${action.experiment_id} refused — ${message}`,
+		};
+	}
+	appendConductorEvent(
+		context,
+		action,
+		{
+			action_phase: "complete",
+			from,
+			to: from,
+			hpc_op: action.op,
+			hpc_ok: true,
+			experiment_id: action.experiment_id,
+			job_id: typeof result.details.job_id === "string" ? result.details.job_id : undefined,
+			attempt: typeof result.details.attempt === "number" ? result.details.attempt : action.attempt,
+			reason: action.reason,
+		},
+		actor,
+	);
+	refreshViews(context.root);
+	return {
+		performed: true,
+		skipped: null,
+		action,
+		transition: { from, to: from },
+		message: `${action.op} ${action.experiment_id}: ${message}`,
+	};
 }

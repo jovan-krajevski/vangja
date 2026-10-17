@@ -48,7 +48,7 @@ test("a working loop summarises state, task, experiment, budget, and gates", () 
 				data_hash: "sha256:d",
 				command: "uv run python run.py",
 				resources: { kind: "local" },
-				checkpoints: { dir: "d", progressFile: "p", resumeCommand: "r" },
+				checkpoints: { dir: "d", progressFile: "p", resumeCommand: "r", flushOnSignal: true },
 				expectedOutputs: ["out.csv"],
 				seeds: [42],
 				idempotencyKey: "k",

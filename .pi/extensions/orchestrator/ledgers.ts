@@ -52,6 +52,12 @@ function eventsFrom(records: Array<Record<string, unknown>>): EventView[] {
 		exit_state: typeof event.exit_state === "string" ? event.exit_state : undefined,
 		from: typeof event.from === "string" ? event.from : undefined,
 		to: typeof event.to === "string" ? event.to : undefined,
+		experiment_id: typeof event.experiment_id === "string" ? event.experiment_id : undefined,
+		heartbeat: event.heartbeat === true,
+		hpc_disabled: event.hpc_disabled === true,
+		hpc_op: typeof event.hpc_op === "string" ? event.hpc_op : undefined,
+		hpc_ok: typeof event.hpc_ok === "boolean" ? event.hpc_ok : undefined,
+		hpc_missing: Array.isArray(event.hpc_missing) ? (event.hpc_missing as string[]) : undefined,
 	}));
 }
 

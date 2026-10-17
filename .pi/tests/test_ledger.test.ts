@@ -141,7 +141,7 @@ test("experiment_queue enforces the single-slot rule and checkpoint metadata", (
 		data_hash: "sha256:data",
 		command: "uv run python fixed_case_studies/stocks/02_run.py",
 		resources: { kind: "local", cpus: 8, memGb: 32, gpus: 0, wallClockHours: 24 },
-		checkpoints: { dir: "/scratch/E-0001/checkpoints", progressFile: "progress.json", resumeCommand: "… --resume /scratch/E-0001/checkpoints" },
+		checkpoints: { dir: "/scratch/E-0001/checkpoints", progressFile: "progress.json", resumeCommand: "… --resume /scratch/E-0001/checkpoints", flushOnSignal: true },
 		expectedOutputs: ["results/units_*.csv"],
 		seeds: [42, 20240816],
 		idempotencyKey: "sha256(branch+commit+command+seeds+data_hash)",
@@ -156,6 +156,19 @@ test("experiment_queue enforces the single-slot rule and checkpoint metadata", (
 	);
 	assert.equal(noCheckpoints.isError, true);
 	assert.match(noCheckpoints.content[0].text, /progressFile/);
+
+	const noFlush = handleExperimentQueue(
+		{
+			record: {
+				...base,
+				checkpoints: { dir: "d", progressFile: "p", resumeCommand: "r" },
+				resumeSmokeTest: "ok",
+			},
+		},
+		ctx(root, "phd_candidate"),
+	);
+	assert.equal(noFlush.isError, true);
+	assert.match(noFlush.content[0].text, /flushOnSignal/);
 
 	const queued = handleExperimentQueue(
 		{ record: { ...base, resumeSmokeTest: "ran 1 unit, --resume skipped it" } },
@@ -181,7 +194,7 @@ test("experiment_update only allows legal lifecycle transitions", () => {
 		data_hash: "sha256:data",
 		command: "cmd",
 		resources: {},
-		checkpoints: { dir: "d", progressFile: "p", resumeCommand: "r" },
+		checkpoints: { dir: "d", progressFile: "p", resumeCommand: "r", flushOnSignal: true },
 		expectedOutputs: ["o"],
 		seeds: [42],
 		idempotencyKey: "k",
@@ -197,6 +210,47 @@ test("experiment_update only allows legal lifecycle transitions", () => {
 	const terminal = handleExperimentUpdate({ experiment_id: "E-0001", status: "running", evidence: "zombie" }, ctx(root, "collector"));
 	assert.equal(terminal.isError, true);
 	assert.match(terminal.content[0].text, /terminal/);
+});
+
+test("experiment_update metadata fields are allowlisted and never rewrite the contract", () => {
+	const root = scratchRoot();
+	handleExperimentQueue(
+		{
+			record: {
+				task_id: "T-001",
+				branch: "work/T-001",
+				commit_sha: "c".repeat(40),
+				data_hash: "sha256:data",
+				command: "cmd",
+				resources: { memGb: 8 },
+				checkpoints: { dir: "d", progressFile: "p", resumeCommand: "r", flushOnSignal: true },
+				expectedOutputs: ["o"],
+				seeds: [42],
+				idempotencyKey: "k",
+				resumeSmokeTest: "ok",
+			},
+		},
+		ctx(root, "phd_candidate"),
+	);
+	const metadata = handleExperimentUpdate(
+		{
+			experiment_id: "E-0001",
+			evidence: "sacct TIMEOUT; 1 unit checkpointed",
+			fields: { progress: { completed: ["2023-01-01:main"] }, progressHistory: [{ attempt: 1, completed: 1 }], lastState: "timed_out", exitCode: 99 },
+		},
+		ctx(root, "collector"),
+	);
+	assert.equal(metadata.isError, undefined, metadata.content[0].text);
+	assert.match(metadata.content[0].text, /metadata update/);
+	const updated = metadata.details.record as Record<string, unknown>;
+	assert.equal(updated.status, "queued");
+	assert.deepEqual(updated.lastState, "timed_out");
+	const contract = handleExperimentUpdate(
+		{ experiment_id: "E-0001", evidence: "rewrite attempt", fields: { idempotencyKey: "other" } },
+		ctx(root, "collector"),
+	);
+	assert.equal(contract.isError, true);
+	assert.match(contract.content[0].text, /not updatable/);
 });
 
 test("decisions, waivers, and amendments record ids and open a human gate", () => {
@@ -279,7 +333,7 @@ test("derived views are written deterministically", () => {
 				data_hash: "sha256:data",
 				command: "cmd",
 				resources: {},
-				checkpoints: { dir: "d", progressFile: "p", resumeCommand: "r" },
+				checkpoints: { dir: "d", progressFile: "p", resumeCommand: "r", flushOnSignal: true },
 				expectedOutputs: ["o"],
 				seeds: [42],
 				idempotencyKey: "k",

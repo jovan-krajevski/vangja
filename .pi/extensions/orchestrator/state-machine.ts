@@ -21,6 +21,7 @@
 import { ACTIVE_EXPERIMENT_STATUSES, projectLatest } from "../../lib/records.ts";
 import type { BudgetConfig } from "../../lib/config.ts";
 import type { LoopState, LoopStateName } from "../../lib/state.ts";
+import { decideRetry, isTerminalExperimentStatus, type RetryDecision } from "../hpc/retry.ts";
 import { budgetViolationReason, budgetViolations, resumeCommand, type BudgetSnapshot } from "./budget.ts";
 
 // ---------------------------------------------------------------------------
@@ -59,6 +60,21 @@ export interface ExperimentView {
 	status: string;
 	attempt: number;
 	task_id: string;
+	/** Current SLURM job id, or null before submission. */
+	job_id?: string | null;
+	/** Per-attempt checkpoint progress snapshots appended by the collector. */
+	progressHistory?: Array<{ attempt: number; completed: number }>;
+	memoryDoubled?: boolean;
+	memoryGb?: number | null;
+	/** `resources.partitionMemGbLimit`; null means unknown (never guessed). */
+	partitionMemGbLimit?: number | null;
+	/** Last classified sacct state. */
+	lastState?: string | null;
+	exitCode?: number | null;
+	stderrTail?: string | null;
+	missingOutputs?: string[];
+	checkpointsFetched?: boolean;
+	resourcesKind?: string | null;
 }
 
 export interface GateView {
@@ -80,6 +96,12 @@ export interface EventView {
 	exit_state?: string;
 	from?: string;
 	to?: string;
+	experiment_id?: string;
+	heartbeat?: boolean;
+	hpc_disabled?: boolean;
+	hpc_op?: string;
+	hpc_ok?: boolean;
+	hpc_missing?: string[];
 }
 
 export interface FindingView {
@@ -137,6 +159,14 @@ export interface LoopOptions {
 	requireHumanMerge: boolean;
 	budgets: BudgetConfig;
 	sandbox?: string;
+	/** False when `.pi/config/hpc.json` has an empty host: WAITING_HPC is skipped. */
+	hpcEnabled?: boolean;
+	/** Set when the HPC config is present but invalid; the loop blocks instead of guessing. */
+	hpcError?: string | null;
+	/** Collector poll budget (`.pi/config/hpc.json` maxPolls). */
+	maxPolls?: number;
+	/** Requeue cap (`.pi/config/hpc.json` maxAttemptsPerExperiment). */
+	maxAttempts?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +181,7 @@ export type ActionKind =
 	| "merge"
 	| "pause"
 	| "block"
+	| "hpc"
 	| "none"
 	| "done";
 
@@ -162,7 +193,11 @@ export type BookkeepEffect =
 	| { type: "set_experiment"; experiment_id: string | null; attempt: number }
 	| { type: "bump_attempt" }
 	| { type: "reset_failures" }
-	| { type: "clear_pr" };
+	| { type: "clear_pr" }
+	| { type: "hpc_disabled"; experiment_id: string; reason: string }
+	| { type: "local_fallback"; experiment_id: string; reason: string }
+	| { type: "experiment_status"; experiment_id: string; status: string; evidence: string }
+	| { type: "enqueue_task"; task: Record<string, unknown> };
 
 export interface ActionBase {
 	kind: ActionKind;
@@ -223,6 +258,18 @@ export interface BlockAction extends ActionBase {
 	reason: string;
 	/** The smallest decision the human must make. */
 	question: string;
+	/** Effects applied before the loop enters BLOCKED (e.g. failed-final, task). */
+	effects?: BookkeepEffect[];
+}
+
+/** One HPC side effect performed by the conductor (never by an LLM). */
+export interface HpcAction extends ActionBase {
+	kind: "hpc";
+	op: "submit" | "requeue";
+	experiment_id: string;
+	reason: string;
+	/** Set for the OOM retry (doubled job memory). */
+	memoryGb?: number;
 }
 
 export interface NoneAction extends ActionBase {
@@ -237,7 +284,17 @@ export interface DoneAction extends ActionBase {
 	reason: string;
 }
 
-export type Action = BootAction | SpawnAction | BookkeepAction | GateAction | MergeAction | PauseAction | BlockAction | NoneAction | DoneAction;
+export type Action =
+	| BootAction
+	| SpawnAction
+	| BookkeepAction
+	| GateAction
+	| MergeAction
+	| PauseAction
+	| BlockAction
+	| HpcAction
+	| NoneAction
+	| DoneAction;
 
 // ---------------------------------------------------------------------------
 // Pure helpers
@@ -276,12 +333,70 @@ export function latestReviews(reviews: Array<Record<string, unknown>>): ReviewVi
 }
 
 export function latestExperiments(experiments: Array<Record<string, unknown>>): ExperimentView[] {
-	return projectLatest(experiments as Array<{ id?: string; seq: number }>).map((experiment) => ({
-		id: String(experiment.id ?? ""),
-		status: String(experiment.status ?? "draft"),
-		attempt: Number(experiment.attempt ?? 0),
-		task_id: String(experiment.task_id ?? ""),
-	}));
+	return projectLatest(experiments as Array<{ id?: string; seq: number }>).map((experiment) => {
+		const resources = (experiment.resources ?? {}) as Record<string, unknown>;
+		const history = Array.isArray(experiment.progressHistory)
+			? (experiment.progressHistory as Array<Record<string, unknown>>).map((entry) => ({
+					attempt: Number(entry.attempt ?? 0),
+					completed: Number(entry.completed ?? 0),
+				}))
+			: [];
+		return {
+			id: String(experiment.id ?? ""),
+			status: String(experiment.status ?? "draft"),
+			attempt: Number(experiment.attempt ?? 0),
+			task_id: String(experiment.task_id ?? ""),
+			job_id: typeof experiment.job_id === "string" && experiment.job_id !== "" ? experiment.job_id : null,
+			progressHistory: history,
+			memoryDoubled: experiment.memoryDoubled === true,
+			memoryGb: Number.isFinite(Number(resources.memGb)) ? Number(resources.memGb) : null,
+			partitionMemGbLimit: Number.isFinite(Number(resources.partitionMemGbLimit))
+				? Number(resources.partitionMemGbLimit)
+				: null,
+			lastState: typeof experiment.lastState === "string" ? experiment.lastState : null,
+			exitCode: typeof experiment.exitCode === "number" ? experiment.exitCode : null,
+			stderrTail: typeof experiment.stderrTail === "string" ? experiment.stderrTail : null,
+			missingOutputs: Array.isArray(experiment.missingOutputs) ? (experiment.missingOutputs as string[]) : [],
+			checkpointsFetched: experiment.checkpointsFetched === true,
+			resourcesKind: typeof resources.kind === "string" ? resources.kind : null,
+		};
+	});
+}
+
+/** An experiment the loop still owes an outcome: not collected/failed-final/cancelled. */
+export function findUnfinishedExperiment(experiments: ExperimentView[]): ExperimentView | null {
+	return experiments.find((experiment) => !isTerminalExperimentStatus(experiment.status)) ?? null;
+}
+
+/** Heartbeat events recorded for one experiment (collector stuck-poll budget). */
+export function heartbeatCount(events: EventView[], experimentId: string): number {
+	return events.filter((event) => event.experiment_id === experimentId && event.heartbeat === true).length;
+}
+
+/** True when the conductor already recorded the `hpc-disabled` event for this experiment. */
+export function hpcDisabledRecorded(events: EventView[], experimentId: string): boolean {
+	return events.some((event) => event.experiment_id === experimentId && event.hpc_disabled === true);
+}
+
+/** Build the `decideRetry` input from the experiment view + options. */
+export function retryDecisionFor(experiment: ExperimentView, events: EventView[], options: LoopOptions): RetryDecision {
+	return decideRetry({
+		status: experiment.status,
+		attempt: experiment.attempt,
+		maxAttempts: options.maxAttempts ?? 6,
+		progressHistory: experiment.progressHistory ?? [],
+		memoryDoubled: experiment.memoryDoubled === true,
+		memoryGb: experiment.memoryGb ?? 0,
+		partitionMemGbLimit: experiment.partitionMemGbLimit ?? null,
+		sacctState: experiment.lastState ?? null,
+		exitCode: experiment.exitCode ?? null,
+		stderrTail: experiment.stderrTail ?? null,
+		heartbeatCount: heartbeatCount(events, experiment.id),
+		maxPolls: options.maxPolls ?? 40,
+		missingOutputs: experiment.missingOutputs ?? [],
+		taskId: experiment.task_id,
+		jobId: experiment.job_id ?? null,
+	});
 }
 
 export function latestGates(gates: Array<Record<string, unknown>>): GateView[] {
@@ -437,8 +552,31 @@ function pause(state: LoopState, reason: string): PauseAction {
 	return { ...baseAction(state, "pause", `pause:${state.state}:${reason.slice(0, 60)}`, reason), kind: "pause", reason };
 }
 
-function block(state: LoopState, reason: string, question: string): BlockAction {
-	return { ...baseAction(state, "block", `block:${state.state}:${reason.slice(0, 60)}`, reason), kind: "block", reason, question };
+function block(state: LoopState, reason: string, question: string, effects: BookkeepEffect[] = []): BlockAction {
+	return {
+		...baseAction(state, "block", `block:${state.state}:${reason.slice(0, 60)}`, reason),
+		kind: "block",
+		reason,
+		question,
+		effects,
+	};
+}
+
+function hpc(
+	state: LoopState,
+	op: "submit" | "requeue",
+	experimentId: string,
+	reason: string,
+	memoryGb?: number,
+): HpcAction {
+	return {
+		...baseAction(state, "hpc", `hpc:${op}:${experimentId}:a${state.attempt}`, `${op} ${experimentId}: ${reason}`),
+		kind: "hpc",
+		op,
+		experiment_id: experimentId,
+		reason,
+		memoryGb,
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -495,16 +633,63 @@ export function reviewBrief(pr: PrView | null, attempt: number): string {
 	].join("\n");
 }
 
-export function collectorBrief(experiment: ExperimentView | null): string {
+export function collectorBrief(experiment: ExperimentView | null, decision?: RetryDecision): string {
+	if (!experiment) {
+		return [
+			"## WAITING_HPC · no active experiment",
+			"",
+			"No experiment is unfinished. Append one `hpc-disabled` event only if `.pi/config/hpc.json` has no host; otherwise stop.",
+		].join("\n");
+	}
 	return [
-		`## WAITING_HPC · ${experiment?.id ?? "no active experiment"}`,
+		`## WAITING_HPC · ${experiment.id} (${experiment.status}, attempt ${experiment.attempt})`,
 		"",
-		"Run one collector pass as the `collector` agent. The HPC path arrives in stage S5; until then",
-		"report the configured/disabled state honestly (`.pi/config/hpc.json`, `hpc-disabled` event) and",
-		"never fabricate a job status.",
+		`Objective: perform ONE collector pass for ${experiment.id}${experiment.job_id ? ` (job ${experiment.job_id})` : ""}.`,
+		`Conductor decision: ${decision?.action ?? "collect"} — ${decision?.reason ?? "poll the job and record evidence"}.`,
 		"",
-		"Acceptance: at most one `experiment_update` per transition with raw evidence (squeue/sacct/exit code),",
-		"or one `hpc-disabled` event; no code or config changes.",
+		"Procedure (plan/06_HPC_AND_COLLECTOR.md §6):",
+		`1. \`hpc_status\` for ${experiment.id} — the raw squeue/sacct output is the evidence. Append at most one`,
+		"   `experiment_update` per transition, with that raw evidence in the `evidence` argument.",
+		"2. Still queued/running and nothing changed → append ONE `heartbeat` event (ledger_append kind=event,",
+		"   `{experiment_id, heartbeat: true, poll: n, evidence}`) and stop. Never invent a transition.",
+		"3. Exit 0 and all declared outputs present → transition running→collecting, then `hpc_fetch` (outputs +",
+		"   checkpoints), then collecting→collected with the manifest path + SHA-256. The manifest must carry the",
+		"   sacct accounting fields and a SHA-256 per fetched file.",
+		"4. A declared output is missing after fetch → collecting→collection-failed with the missing list; do not",
+		"   repair, interpolate, or fabricate. The conductor opens the task.",
+		"5. TIMEOUT / TIME_LIMIT / PREEMPTED / NODE_FAIL / OOM / exit 99 → run `hpc_fetch` with",
+		"   `checkpointsOnly: true` FIRST; record the progress delta via `fields: {progressHistory: [...],",
+		"   progress: {...}, lastState, exitCode, stderrTail}`; then transition to timed_out/interrupted_clean/",
+		"   failed with the raw state, then append requeue_requested. Never resubmit yourself — the conductor",
+		"   decides from your evidence.",
+		"",
+		"Prohibitions: no code/config edits, no resubmission, no cancellation without an instruction record, no",
+		"metric interpretation, no second job. Never touch `update_pymc`.",
+		"",
+		"Acceptance: one collector pass whose ledger records carry raw evidence (or one explicit heartbeat), or",
+		"BLOCKED with the smallest decision needed.",
+	].join("\n");
+}
+
+export function localFallbackBrief(experiment: ExperimentView, task: TaskView | null): string {
+	return [
+		`## WORK (local fallback) · ${experiment.id}`,
+		"",
+		`Objective: run the queued experiment ${experiment.id} locally because .pi/config/hpc.json has no host`,
+		"(plan/06_HPC_AND_COLLECTOR.md §7). The task is " +
+			`${task?.id ?? "?"} (${task?.title ?? "see the task record"}).`,
+		"",
+		"Rules:",
+		"- Use the record's `command` and `checkpoints.resumeCommand` verbatim; the same checkpoint directory,",
+		"  `progress.json` after every completed unit, and the same declared `expectedOutputs` apply.",
+		"- Write results under `.pi/artifacts/<experiment_id>/` and a manifest with a SHA-256 per file and the exit",
+		"  state; the audit must not be able to tell a local run from an HPC one except through the record.",
+		"- Record `resources.kind = \"local\"` and the observed progress in the experiment evidence; do not invent",
+		"  job ids or sacct fields.",
+		"- A failed fit or a missing output is reported, never worked around.",
+		"",
+		`Acceptance: the experiment's outputs exist with hashes and a manifest, or BLOCKED with the failure and the`,
+		"smallest decision needed.",
 	].join("\n");
 }
 
@@ -680,7 +865,7 @@ export const RULES: Rule[] = [
 	{
 		id: "work-any",
 		when: (state) => state.state === "WORK",
-		action: (state, ledgers) => {
+		action: (state, ledgers, options) => {
 			const task = taskOf(state, ledgers);
 			if (!task) {
 				return bookkeep(state, "SELECT_TASK", [], "no task is assigned; return to task selection");
@@ -703,14 +888,46 @@ export const RULES: Rule[] = [
 					{ pr_id: pr?.id ?? null },
 				);
 			}
-			const experiment = findActiveExperiment(ledgers.experiments);
+			const experiment = findUnfinishedExperiment(ledgers.experiments);
 			if (experiment) {
-				return bookkeep(
+				if (options.hpcError) {
+					return block(
+						state,
+						`.pi/config/hpc.json is invalid: ${options.hpcError}`,
+						"fix the HPC config (or set host to \"\" to disable HPC deliberately), then resume",
+					);
+				}
+				if (options.hpcEnabled !== false) {
+					return bookkeep(
+						state,
+						"WAITING_HPC",
+						[{ type: "set_experiment", experiment_id: experiment.id, attempt: experiment.attempt }],
+						`experiment ${experiment.id} (${experiment.status}, attempt ${experiment.attempt}) is unfinished; one job at a time`,
+						experiment.id,
+					);
+				}
+				// HPC disabled: skip WAITING_HPC entirely (plan/06 §1) and run the same
+				// command locally with the same checkpoint contract (plan/06 §7).
+				if (!hpcDisabledRecorded(ledgers.events, experiment.id)) {
+					return bookkeep(
+						state,
+						"WORK",
+						[
+							{ type: "hpc_disabled", experiment_id: experiment.id, reason: "host is empty; the HPC path is disabled" },
+							{ type: "local_fallback", experiment_id: experiment.id, reason: "no HPC host" },
+						],
+						`HPC is disabled; experiment ${experiment.id} runs locally with the same checkpoint contract`,
+						experiment.id,
+						{ experiment_id: experiment.id },
+					);
+				}
+				return spawn(
 					state,
-					"WAITING_HPC",
-					[{ type: "set_experiment", experiment_id: experiment.id, attempt: experiment.attempt }],
-					`experiment ${experiment.id} (${experiment.status}, attempt ${experiment.attempt}) is active; one job at a time`,
-					experiment.id,
+					`work-local:${task.id}:${state.attempt + 1}`,
+					"phd_candidate",
+					`run ${experiment.id} locally (attempt ${state.attempt + 1})`,
+					localFallbackBrief(experiment, task),
+					[`.pi/state/tasks/${task.id}.md`, ".pi/state/EXPERIMENTS.md"],
 				);
 			}
 			return spawn(
@@ -726,25 +943,93 @@ export const RULES: Rule[] = [
 	{
 		id: "waiting-hpc",
 		when: (state) => state.state === "WAITING_HPC",
-		action: (state, ledgers) => {
-			const experiment = findActiveExperiment(ledgers.experiments);
+		action: (state, ledgers, options) => {
+			const experiment = findUnfinishedExperiment(ledgers.experiments);
 			if (!experiment) {
 				return bookkeep(
 					state,
 					"WORK",
 					[{ type: "set_experiment", experiment_id: null, attempt: 0 }],
-					"no experiment is active; return to WORK",
+					"no experiment is unfinished; return to WORK",
 					state.task_id ?? "loop",
 				);
 			}
-			return spawn(
-				state,
-				`collect:${experiment.id}:${experiment.attempt}`,
-				"collector",
-				`collect ${experiment.id} (${experiment.status}, attempt ${experiment.attempt})`,
-				collectorBrief(experiment),
-				[".pi/state/EXPERIMENTS.md"],
-			);
+			if (options.hpcError) {
+				return block(
+					state,
+					`.pi/config/hpc.json is invalid: ${options.hpcError}`,
+					"fix the HPC config (or set host to \"\" to disable HPC deliberately), then resume",
+				);
+			}
+			if (options.hpcEnabled === false) {
+				return bookkeep(
+					state,
+					"WORK",
+					[{ type: "set_experiment", experiment_id: null, attempt: 0 }],
+					"HPC is disabled; the experiment runs locally from WORK (plan/06 §7)",
+					state.task_id ?? "loop",
+				);
+			}
+			// First submission of a queued record: the conductor submits (the collector
+			// only polls). hpc_submit is gate-checked and idempotent by attempt.
+			if (experiment.status === "queued" && (experiment.job_id ?? null) === null) {
+				return hpc(state, "submit", experiment.id, `queued attempt ${experiment.attempt} has no job id yet`);
+			}
+			const decision = retryDecisionFor(experiment, ledgers.events, options);
+			switch (decision.action) {
+				case "wait":
+					return none(state, decision.reason);
+				case "collect":
+					return spawn(
+						state,
+						`collect:${experiment.id}:a${experiment.attempt}:${experiment.status}`,
+						"collector",
+						`collect ${experiment.id} (${experiment.status}, attempt ${experiment.attempt})`,
+						collectorBrief(experiment, decision),
+						[".pi/state/EXPERIMENTS.md"],
+					);
+				case "requeue":
+					return hpc(state, "requeue", experiment.id, decision.reason, decision.memoryGb);
+				case "failed-final":
+					return block(state, `experiment ${experiment.id}: ${decision.reason}`, decision.question ?? "resolve the failure", [
+						{
+							type: "experiment_status",
+							experiment_id: experiment.id,
+							status: "failed-final",
+							evidence: `conductor retry decision: ${decision.reason}`,
+						},
+					]);
+				case "open-task": {
+					const origin = `REVIEW:${experiment.id}`;
+					const already = ledgers.tasks.some(
+						(task) => task.origin === origin && !["merged", "closed", "rejected"].includes(task.status),
+					);
+					if (already) {
+						return block(state, `experiment ${experiment.id}: ${decision.reason}`, decision.question ?? "resolve the missing outputs", []);
+					}
+					return block(state, `experiment ${experiment.id}: ${decision.reason}`, decision.question ?? "resolve the missing outputs", [
+						{
+							type: "enqueue_task",
+							task: {
+								origin,
+								priority: "P1",
+								title: decision.title ?? `repair experiment ${experiment.id}`,
+								objective: decision.reason,
+								acceptance_criteria: [
+									"the missing outputs are either produced by a fixed runner or the experiment record is corrected",
+									"the repair is verified by `hpc_fetch`/`verify_artifact` producing a manifest with no missing entries",
+								],
+								deliverables: [`.pi/state/EXPERIMENTS.jsonl`],
+								status: "open",
+								effort: "small",
+							},
+						},
+					]);
+				}
+				case "blocked":
+				default:
+					return block(state, `experiment ${experiment.id}: ${decision.reason}`, decision.question ?? "resolve the blocker", []);
+			}
 		},
 	},
 	{
@@ -1098,6 +1383,7 @@ export function describeAction(action: Action): string {
 	if (action.kind === "bookkeep") parts.push(`to=${action.to}`);
 	if (action.kind === "merge") parts.push(`pr=${action.pr_id}`);
 	if (action.kind === "gate") parts.push(`gate=${action.gate}`);
+	if (action.kind === "hpc") parts.push(`op=${action.op}`, `experiment=${action.experiment_id}`);
 	return parts.join(" ");
 }
 

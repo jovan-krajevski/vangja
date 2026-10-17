@@ -11,12 +11,12 @@ pi-tui), so `node --test` exercises it directly.
 | `ledger/` | `ledger_read`, `ledger_append`, `task_enqueue`, `task_close`, `pr_open`, `review_write`, `experiment_queue`, `experiment_update`, `decision_record`, `waiver_record`, `amendment_record`, `state_get`, `state_set` | S0/S3 | storage + validation in `store.ts`/`handlers.ts` |
 | `status/` | TUI status line/widget and ledger renderers | S0 | read-only |
 | `dispatch/` | `dispatch_agent`, `dispatch_parallel` (≤4), `dispatch_chain` | S3 | spawn engine in `lib.ts`; role allowlist in `.pi/lib/agents.ts` |
-| `orchestrator/` | `merge_pr` + the `/loop:*` commands | S4 | `state-machine.ts` (pure `nextAction`), `execute.ts` (one action, pid lock, JSON-stream parse), `gates.ts` (pre-merge + human gates + HPC hook), `git.ts` (worktrees/merge/tags), `budget.ts`, `context.ts`, `commands.ts`, `sandbox.ts`, `cli.ts` |
+| `orchestrator/` | `merge_pr` + the `/loop:*` commands | S4 | `state-machine.ts` (pure `nextAction`), `execute.ts` (one action, pid lock, JSON-stream parse), `gates.ts` (pre-merge + human gates + HPC gate), `git.ts` (worktrees/merge/tags), `budget.ts`, `context.ts`, `commands.ts`, `sandbox.ts`, `cli.ts` |
+| `hpc/` | `hpc_config`, `hpc_status`, `hpc_submit`, `hpc_checkpoints`, `hpc_fetch`, `hpc_tail`, `hpc_cancel`, `hpc_requeue` | S5 | `handlers.ts` (pi-free behaviour), `ssh.ts` (private agent, timeouted commands), `slurm.ts` (template/sbatch/squeue/sacct), `gate.ts` (single-slot + checkpoint + remote checks), `manifest.ts` (hashes + artifact manifest), `retry.ts` (the conductor's retry table) |
 
-`hpc/`, `verify/`, `rubric/`, `auditkit/`, and `paper/` arrive in S5/S6; the
-tool names are declared in `.pi/config/tools.json` with `kind: "planned"` so
-agent manifests can reference them today. The orchestrator's HPC gate is a stub
-(`gates.ts` → `hpcGate`) that reports `not-configured`; S5 replaces it.
+`verify/`, `rubric/`, `auditkit/`, and `paper/` arrive in S6; the tool names
+are declared in `.pi/config/tools.json` with `kind: "planned"` so agent
+manifests can reference them today.
 
 ### The orchestrator's entry points
 

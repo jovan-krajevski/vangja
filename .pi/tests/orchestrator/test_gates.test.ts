@@ -254,16 +254,25 @@ test("the conductor has no push/force-push path in its git module", () => {
 	assert.throws(() => assertNotOnSharedHistoryRewrite(["rebase"]), /never rewrites shared history/);
 });
 
-test("the HPC gate is a stub that reports not-configured and never pretends a cluster exists", () => {
+test("the HPC gate reports not-configured for an empty host and blocks on an invalid config", () => {
 	const sandbox = createSandbox("gates-hpc");
 	try {
 		const gate = hpcGate(sandbox.root);
 		assert.equal(gate.status, "not-configured");
-		assert.match(gate.reason, /hpc\.json|S5/);
-		// collect.sh is still an S5 placeholder: exit 2, not a silent success.
+		assert.match(gate.reason, /hpc\.json/);
+		// No experiment to collect: the collector exits cleanly and says so (the
+		// hpc-disabled event path is covered by .pi/tests/hpc/test_hpc_disabled.test.ts).
 		const collect = runCli(sandbox.root, ["collect"]);
-		assert.equal(collect.status, 2);
-		assert.match(collect.stderr, /S5/);
+		assert.equal(collect.status, 0, collect.stderr);
+		assert.match(collect.stdout, /nothing to collect/);
+		// A configured-but-invalid hpc.json blocks; it is never silently "off".
+		fs.writeFileSync(
+			path.join(sandbox.root, ".pi", "config", "hpc.json"),
+			JSON.stringify({ host: "cluster.example", user: "", port: 22, remoteRepoDir: "", remoteScratchDir: "", hpcKey: "", gitKey: "", forwardGitAgent: true, container: "", partition: "", cpus: 2, memGb: 8, gpus: 0, wallClockHours: 24, pollSeconds: 60, maxPolls: 40, maxAttemptsPerExperiment: 6, maxParallelJobs: 1 }),
+		);
+		const invalid = hpcGate(sandbox.root);
+		assert.equal(invalid.status, "blocked");
+		assert.match(invalid.reason, /missing "user"|hpcKey/);
 	} finally {
 		sandbox.cleanup();
 	}

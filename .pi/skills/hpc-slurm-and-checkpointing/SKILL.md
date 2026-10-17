@@ -20,11 +20,14 @@ parsing status, and copy `templates/job.slurm` rather than writing a new one.
 3. **Checkpoint or it does not run.** A submission is refused without a
    checkpoint dir, a progress marker, a `--resume` command, and a passing
    local smoke test (`scripts/checkpoint_smoke.py`).
-4. **Exit code 99 = cleanly interrupted.** The USR1 trap flushes and exits 99.
-   0 = complete, 99 = requeue, anything else = failure.
+4. **Exit code 99 = cleanly interrupted.** The USR1 trap (`--signal=B:USR1@300`)
+   flushes a marker and exits 99. 0 = complete, 99 = requeue, anything else =
+   failure. `hpc_submit` refuses a record whose `checkpoints.flushOnSignal` is
+   not `true`.
 5. **HPC disabled when `host` is empty** (`.pi/config/hpc.example.json`). Then
-   `hpc_*` tools return `{enabled:false}` and the work runs locally with the
-   same checkpoint contract; never attempt SSH.
+   `hpc_*` tools return `{enabled:false}`, the collector writes one
+   `hpc-disabled` event, the conductor skips `WAITING_HPC`, and the work runs
+   locally with the same checkpoint contract; never attempt SSH.
 6. **Git agent forwarding only.** `ssh -A -o ForwardAgent=yes` with a private
    per-run agent that holds only the git key. If the key cannot be added,
    remote git is skipped (`git-forwarding-off`) and the submission is refused
@@ -37,17 +40,24 @@ The runner must:
 1. Write `progress.json` after **each completed unit**, atomically:
    `{"version": 1, "completed": ["2023-01-01:main", ...]}`.
 2. Accept `--resume <checkpoint_dir>` and skip units already completed —
-   verify it, do not assume: `fixed_case_studies/stocks/runner.py:307` is the
-   checkpoint hit (`manifest_<tag>.json` + `units_<tag>.csv`),
-   `runner.py:442-453` caches NUTS source fits as pkl.
+   verify it, do not assume (`fixed_case_studies/stocks/runner.py:307` is the
+   checkpoint hit; `runner.py:442-453` caches NUTS source fits as pkl).
 3. Write declared `expectedOutputs` incrementally, so a 24h kill leaves
    usable partial results.
 4. Write nothing outside `remoteScratchDir/<experiment_id>/`.
 
 ## Commands
 
+The HPC tools in `.pi/extensions/hpc/` implement this contract; the shell
+equivalents below are for inspection and for building a record by hand.
+
 ```bash
-# 1. Render a job script from the template (edit the {{placeholders}})
+# 0. Tool path (preferred): experiment_queue → hpc_submit (gate-checked) →
+#    hpc_status → hpc_fetch. hpc_submit renders the job script itself.
+
+# 1. Render a job script by hand (placeholders come from the record:
+#    {{JOB_NAME}} {{EXPERIMENT_ID}} {{ATTEMPT}} {{RUN_DIR}} {{SCRATCH}} {{CHECKPOINT_DIR}}
+#    {{LOG_DIR}} {{CPUS}} {{MEM_GB}} {{PARTITION}} {{GRES}} {{CONTAINER_PREFIX}} {{RESUME_COMMAND}})
 cp .pi/skills/hpc-slurm-and-checkpointing/templates/job.slurm scratch/E-0007.slurm
 
 # 2. Prove resume works locally BEFORE submitting
