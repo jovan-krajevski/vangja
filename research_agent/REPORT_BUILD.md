@@ -3648,7 +3648,7 @@ commit follows this report). All paths below are repository-relative.
 | Tests | `.pi/tests/audit/*.test.ts`, `run_audit_acceptance.sh`, `acceptance_probe.ts` | 91 offline tests + an acceptance transcript |
 
 The S6 tools are registered in `.pi/config/tools.json` (57 tools; `paper_*`
-remains planned for S7), and `make -C .pi test` includes all eight audit test
+remains planned for S7), and `make -C .pi test` includes all nine audit test
 files.
 
 ### Acceptance tests
@@ -3787,9 +3787,13 @@ verified clean before and after).
 | Real finder run | `.pi/audit/calibration/historical-8028c51/` | 6/7 = 0.857 | F-015 (`M-010`) | **UNCALIBRATED**, exit 10 |
 
 The real run hits WS-S-001 (`S-006`), WS-S-002 (`S-001`), WS-M-001 (`M-001`),
-WS-M-002 (`M-002`), WS-R-001 (`R-001`), WS-R-004 (`R-002`, which bundles the lockfile and seed policy); it misses WS-S-003
-(`lam`). It confirms F-015 because the M finder reported the superseded
-"Prophet under-tuned" fairness framing (`M-010`) alongside the stronger
+WS-M-002 (`M-002`), WS-R-001 (`R-001`), WS-R-004 (`R-002` by the scorer's
+first-match rule; the register's dedicated seed finding is `R-003`, which the
+earlier `R-002` — the lockfile/pinning finding, matched on "reproducibility" —
+shadows, so the recall count is unaffected but this attribution is not the seed
+policy); it misses WS-S-003 (`lam`). It confirms F-015 because the M finder
+reported the superseded "Prophet under-tuned" fairness framing (`M-010`)
+alongside the stronger
 `M-002` identity finding. The orchestrator therefore refuses to grade and names
 the two narrowings (`S: WS-S-003`; `M: F-015 → report the identity finding
 only`). This is the harness working as specified, not a harness failure: the
@@ -3871,6 +3875,34 @@ EXIT=0
    workstream. The per-WS registers and the `.register.lock` are already safe
    for concurrent writers (tested with ten parallel processes); a parallel
    fan-out action is the remaining architecture change, not a correctness gap.
+9. **Calibration scoring is severity-blind.** `scoreCalibration` matches a
+   finding on location, claim text and (optionally) a secondary pattern; the
+   expected severity is read from `expected.json` but never compared. Both S
+   hits above are `S2` findings matched against expected `S1`. With severity
+   enforced the real run scores 4/7 = 0.571, below the 0.6 threshold, so it
+   would be UNCALIBRATED on recall alone (the canary, by contrast, does require
+   exact severity). The 6/7 and the per-workstream table are therefore reported
+   under the severity-blind policy; the UNCALIBRATED verdict does not depend on
+   it, because the confirmed F-015 lead alone suffices.
+10. **`verify_guards` on the S6 commit reports 12 S1 gaming-scan hits; each is
+    explained here.** `verify_guards c8ea377^..c8ea377` returns
+    `gaming.ok=false` with 12 S1 (0 S0), no protected-path violations, and a
+    guarded test diff of +497/−3 assertions with `test_diff.problems=[]`. The
+    hits: three `test-weakening-assertion-removed` at
+    `.pi/tests/orchestrator/test_state_machine.test.ts:368-370` — those lines
+    asserted the S4 placeholder (`running.agent === "audit_finder"` for the
+    verify phase) and were replaced by a loop asserting the correct agent for
+    all five phases, so the change is net strengthening, not weakening; six
+    `frozen-split-edit` on new lines that name frozen protocol paths
+    (`verify/gates.ts:97`, `_templates/SCOPE.md:19-20`,
+    `fixtures/seeded/.pi/config/audit.json:11`, `test_templates.test.ts:82`, and
+    this report's matrix row naming `data/CONFIRMATION_ORIGINS.csv`); two
+    `failure-trimming-swallow` on `except` lines in the archived calibration
+    probes (`probe_ncp0.py:23`, `probe_ws_s.py:115`), which record the exception
+    text rather than swallow it; and one `exclusion-change` on this report's
+    gate-status prose (`context-excluded=fail`). The diff-mode scanner
+    deliberately has no context, so these are expected false positives, not
+    findings; the static scan on the real repository is clean.
 
 ### Commands
 
@@ -3896,3 +3928,240 @@ node --test .pi/tests/audit/test_rubrics.test.ts
 # Apply the decision rule after a graded cycle
 node .pi/extensions/orchestrator/cli.ts audit-decide <n> [limitations-disclosed]
 ```
+
+## S6 verification
+
+Independent stage verification of the S6 acceptance tests, performed at `c8ea377`
+with a clean working tree (only the untracked `Vangja-project/` archive present).
+Every test below was re-run from scratch; no result from the S6 section above was
+trusted. Raw output is quoted verbatim (long lines wrapped only by the terminal).
+
+Brief note: the requested brief path `research_agent/prompts/05_hp6_audit_harness.md`
+does not exist. S6 is `research_agent/prompts/06_audit_harness.md`; verification used
+that prompt plus `research_agent/plan/07_AUDIT_HARNESS.md` and plan/08 §S6.
+
+### Verdict: **GO** — all seven acceptance tests pass on independent re-run
+
+No acceptance test failed. Nine discrepancies are recorded below; none of them
+invalidates a test result. D1, D2, D3 and D5 were report-accuracy/provenance
+issues and are corrected in the S6 section after verification (see "Corrections
+applied after verification" at the end of this section).
+
+### Acceptance tests, re-run
+
+| # | Test | Result | Evidence (re-run) |
+|---|---|---|---|
+| 1 | `rubric_validate` on all five rubrics; weights sum to 1 | **PASS** | 14/14 node tests; own structural check: 5/5 valid, every branch sum = 1, every leaf has a criterion, auto leaves name gate sources |
+| 2 | `run_gates` on the seeded fixture; tampered artifact fails `hash_ok` + numeric drift | **PASS** | 13/13 gates; `gates.json` emitted; tamper → `hash_ok=false` and `delta=3.000e-2`; independent single-file tamper also caught |
+| 3 | Seeded audit ≥80% S0/S1, grade ≤ `weak reject`, `GRADE.md` cites failing gates | **PASS** | 8/8 = 1.000, 0 negative-control FPs, `weak reject`, 7 failing gates cited; matrix reproduced exactly; all 8 defects independently confirmed present in the fixture |
+| 4 | `validate_findings.py` rejections + dedupe/cross-ref | **PASS** | 11/11 unittest; own CLI run produced `no-command`, `duplicate-finding` (folded, cross-refs), `bad-severity`, `verified-low-confidence`, `bad-reproducible`, `unreproducible-verified` |
+| 5 | `audit_grade` blocking rules, boundaries, accept preconditions | **PASS** | 16/16 tests; rules read against plan/07 §7; sandboxed end-to-end `audit-decide` cases (below) |
+| 6 | Calibration recall/FP + `UNCALIBRATED` refusal | **PASS** | strong 7/7 calibrated; weak 2/7 exit 10; rejected-lead 7/7+F-014 exit 10; real run 6/7 + F-015 exit 10; independently reproduced (see D2/D3/D7) |
+| 7 | `make -C .pi verify-env` green with audit tests | **PASS** | `EXIT=0`; 277/277 node, 156 python `OK`, 15/15 env, 4/4 orchestrator |
+
+### Raw output (selected)
+
+Test 1 — project validator (own probe) plus the audit suite:
+
+```
+pr_review: valid=true errors=[] branches=8
+readiness: valid=true errors=[] branches=8
+paper: valid=true errors=[] branches=8
+audit: valid=true errors=[] branches=15   # 10 WS + 5 cross-cutting
+decision: valid=true errors=[] branches=0  # grade→action mapping, no leaves
+```
+
+Test 2 — `bash .pi/tests/audit/run_audit_acceptance.sh` (excerpt):
+
+```
+PASS  all gates report: 13/13
+PASS  every status is set: tests=pass protocol-hashes=pass confirmation-frozen=fail
+      no-test-selection=fail test-diff=fail no-failures-hidden=fail context-excluded=fail
+      artifacts-complete=pass reproduce-headline=fail traceability=fail env-pinned=pass
+      gaming-scan=pass canary=pass
+PASS  artifacts hash_ok: hash_ok=true
+PASS  tampered artifact fails hash_ok: 2 declared file(s); hash mismatches:
+      numbers.json (expected 5f69c4c7ea88…, actual 57b748352fad…);
+      metrics.csv (expected 65c2fece65c7…, actual aa039cfe1a30…)
+PASS  reproduction prints numeric drift:
+      rel_mae: expected=0.0607 actual=0.0907000000000 delta=3.000e-2 tolerance=1e-9 ❌
+```
+
+Independent checks not shown by the transcript: `sha256sum` of the pristine fixture
+files equals the manifest entries; the manifest's own `manifest_sha256` reproduces
+under `sha256(JSON.stringify(body,null,2)+"\n")`; tampering only `metrics.csv` gives
+`hash_ok=false` with `reproduce ok=true` (the number source is `numbers.json`, so
+hash integrity and reproduction are correctly independent).
+
+Test 3 — detection matrix re-derived from `runSeededAudit` + `renderCanaryMatrix`
+(identical to the table in the S6 section; N1 = real Prophet baseline not reported):
+
+```
+D1 wrong_potential_sign S0 detected S-901     D5 retrospective_confirmation S0 detected D-906
+D2 test_selection       S1 detected E-902     D6 mislabelled_baseline       S1 detected M-909
+D3 weakened_test        S1 detected I-903     D7 favourable_seed            S1 detected E-910
+D4 missing_artifact     S1 detected C-904     D8 uncited_paper_number       S1 detected C-911
+N1 negative control: not reported (correct)
+```
+
+I also opened every fixture file: each defect is genuinely planted (wrong `+` sign at
+`src/vangja/components/linear_trend.py:13`; `min(..., key=row["test_mape"])` at
+`runners/run_grid.py:9`; commented assertion in `tests/test_fit.py`; `artifacts/E-9999`
+absent; `retrospective after results` at `data/CONFIRMATION_ORIGINS.csv:1`; a fake
+`"Prophet"` label with no `prophet` import; `SEED = 1234  # chosen after seeing the
+best result`; `0.0758` in `paper/paper.tex` with no claim entry).
+
+Test 4 — `python3 .pi/skills/.../validate_findings.py --findings <crafted> --workstream WS-S --json`:
+
+```
+n_findings 4 n_deduped 1 n_meta 8
+duplicates: [{'id': 'WS-S-002', 'duplicate_of': 'WS-S-001', ...}, ...]
+cross_refs on canonical: [('WS-S-001', ['WS-S-002', 'WS-S-003', 'WS-S-004'])]
+meta rules: no-command | duplicate-finding | bad-severity | verified-low-confidence
+          | bad-reproducible | unreproducible-verified
+```
+
+(`python3 -m unittest test_validate_findings -v` → `Ran 11 tests — OK`.)
+
+Test 5 — sandboxed `audit-decide` (own scratch checkout, `--sandbox`):
+
+```
+A) no calibration:            grade uncalibrated; decision BLOCKED (exit 2)
+B) recall=1, gates green,
+   rubric 0.95, limitations:  grade strong accept; decision DONE (exit 0)
+C) UNCALIBRATED marker +
+   stale recall.json=1.0:     grade uncalibrated; decision BLOCKED (exit 2)
+```
+
+Case C confirms the marker overrides a stale `recall.json` — the mandatory-calibration
+rule is enforced on the real decision path, not only in unit tests.
+
+Test 6 — real calibration (`recall.json` + own Python reimplementation of the scorer):
+
+```
+MY HITS:  WS-S-001→S-006 (S2), WS-S-002→S-001 (S2), WS-M-001→M-001, WS-M-002→M-002,
+          WS-R-001→R-001, WS-R-004→R-002
+MY MISS:  WS-S-003
+REJECTED LEAD CONFIRMED: F-015 → M-010
+recall: 6/7 = 0.857   severity-enforced recall: 4/7 = 0.571
+```
+
+I re-ran an archived probe against the frozen snapshot:
+`uv run --project . --frozen python .pi/audit/calibration/historical-8028c51/probes/S/probe_ws_s.py`
+→ `vangja imported from: .../state/calibration/snapshot/src/vangja/__init__.py`;
+`pool=complete potential(slope=1)-potential(slope=0) = 1.000`; `returned loc equals
+mean: True`. The quoted observations in `findings/s/findings.json` are reproducible,
+and the probes read the historical code, not the working tree.
+
+Test 7 — `make -C .pi verify-env`:
+
+```
+ℹ tests 277  ℹ pass 277  ℹ fail 0        (91 = .pi/tests/audit/*.test.ts)
+Ran 156 tests — OK                        (includes the 11 validate_findings tests)
+15/15 checks passed
+4/4 orchestrator checks passed
+EXIT=0
+```
+
+### Discrepancies
+
+**D1 (S3, cosmetic).** `REPORT_BUILD.md` says "eight audit test files"; there are
+**nine** (`.pi/tests/audit/*.test.ts`, and all nine are listed in `.pi/Makefile`).
+`test_register_concurrency.test.ts` is the one missing from the count/naming.
+
+**D2 (S2, report accuracy).** The S6 section says the WS-R-004 hit is
+"`R-002`, which bundles the lockfile and seed policy". That is false. `R-002` is
+"No lockfile; container and CI install floating PyMC…" (pinning); the seed finding is
+**`R-003`** ("fit() exposes no random_seed…"). The scorer binds the *first* confirmed
+finding whose text matches the loose `seed|…|reproducib` pattern, and `R-002` is
+earlier in the register, so `R-003` was never consumed. The recall *count* is
+unaffected (6/7 either way) but the reported mapping and the prose claim are wrong.
+Repro: `python3` reimplementation above; `recall.json` shows `finding: "R-002"`.
+
+**D3 (S1 for the calibration claim, scoring policy).** The scorer reads `severity` into
+its hit records but never compares it with the expected severity (`calibrate.ts`
+`scoreCalibration`: only location + claim + optional `also` are matched). Both S hits
+are `S2` findings matched against `expected.json` `severity: "S1"`. With severity
+enforced, recall is **4/7 = 0.571 < 0.6**, i.e. the run would be UNCALIBRATED on the
+recall threshold alone. The report's "S 3/2 0.67" and 6/7 stand only under the
+undisclosed severity-blind policy. (The canary, by contrast, requires exact severity.)
+
+**D4 (S2, gaming-scan coverage).** `scan_gaming.py`'s static selector list is
+`SELECTORS = {idxmin, idxmax, argmin, argmax}`; `min`/`max`/`sorted(key=…)` are absent,
+so the scanner returns `n_findings 0` on the seeded fixture that contains exactly
+`min(rows, key=lambda row: row["test_mape"])` (`runners/run_grid.py:9`). The S6
+transcript therefore shows `gaming-scan=pass` on a repo with a planted gaming defect.
+Mitigated elsewhere: the `no-test-selection` gate fails on it and the E canary probe
+detects it — but the gate under-implements the plan/07 §6 catalogue and its "pass"
+line should not be read as evidence of a clean scan.
+
+**D5 (S1 for the merge gate, reporting).** `verify_guards` on the S6 commit itself
+returns `ok=false` with 12× S1 gaming hits, including three
+`test-weakening-assertion-removed` hits in
+`.pi/tests/orchestrator/test_state_machine.test.ts:368-370`. I inspected the diff:
+the three deleted lines asserted the S4 placeholder (`running.agent === "audit_finder"`
+for the `verify` phase); they were replaced by a loop asserting the correct agent for
+all five phases (`find→audit_finder`, `verify→audit_verifier`,
+`synthesise→audit_synthesizer`, `adjudicate→audit_adjudicator`, `gates→supervisor`).
+That is net strengthening, **not** test weakening — but the report never discloses
+the change or explains the 12 hits, and plan/07 §5 says the gate passes only when the
+scan is clean "or each hit is explained". The other hits are `frozen-split-edit` on
+new code/templates that name frozen protocol paths, an `except` in a calibration probe,
+and an `exclusion-change` false positive on prose — all explainable, none explained.
+
+**D6 (S3, provenance of the reported calibration number).** The reported real run used
+`--narrowed`, whose brief literally names the expected answers ("is it the MAP/mode…",
+"do the runners import those packages?", "is PyMC a declared dependency?", "is any
+random_seed recorded…"). The report discloses the narrowing and the scorer tuning,
+but no earlier (unguided) run's recall/FP is archived, and the scorer was adjusted
+after seeing output (D#2 in the S6 deviations). The quoted 6/7 is therefore a
+scorer/narrowed-brief measurement, not an independent sensitivity measurement. The
+harness's *behaviour* on it is correct (UNCALIBRATED, grade refused).
+
+**D7 (S3, metadata).** `.pi/config/tools.json` records `paper_build` and
+`paper_diff_summary` as `"kind": "planned", "stage": "S6"`, while the S6 section says
+they "remain planned for S7". One of the two is wrong; plan/08 assigns no `paper_*`
+tool to either stage explicitly.
+
+**D8 (S3, rendering bug).** `GRADE.md` contains the `## Fix list` header twice: once
+empty from `report.ts:343` and once from `fixSection()` (`report.ts:168`), which itself
+emits the header. Visible in the fixture GRADE.md reproduced above.
+
+**D9 (S3, hygiene).** The archived calibration probes and `findings.json` embed
+absolute `/home/jovan/...` paths (runtime probe path `.pi/audit/cycle-900/…` and the
+snapshot path). No secret is exposed and the README documents the path mapping, but
+the artifacts are machine-specific.
+
+### What this verification did **not** establish
+
+- The ten per-workstream briefs, the four agent definitions and the template set were
+  inspected for the required elements (boundary, coverage checklist, ≤25 cap,
+  "no command → not a finding", phase independence, verified-ids-only) but not
+  exercised by a live multi-agent audit — that is the S7 smoke test.
+- The real calibration was not re-run with model calls (cost); the archived findings,
+  `recall.json` and one archived probe were re-derived instead. The gate set was not
+  re-run against the real repository with `audit-gates` (its library path and the
+  emitted `gates.json` were verified on a scratch copy).
+- `verify_traceability` on the real repo correctly reports `exists=false`
+  (`paper/CLAIMS.json` is absent); the C workstream's real inputs arrive with the
+  paper, so traceability is untested on real claims.
+- `Vangja-project/**` was not modified (no file newer than 2026-10-17 00:00), the
+  calibration worktree `.pi/state/calibration/snapshot` is clean at
+  `8028c5108d926c58ec4e9b29f72842f2b9d8d095`, and no network access was used.
+
+### Corrections applied after verification
+
+The S6 section was corrected in place in the commit that adds this verification
+section; the discrepancy text above records what was wrong at verification time.
+
+- **D2** — the WS-R-004 hit is now reported as `R-002` *by the scorer's
+  first-match rule*, with the note that the register's dedicated seed finding is
+  `R-003` and that `R-002` is the lockfile/pinning finding.
+- **D3** — new deviation 9 records that calibration scoring is severity-blind
+  and that severity-enforced recall would be 4/7 = 0.571.
+- **D5** — new deviation 10 explains all 12 S1 `verify_guards` hits on
+  `c8ea377`, including the three assertion deletions (net strengthening).
+- **D1** — "eight audit test files" corrected to nine.
+
+D4, D6, D7, D8 and D9 remain open: D4 is a scanner-coverage change for the next
+cycle (code + tests), and D6–D9 are recorded here without a code edit.
