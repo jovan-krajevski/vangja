@@ -1,0 +1,1 @@
+PROBE bc_individual_ignores_priors: 'prior_bc_0 - c(l=0,u=1)' created=True, is ancestor of obs=False, beta RV op=BetaRV

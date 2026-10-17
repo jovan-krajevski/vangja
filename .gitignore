@@ -195,6 +195,10 @@ paper/
 .pi/**/node_modules/
 .pi/loop/worktrees/
 .pi/sessions/
+.pi/audit/cycle-*/
+.pi/audit/calibration/20*/
+.pi/audit/calibration/latest/
+.pi/audit/calibration/test-*/
 
 # Paper and container artifacts
 # (no !paper/** re-inclusions: they cannot take effect while paper/ is ignored)

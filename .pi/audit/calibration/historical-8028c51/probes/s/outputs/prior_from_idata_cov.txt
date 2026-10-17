@@ -1,0 +1,2 @@
+PROBE prior_from_idata_cov pool=complete   source_corr=0.913 target_prior_corr=0.916 beta_is_free_RV=False
+PROBE prior_from_idata_cov pool=individual source_corr=0.913 target_prior_corr=0.449 beta_is_free_RV=True

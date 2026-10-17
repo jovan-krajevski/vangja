@@ -1,0 +1,2 @@
+PROBE delta_side_transfer | left-style source  (slope=3, delta=+1,+1) | target delta_side=left  -> prior slope mean=+3.000 | target delta_side=right -> prior slope mean=+5.000
+PROBE delta_side_transfer | right-style source (slope=5, delta=-1,-1) | target delta_side=left  -> prior slope mean=+5.000 | target delta_side=right -> prior slope mean=+3.000

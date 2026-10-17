@@ -26,9 +26,14 @@ TEST_FILES := .pi/tests/test_settings.test.ts .pi/tests/test_schemas.test.ts \
 	.pi/tests/orchestrator/test_pause_resume.test.ts .pi/tests/orchestrator/test_sandbox_cycle.test.ts \
 	.pi/tests/hpc/test_hpc_disabled.test.ts .pi/tests/hpc/test_hpc_config.test.ts \
 	.pi/tests/hpc/test_hpc_submit_gate.test.ts .pi/tests/hpc/test_hpc_lifecycle.test.ts \
-	.pi/tests/hpc/test_hpc_retry_rules.test.ts
+	.pi/tests/hpc/test_hpc_retry_rules.test.ts \
+	.pi/tests/audit/test_findings.test.ts .pi/tests/audit/test_grade.test.ts \
+	.pi/tests/audit/test_rubrics.test.ts .pi/tests/audit/test_verify.test.ts \
+	.pi/tests/audit/test_canary.test.ts .pi/tests/audit/test_calibration.test.ts \
+	.pi/tests/audit/test_templates.test.ts .pi/tests/audit/test_audit_wiring.test.ts \
+	.pi/tests/audit/test_register_concurrency.test.ts
 
-.PHONY: all test skills-test env-check verify-env verify-env-strict orchestrator-check orchestrator-accept hpc-accept accept agents-accept help
+.PHONY: all test skills-test env-check verify-env verify-env-strict orchestrator-check orchestrator-accept hpc-accept audit-accept audit-calibrate accept agents-accept help
 
 all: verify-env
 
@@ -64,6 +69,14 @@ orchestrator-accept:
 # no model calls). Not part of verify-env: it takes ~1 minute.
 hpc-accept:
 	bash $(ROOT)/.pi/tests/hpc/run_mock_cluster.sh
+
+# The full S6 audit acceptance transcript (offline fixtures; writes only temp dirs).
+audit-accept:
+	bash $(ROOT)/.pi/tests/audit/run_audit_acceptance.sh
+
+# Offline calibration scorer on the committed strong fixture (no finder/model calls).
+audit-calibrate:
+	bash $(ROOT)/.pi/calibrate.sh --fixture .pi/tests/audit/fixtures/calibration/strong.json --out /tmp/vangja-calibration-strong
 
 # Not part of verify-env: these make real model calls.
 accept:

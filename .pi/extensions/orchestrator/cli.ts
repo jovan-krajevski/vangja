@@ -11,6 +11,7 @@
  * Flags: --sandbox <path> --dry-run --headless --json --forever --max-steps <n> --command <pi>
  */
 
+import * as path from "node:path";
 import { parseFlags, resolveRunContext, type CliFlags, type RunContext } from "./sandbox.ts";
 import {
 	commandCollect,
@@ -38,6 +39,9 @@ commands:
   verify-env       run the environment checks plus the orchestrator's own checks
   gate list|approve <id> <note>|reject <id> <why>
   collect          one collector pass: poll, record evidence, fetch; disabled → one hpc-disabled event
+  audit-gates <n> [snapshot]   run the deterministic audit gates and write cycle <n>/gates.json
+  audit-state <n>              derive .pi/state/AUDIT.json from the cycle artifacts
+  audit-decide <n> [limitations-disclosed]  apply rubrics/decision.json and write state/DECISION.json
 
 flags:
   --sandbox <path>  run against a scratch clone (never the real repository)
@@ -132,6 +136,53 @@ async function main(argv: string[]): Promise<number> {
 			const result = await commandCollect({ context });
 			process.stdout.write(`${result.message}\n`);
 			return 0;
+		}
+		case "audit-gates": {
+			const cycle = Number(flags.positional[0]);
+			if (!Number.isInteger(cycle) || cycle < 1) {
+				process.stderr.write("audit-gates needs a positive cycle number\n");
+				return 2;
+			}
+			const snapshot = flags.positional[1] ?? "HEAD";
+			const { prepareAuditCycle, runAuditGates, syncAuditState } = await import("./audit.ts");
+			const prepared = prepareAuditCycle(context.root, cycle, snapshot);
+			const gates = runAuditGates(context.root, cycle, snapshot);
+			const state = syncAuditState(context.root, cycle);
+			process.stdout.write(
+				`${gates.ok ? "ALL GREEN" : "FAILED"} — ${gates.gates.length} gate(s); failed: ${gates.failed.join(", ") || "none"}; skipped: ${gates.skipped.join(", ") || "none"}; next phase: ${state.step}\n` +
+					`initialised ${prepared.created.length} template file(s) under ${path.relative(context.root, prepared.dir)}\n`,
+			);
+			if (flags.json) process.stdout.write(`${JSON.stringify({ gates, audit_state: state }, null, 2)}\n`);
+			return 0;
+		}
+		case "audit-state": {
+			const cycle = Number(flags.positional[0]);
+			if (!Number.isInteger(cycle) || cycle < 1) {
+				process.stderr.write("audit-state needs a positive cycle number\n");
+				return 2;
+			}
+			const { syncAuditState } = await import("./audit.ts");
+			const state = syncAuditState(context.root, cycle);
+			process.stdout.write(
+				`audit cycle ${cycle}: phase ${state.step}${state.step === "complete" ? " (complete)" : ""}; finders ${Object.entries(state.finders).filter(([, done]) => done).length}/10\n`,
+			);
+			if (flags.json) process.stdout.write(`${JSON.stringify(state, null, 2)}\n`);
+			return 0;
+		}
+		case "audit-decide": {
+			const cycle = Number(flags.positional[0]);
+			if (!Number.isInteger(cycle) || cycle < 1) {
+				process.stderr.write("audit-decide needs a positive cycle number\n");
+				return 2;
+			}
+			const limitations = flags.positional[1] === "limitations-disclosed";
+			const { applyAuditDecision } = await import("./audit.ts");
+			const result = applyAuditDecision(context.root, cycle, { limitationsDisclosed: limitations });
+			process.stdout.write(
+				`grade ${result.grade} (${result.grade_result.journal}); decision ${result.status}: ${result.decision.action} (reaudit=${result.decision.reaudit}, done=${result.decision.done})\n${result.decision.reason}\n`,
+			);
+			if (flags.json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+			return result.status === "BLOCKED" ? 2 : 0;
 		}
 		default:
 			process.stderr.write(`unknown command "${command}"\n\n${USAGE}`);

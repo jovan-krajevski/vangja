@@ -23,6 +23,7 @@ import type { BudgetConfig } from "../../lib/config.ts";
 import type { LoopState, LoopStateName } from "../../lib/state.ts";
 import { decideRetry, isTerminalExperimentStatus, type RetryDecision } from "../hpc/retry.ts";
 import { budgetViolationReason, budgetViolations, resumeCommand, type BudgetSnapshot } from "./budget.ts";
+import { auditAgentForPhase } from "./audit.ts";
 
 // ---------------------------------------------------------------------------
 // Snapshot types (the read-only input to the pure function)
@@ -725,15 +726,87 @@ export function paperBrief(state: LoopState, pr: PrView | null): string {
 }
 
 export function auditBrief(cycle: number, phase: string): string {
-	return [
+	const dir = `.pi/audit/cycle-${cycle}`;
+	const common = [
 		`## AUDIT · cycle ${cycle} · phase ${phase}`,
 		"",
-		"The four-phase audit pipeline is delivered in stage S6 (`.pi/prompts/audit-cycle.md`). This work unit",
-		"starts (or continues) the cycle: freeze the snapshot, write SCOPE.md, and run the finders per workstream.",
-		"Never read Vangja-project/audit/** for findings; it is calibration reference only.",
+		"Phase order (plan/07_AUDIT_HARNESS.md §8): gates → find (parallel ≤8) → verify → synthesise +",
+		"meta_review → adjudicate. Phases use fresh contexts and communicate only through files. Never read",
+		"`Vangja-project/audit/**` for findings; it is the calibration scorer's reference.",
 		"",
-		"Acceptance: the artifacts the audit-cycle prompt names for this phase; the S6 harness sets",
-		"`.pi/state/AUDIT.json` to {cycle, phase, complete} when the phase finishes.",
+	];
+	if (phase === "gates") {
+		return [
+			...common,
+			`Objective: freeze the snapshot and write ${dir}/SCOPE.md, then run the 13 deterministic gates.`,
+			"This step is deterministic: `run_gates(cycle, snapshot)` writes gates.json. Do not spawn a finder first.",
+			"",
+			`Acceptance: ${dir}/SCOPE.md records the snapshot SHA, paper SHA, artifact index, protocol hashes and`,
+			`environment; ${dir}/gates.json exists with all 13 gates reporting pass/fail/skip/error.`,
+		].join("\n");
+	}
+	if (phase === "find" || phase.startsWith("find:")) {
+		const ws = phase.includes(":") ? phase.split(":")[1] : null;
+		if (ws) {
+			return [
+				...common,
+				`Objective: run the WS-${ws} finder at the frozen snapshot. Read \`${dir}/${ws}/BRIEF.md\`, write only`,
+				`\`${dir}/${ws}/FINDINGS.md\` + \`findings.json\` via finding_register(cycle=${cycle}, workstream="${ws}")`,
+				"and stop. Do not read another workstream's register or VERIFY.md. A failed gate is a finding when it",
+				"belongs to this boundary; otherwise record a cross-ref. Keep the cap at 25 findings.",
+				"",
+				`Acceptance: the WS-${ws} register validates and its FINDINGS.md exists; the conductor advances to the`,
+				"next missing workstream automatically (then verify, synthesise, adjudicate).",
+			].join("\n");
+		}
+		return [
+			...common,
+			`Objective: run each finder on its own workstream brief (${dir}/<ws>/BRIEF.md) at the frozen snapshot,`,
+			"one idempotent step per workstream. A finder may read only SCOPE.md, _PROTOCOL.md, its own brief,",
+			"gates.json, and the snapshot.",
+			`A failed gate is a finding assigned to the owning workstream. Keep the cap at 25 findings per WS.`,
+			"",
+			`Acceptance: ${dir}/<ws>/FINDINGS.md and findings.json for all ten workstreams (M/S/P/D/I/R/H/E/C/L);`,
+			"`finding_register` rejects any record without a reproducing command.",
+		].join("\n");
+	}
+	if (phase === "verify") {
+		return [
+			...common,
+			`Objective: the verifier reopens every S0/S1/S2 finding at the snapshot SHA, re-runs its command, and`,
+			`tries to refute it. Write ${dir}/VERIFY.md and ${dir}/verify/VERIFY_<ws>.md. Append verdicts; never edit`,
+			"a phase-1 finding body.",
+			"",
+			`Acceptance: every S0/S1/S2 finding has confirmed/weakened/refuted/unresolved with the raw output;`,
+			"unresolved findings carry a [blocking]/[non-blocking] question.",
+		].join("\n");
+	}
+	if (phase === "synthesise") {
+		return [
+			...common,
+			`Objective: score the rubric with an evidence pointer per leaf (rubric_score), compute the grade with`,
+			`audit_grade, and assemble ${dir}/FINAL_REPORT.md. Dispatch meta_review for the coverage matrix and fold`,
+			`its gaps into ${dir}/META_COVERAGE.md. Synthesis may cite verified ids only; it adds no primary findings.`,
+			"",
+			`Acceptance: ${dir}/rubric.json, GRADE.md (rule trace naming failing gates) and FINAL_REPORT.md;`,
+			"`audit_report_assemble` rejects a synthesizer record with no verified id.",
+		].join("\n");
+	}
+	if (phase === "adjudicate") {
+		return [
+			...common,
+			`Objective: resolve disputes, spot-check the strongest and weakest claims, and write`,
+			`${dir}/ADJUDICATED_REPORT.md + ${dir}/ROOT_ISSUE_REGISTER.csv. Map every root issue to an owner`,
+			"(code|paper|protocol|docs|env) and a fix, dependency-ordered protocol → code → reruns → paper.",
+			"",
+			`Acceptance: every dispute resolved with evidence or escalated; the register is complete; the grade`,
+			"recomputation matches GRADE.md or the disagreement is escalated as [blocking].",
+		].join("\n");
+	}
+	return [
+		...common,
+		`Objective: complete phase ${phase} and set .pi/state/AUDIT.json to {cycle, phase, complete:true} only`,
+		"when the phase's artifacts exist and validate.",
 	].join("\n");
 }
 
@@ -741,11 +814,16 @@ export function decideBrief(): string {
 	return [
 		"## DECIDE",
 		"",
-		"Apply the audit decision rule (plan/02_ARCHITECTURE.md §5.4) to the final audit report + findings.json.",
-		'Write `.pi/state/DECISION.json` as {"done": true|false, "grade": "<grade>", "reason": "..."} where',
-		"`done` is true only for accept/strong accept with no blocking fixes.",
+		"Apply `rubrics/decision.json` to the completed audit cycle. This is a rule application, not a judgement:",
+		"read the cycle's GRADE.md + findings.json + gates.json + rubric.json and call the decision rule",
+		"(`node .pi/extensions/orchestrator/cli.ts audit-decide --cycle <n>`, which writes `.pi/state/DECISION.json`).",
 		"",
-		"Acceptance: DECISION.json with the grade, the rule trace, and the blocking-fix list (empty for done).",
+		"Rules: strong reject/reject → reopen P0 tasks; weak reject/borderline → fix all S0/S1 + blocking S2;",
+		"weak accept → fix the feasible list (re-audit unless purely editorial); accept/strong accept → DONE only",
+		"with no blocking fixes; uncalibrated or more than 5 cycles → BLOCKED for human direction.",
+		"",
+		"Acceptance: DECISION.json with the grade, the rule trace, the action, the re-audit flag, and the",
+		"blocking-fix list (empty only for done). Never raise a grade above the computed one.",
 	].join("\n");
 }
 
@@ -1294,8 +1372,8 @@ export const RULES: Rule[] = [
 			const audit = ledgers.audit ?? { cycle: ledgers.budget.auditCycles + 1, phase: "find", complete: false };
 			return spawn(
 				state,
-				`audit:${audit.cycle}:${audit.phase}`,
-				"audit_finder",
+				`audit:${audit.cycle}:${audit.phase}:${state.attempt + 1}`,
+				auditAgentForPhase(audit.phase),
 				`audit cycle ${audit.cycle}, phase ${audit.phase}`,
 				auditBrief(audit.cycle, audit.phase),
 				[".pi/state/AUDIT.json"],

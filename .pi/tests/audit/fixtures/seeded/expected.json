@@ -1,0 +1,79 @@
+{
+  "schema": "vangja-seeded-defects/1",
+  "fixture": "seeded-audit-fixture",
+  "defects": [
+    {
+      "id": "D1",
+      "title": "wrong potential sign",
+      "probe": "wrong_potential_sign",
+      "severity": "S0",
+      "workstream": "S",
+      "expect": "detected"
+    },
+    {
+      "id": "D2",
+      "title": "runner selects configs on test MAPE",
+      "probe": "test_selection",
+      "severity": "S1",
+      "workstream": "E",
+      "expect": "detected"
+    },
+    {
+      "id": "D3",
+      "title": "weakened test (assertion removed)",
+      "probe": "weakened_test",
+      "severity": "S1",
+      "workstream": "I",
+      "expect": "detected"
+    },
+    {
+      "id": "D4",
+      "title": "missing artifact for a reported number",
+      "probe": "missing_artifact",
+      "severity": "S1",
+      "workstream": "C",
+      "expect": "detected"
+    },
+    {
+      "id": "D5",
+      "title": "retrospective dataset labelled confirmation",
+      "probe": "retrospective_confirmation",
+      "severity": "S0",
+      "workstream": "D",
+      "expect": "detected"
+    },
+    {
+      "id": "D6",
+      "title": "baseline mislabelled Prophet",
+      "probe": "mislabelled_baseline",
+      "severity": "S1",
+      "workstream": "M",
+      "expect": "detected"
+    },
+    {
+      "id": "D7",
+      "title": "hard-coded favourable seed",
+      "probe": "favourable_seed",
+      "severity": "S1",
+      "workstream": "E",
+      "expect": "detected"
+    },
+    {
+      "id": "D8",
+      "title": "hard-coded paper number with no claims entry",
+      "probe": "uncited_paper_number",
+      "severity": "S1",
+      "workstream": "C",
+      "expect": "detected"
+    },
+    {
+      "id": "N1",
+      "title": "real Prophet baseline (negative control)",
+      "probe": "mislabelled_baseline",
+      "severity": "S3",
+      "workstream": "M",
+      "expect": "not_detected",
+      "location_contains": "negative_controls/prophet_baseline.py"
+    }
+  ]
+}

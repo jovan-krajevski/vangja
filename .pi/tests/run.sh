@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Unified offline test runner for the .pi environment.
 #
-# Usage: bash .pi/tests/run.sh [all|node|skills|orchestrator|hpc]
+# Usage: bash .pi/tests/run.sh [all|node|skills|orchestrator|hpc|audit]
 #   node          the TypeScript/Node suite (settings, guards, ledger, status, child pi)
 #   skills        validate_skills.sh + the Python skill-script tests
 #   orchestrator  the S4 orchestrator suite (state machine, sandbox cycle, budget,
 #                 pause/resume, gates) plus the acceptance transcript script
 #   hpc           the S5 mock-cluster suite + its acceptance transcript script
-#   all           node + skills (default)
+#   audit         the S6 audit-harness suite + its acceptance transcript script
+#   all           node + skills + audit (default)
 #
 # No network, no model calls. Exit non-zero if any suite fails.
 set -uo pipefail
@@ -37,6 +38,18 @@ HPC_TESTS=(
 	.pi/tests/hpc/test_hpc_submit_gate.test.ts
 	.pi/tests/hpc/test_hpc_lifecycle.test.ts
 	.pi/tests/hpc/test_hpc_retry_rules.test.ts
+)
+
+AUDIT_TESTS=(
+	.pi/tests/audit/test_findings.test.ts
+	.pi/tests/audit/test_grade.test.ts
+	.pi/tests/audit/test_rubrics.test.ts
+	.pi/tests/audit/test_verify.test.ts
+	.pi/tests/audit/test_canary.test.ts
+	.pi/tests/audit/test_calibration.test.ts
+	.pi/tests/audit/test_templates.test.ts
+	.pi/tests/audit/test_audit_wiring.test.ts
+	.pi/tests/audit/test_register_concurrency.test.ts
 )
 
 ORCHESTRATOR_TESTS=(
@@ -96,19 +109,36 @@ run_hpc() {
 	return 0
 }
 
+run_audit() {
+	echo "== node --test audit harness (offline) =="
+	(cd "$ROOT" && "$NODE" --test "${AUDIT_TESTS[@]}")
+	local status=$?
+	echo
+	echo "== audit acceptance transcript =="
+	bash "$ROOT/.pi/tests/audit/run_audit_acceptance.sh"
+	local acceptance=$?
+	if [[ "$status" -ne 0 || "$acceptance" -ne 0 ]]; then
+		return 1
+	fi
+	return 0
+}
+
 status=0
 case "$SUITE" in
 	all)
 		run_node || status=1
 		echo
 		run_skills || status=1
+		echo
+		run_audit || status=1
 		;;
 	node) run_node || status=1 ;;
 	skills) run_skills || status=1 ;;
 	orchestrator) run_orchestrator || status=1 ;;
 	hpc) run_hpc || status=1 ;;
+	audit) run_audit || status=1 ;;
 	*)
-		echo "usage: bash .pi/tests/run.sh [all|node|skills|orchestrator|hpc]" >&2
+		echo "usage: bash .pi/tests/run.sh [all|node|skills|orchestrator|hpc|audit]" >&2
 		exit 2
 		;;
 esac

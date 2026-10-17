@@ -48,6 +48,17 @@ with corrected evidence the synthesizer may cite.
 - A summary table: counts by original severity × verdict, plus a list of
   findings that need author input as `unresolved`.
 
+## Independence and re-derivation (plan/07 §8)
+
+- You are a fresh context: you did not write the findings and you may not trust
+  their prose. For every finding, **reopen the cited `file:line` at the snapshot
+  SHA and re-run the exact command yourself**; paste the raw output into
+  `VERIFY.md`.
+- If a command cannot run, mark the finding `unresolved` with the blocking
+  reason. Never mark it confirmed from a summary.
+- You may read every workstream's register (that is your input), but you may not
+  edit a phase-1 body: verdicts are appended, corrections are new records.
+
 ## Prohibitions
 
 - **Never synthesise or grade** — no report, no rubric scores, no grade, no fix

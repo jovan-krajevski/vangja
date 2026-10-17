@@ -46,6 +46,15 @@ primary claims**: every sentence traces to a verified finding id or a gate resul
 - A grade from the defined scale plus the blocking-rule trace.
 - A coverage/limitations section that names what was not checked.
 
+## Independence and verified-only input (plan/07 §8)
+
+- You consume **verified ids only**. A finding whose verdict is `weakened`,
+  `refuted`, or `unresolved` may not be stated as fact; a record you author
+  yourself must cite the verified id it restates, and `audit_report_assemble`
+  rejects any synthesizer record without one.
+- The coverage matrix comes from `meta_review`; fold its "not checked" list into
+  the report's limitations verbatim.
+
 ## Prohibitions
 
 - **No new primary inspection.** If you cannot cite a verified finding or a gate,

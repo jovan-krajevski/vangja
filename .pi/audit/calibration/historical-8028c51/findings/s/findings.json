@@ -1,0 +1,223 @@
+{
+  "schema": "vangja-findings/1",
+  "cycle": 900,
+  "workstream": "S",
+  "summary": {
+    "count": 8,
+    "bySeverity": {
+      "S0": 0,
+      "S1": 0,
+      "S2": 7,
+      "S3": 1
+    },
+    "byStatus": {
+      "verified": 8,
+      "to-verify": 0,
+      "refuted": 0,
+      "unresolved": 0
+    },
+    "byWorkstream": {
+      "S": 8
+    }
+  },
+  "findings": [
+    {
+      "id": "S-001",
+      "title": "Complete-pooling LinearTrend regularization potential has inverted sign and wrong functional form",
+      "location": "snapshot src/vangja/components/linear_trend.py:368-371 (_complete_definition); spec docs/source/notebooks/09_advanced_transfer_learning.ipynb cell 2",
+      "snapshot": "cycle-900@8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+      "command": "uv run --project /home/jovan/repos/vangja --frozen python /home/jovan/repos/vangja/.pi/audit/cycle-900/S/probes/probe_ws_s.py",
+      "expected": "Notebook 09 spec: penalty = -phi*(w_target - w_source)^2, i.e. log-posterior must DECREASE when the slope deviates from the transferred source value; with loss_factor_for_tune=1 and source mean 0, potential(slope=1)-potential(slope=0) must be about -1.",
+      "observed": "probe output: 'pool=complete potential(slope=1)-potential(slope=0) = 1.000'. The code adds +loss_factor*abs(slope - slope_mean) (plus, not minus, and abs instead of square).",
+      "consequence": "With the paper-recommended loss_factor_for_tune=1, complete-pooling transfer actively rewards slope drift away from the source model, inverting the documented/paper regularization (the non-hierarchical transfer-learning result). Default 0 leaves it latent; the smart_home case study sweeps loss_factor={0,1}.",
+      "severity": "S2",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes",
+      "evidence": [
+        "cmd output line: pool=complete   potential(slope=1)-potential(slope=0) =  1.000  (name: lt_0 - slope - loss)",
+        "source: linear_trend.py:370  self.loss_factor_for_tune * pm.math.abs(slope - slope_mean)"
+      ],
+      "cross_refs": [],
+      "owner": "docs",
+      "found_in_cycle": 900,
+      "phase": "finder",
+      "author_agent": "calibration__S",
+      "fixed": false,
+      "dedupe_key": "f065d28b67d040fd"
+    },
+    {
+      "id": "S-002",
+      "title": "Individual-pooling LinearTrend regularization potential has inverted sign",
+      "location": "snapshot src/vangja/components/linear_trend.py:620-623 (_individual_definition)",
+      "snapshot": "cycle-900@8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+      "command": "uv run --project /home/jovan/repos/vangja --frozen python /home/jovan/repos/vangja/.pi/audit/cycle-900/S/probes/probe_ws_s.py",
+      "expected": "Notebook 09 spec penalty = -phi*(w_target - w_source)^2; for 2 groups at slope=1, source mean 0, phi=1 the potential increase must be about -2.",
+      "observed": "probe output: 'pool=individual potential(slope=1)-potential(slope=0) = 2.112'. Code adds +loss_factor*sum(sqr(slope - slope_mu)) (sign inverted relative to the partial branch).",
+      "consequence": "Individual-pooling transfer with loss_factor_for_tune>0 pushes slopes away from the source instead of shrinking them; the same hyperparameter has the opposite effect depending on pool_type.",
+      "severity": "S2",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes",
+      "evidence": [
+        "cmd output line: pool=individual potential(slope=1)-potential(slope=0) =  2.112  (name: lt_0 - slope - loss)",
+        "source: linear_trend.py:622  self.loss_factor_for_tune * pm.math.sum(pm.math.sqr(slope - slope_mu))"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 900,
+      "phase": "finder",
+      "author_agent": "calibration__S",
+      "fixed": false,
+      "dedupe_key": "29672611fda4605b"
+    },
+    {
+      "id": "S-003",
+      "title": "loss_factor_for_tune has opposite sign in complete/individual vs partial LinearTrend pooling",
+      "location": "snapshot src/vangja/components/linear_trend.py:368-371, 537-541, 620-623",
+      "snapshot": "cycle-900@8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+      "command": "uv run --project /home/jovan/repos/vangja --frozen python /home/jovan/repos/vangja/.pi/audit/cycle-900/S/probes/probe_ws_s.py",
+      "expected": "The same hyperparameter should shrink the slope toward the transferred source value in every pooling mode: notebook 09 spec penalty = -phi*(w_target - w_source)^2 (negative phi flips to encourage deviation). All three modes should therefore show a negative potential increment at phi=1.",
+      "observed": "Potential increment at slope=1, source mean 0, phi=1 differs in sign/scale by pooling mode: complete +1.000, partial -2.112, individual +2.112. Only the partial branch uses the spec's negative squared penalty.",
+      "consequence": "Documented semantics of loss_factor_for_tune (positive = stronger constraint, negative = encourage deviation, notebook 09 §2) hold only for partial pooling; complete/individual invert the effect, and complete also changes the functional form (abs instead of squared). Ablations that sweep loss_factor across pooling modes compare non-comparable objectives.",
+      "severity": "S2",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes",
+      "evidence": [
+        "cmd output: pool=complete potential(slope=1)-potential(slope=0) =  1.000; pool=partial ... = -2.112; pool=individual ... =  2.112",
+        "linear_trend.py:370 '+', :539 '-', :622 '+'"
+      ],
+      "cross_refs": [],
+      "owner": "docs",
+      "found_in_cycle": 900,
+      "phase": "finder",
+      "author_agent": "calibration__S",
+      "fixed": false,
+      "dedupe_key": "98c1f0db8b5738f4"
+    },
+    {
+      "id": "S-004",
+      "title": "Fourier individual-pooling prior_from_idata doubles prior variance and halves correlations",
+      "location": "snapshot src/vangja/components/fourier_seasonality.py:419-429 (_individual_definition); same pattern src/vangja/components/normal_constant.py:275-283, uniform_constant.py:273-283, flat_trend.py:283-291",
+      "snapshot": "cycle-900@8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+      "command": "uv run --project /home/jovan/repos/vangja --frozen python /home/jovan/repos/vangja/.pi/audit/cycle-900/S/probes/probe_ws_s.py",
+      "expected": "Notebook 08: prior_from_idata fits MultivariateNormal(mu, Sigma) to the source posterior and 'preserv[es] the covariance structure between all parameters'; target marginal sd and correlations should match the source (complete pooling does: var_ratio 1.001, corr 0.9013).",
+      "observed": "Individual branch builds beta = pm.Normal(mu=priors[prior_beta], sigma=beta_sd, shape=(n_groups, 2*order)), adding an independent N(0, diag(beta_sd^2)) on top of the MVN draw. Source sd [2.0065 2.0034 1.497 1.4915], corr[0,1] 0.9005; target sd [2.8397 2.8417 2.1241 2.105], var_ratio ~2.0, corr[0,1] 0.4515 (halved).",
+      "consequence": "Individual-pooling seasonal transfer is over-dispersed (2x variance) and the advertised covariance preservation of prior_from_idata is not delivered in this mode; same defect pattern in NormalConstant, UniformConstant and FlatTrend individual branches.",
+      "severity": "S2",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes",
+      "evidence": [
+        "cmd output: pool=individual target sd=[2.8397 2.8417 2.1241 2.105 ] var_ratio=[2.003 2.012 2.013 1.992]; target corr[0,1]=0.4515 vs source corr[0,1]=0.9005",
+        "cmd output: pool=complete target sd=[2.0074 1.9973 1.5015 1.4855] var_ratio=[1.001 0.994 1.006 0.992]; target corr[0,1]=0.9013"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 900,
+      "phase": "finder",
+      "author_agent": "calibration__S",
+      "fixed": false,
+      "dedupe_key": "d73b6041b811ee8e"
+    },
+    {
+      "id": "S-005",
+      "title": "LinearTrend individual-pooling prior_from_idata doubles the slope prior variance",
+      "location": "snapshot src/vangja/components/linear_trend.py:601-606 (_individual_definition prior_from_idata branch)",
+      "snapshot": "cycle-900@8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+      "command": "uv run --project /home/jovan/repos/vangja --frozen python /home/jovan/repos/vangja/.pi/audit/cycle-900/S/probes/probe_ws_s.py",
+      "expected": "The transferred slope prior should have the source posterior variance (4.02) as in complete pooling, preserving the MVN marginal; a Normal prior needs a deterministic location, not a random MVN draw plus extra independent scale.",
+      "observed": "slope = pm.Normal(slope_key, mu=priors[prior_slope], sigma=slope_sd, shape=n_groups) with slope_sd from the source posterior; measured target variance 8.139 vs source 4.020 (ratio 2.024).",
+      "consequence": "Individual-pooling trend transfer is over-dispersed (2x prior variance) and all groups share the same random prior location draw, contradicting both the covariance-preservation claim and the independence implied by individual pooling.",
+      "severity": "S2",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes",
+      "evidence": [
+        "cmd output: LinearTrend individual: source var=4.020 target var=8.139 ratio=2.024"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 900,
+      "phase": "finder",
+      "author_agent": "calibration__S",
+      "fixed": false,
+      "dedupe_key": "bd0e2e236a633597"
+    },
+    {
+      "id": "S-006",
+      "title": "Parametric transfer uses the posterior mean, not the mode/MAP estimator the paper reports as better",
+      "location": "snapshot src/vangja/components/linear_trend.py:190-224 (_get_slope_params_from_idata uses .mean()) and src/vangja/components/fourier_seasonality.py:181-203 (_get_beta_params_from_idata uses .mean(axis=(1,0)))",
+      "snapshot": "cycle-900@8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+      "command": "uv run --project /home/jovan/repos/vangja --frozen python /home/jovan/repos/vangja/.pi/audit/cycle-900/S/probes/probe_ws_s.py",
+      "expected": "Notebook 09 cell 4: 'The paper showed that centering priors around the mode rather than the mean can improve results, particularly for the trend slope'; a mode/MAP-centred transfer estimator would return a location at the posterior mode rather than the sample mean. (README documents mean as the default and mode as a manual override.)",
+      "observed": "On a strongly skewed Exp(1) posterior the helper returns loc=0.99851 exactly equal to the sample mean, while the histogram/KDE mode is 0.06202 (loc - mode = +0.936). No case-study script sets override_*_for_tune (grep: 1 hit, an sbatch README).",
+      "consequence": "The released default estimator is the posterior mean; the mode improvement the notebook attributes to the paper is not the default and is not exercised by any case-study artifact (no override_* use), so paper claims about mode-centred priors are not traceable to the snapshot's code or experiments.",
+      "severity": "S2",
+      "confidence": "medium",
+      "status": "verified",
+      "reproducible": "yes",
+      "evidence": [
+        "cmd output: returned loc=0.99851  sample mean=0.99851  returned sd=1.00245  histogram-mode=0.06202; loc-mode = +0.93649",
+        "grep -rn override <snapshot>/case_studies | wc -l -> 1 (only case_studies/README.md:173 sbatch flags, no model overrides)"
+      ],
+      "cross_refs": [],
+      "owner": "docs",
+      "found_in_cycle": 900,
+      "phase": "finder",
+      "author_agent": "calibration__S",
+      "fixed": false,
+      "dedupe_key": "b0d988e6aed22bcc"
+    },
+    {
+      "id": "S-007",
+      "title": "Parametric transfer from a one-draw MAP posterior yields sigma=0 and breaks the Normal prior",
+      "location": "snapshot src/vangja/components/linear_trend.py:219 and src/vangja/components/fourier_seasonality.py:201 (posterior .std() used as prior sigma)",
+      "snapshot": "cycle-900@8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+      "command": "uv run --project /home/jovan/repos/vangja --frozen python /home/jovan/repos/vangja/.pi/audit/cycle-900/S/probes/probe_ws_s.py",
+      "expected": "Notebook 08 comparison table: parametric transfer 'Works with MAP, ADVI, NUTS'; a Normal prior requires sigma>0, and a MAP posterior carries a single draw so a valid scale must be sourced elsewhere.",
+      "observed": "With a one-draw idata the helper returns (loc, sd) = (0.5, 0.0); evaluating pm.logp(pm.Normal.dist(0.5, 0.0), 0.5) raises ParameterValueError: sigma > 0.",
+      "consequence": "The documented 'Works with MAP' parametric transfer path is unusable: a MAP point estimate has one posterior draw, so the derived Normal prior has zero scale and the target model has no valid log-density (and fit(method=map/mapx) leaves self.trace=None, so there is not even an InferenceData to pass).",
+      "severity": "S2",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes",
+      "evidence": [
+        "cmd output: returned (loc, sd) = (0.5, 0.0); Normal(loc, sd) logp at loc = ParameterValueError: sigma > 0",
+        "source: linear_trend.py:219 slope_sd = (...).std(); fourier_seasonality.py:201 .std(axis=(1,0))"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 900,
+      "phase": "finder",
+      "author_agent": "calibration__S",
+      "fixed": false,
+      "dedupe_key": "a2a4e61aa11f6213"
+    },
+    {
+      "id": "S-008",
+      "title": "Partial-pooling LinearTrend with n_changepoints=0 raises KeyError on the missing delta posterior",
+      "location": "snapshot src/vangja/components/linear_trend.py:504-524 (_partial_definition delta handling not guarded by n_changepoints)",
+      "snapshot": "cycle-900@8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+      "command": "uv run --project /home/jovan/repos/vangja --frozen python /home/jovan/repos/vangja/.pi/audit/cycle-900/S/probes/probe_ncp0.py",
+      "expected": "With n_changepoints=0 there is no delta parameter, so transfer must not query the delta posterior; the individual-pooling branch demonstrates the intended guard (linear_trend.py: 'if self.n_changepoints:').",
+      "observed": "_partial_definition calls _get_delta_params_from_idata whenever delta_pool_type=='partial' (default), even with n_changepoints=0; probe raises KeyError 'Could not find node at lt_0 - delta', while the identical individual-pooling setup returns OK.",
+      "consequence": "A valid model configuration (LinearTrend with no changepoints, partial pooling, transfer) crashes before inference with a KeyError; the individual branch guards the same code path with 'if self.n_changepoints', so the dispatch is inconsistent across pooling modes.",
+      "severity": "S3",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes",
+      "evidence": [
+        "cmd output: partial -> KeyError 'Could not find node at lt_0 - delta'; individual OK"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 900,
+      "phase": "finder",
+      "author_agent": "calibration__S",
+      "fixed": false,
+      "dedupe_key": "d98ded96c8ced6ea"
+    }
+  ]
+}

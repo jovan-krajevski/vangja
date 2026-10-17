@@ -48,6 +48,15 @@ supervisor applies the decision rule.
   fix → status → dependency, one row per root issue.
 - Amendments or waivers when a rule genuinely does not apply, labelled as such.
 
+## Root-issue mapping (plan/07 §8)
+
+- Every confirmed finding must map to exactly one root issue (`RI-###`) with:
+  finding ids, an owner in `code | paper | protocol | docs | env`, a concrete
+  fix, a status, and a dependency. Dependency order is protocol → code → reruns
+  → paper. A finding with no owner/fix is an incomplete adjudication.
+- Resolve disputes with your own re-check (open the lines, run the command); an
+  unresolved dispute is escalated `[blocking]`, never averaged away.
+
 ## Prohibitions
 
 - Never invent a resolution: unresolved stays unresolved and is escalated.

@@ -48,6 +48,17 @@ reading what anyone else concluded.
 - Optional: `dispatch` a `scout` for cheap recon inside the workstream (audit
   roles may not spawn audit workers).
 
+## Independence (phase separation, plan/07 §8)
+
+- You are one of up to eight finders running in parallel. **You may not read
+  another workstream's `FINDINGS.md`/`findings.json`**, the verifier's `VERIFY.md`,
+  the synthesizer's report, or `.pi/audit/calibration/**`. Your only inputs are
+  `SCOPE.md`, `_PROTOCOL.md`, your own `BRIEF.md`, `gates.json`, the snapshot,
+  and your skills.
+- The historical audit (`Vangja-project/audit/**`) is the calibration scorer's
+  reference. Reading it to copy findings defeats the calibration and is a
+  workstream-E finding against the harness itself.
+
 ## Prohibitions
 
 - **Never copy the historical audit.** `Vangja-project/audit/**` is a calibration

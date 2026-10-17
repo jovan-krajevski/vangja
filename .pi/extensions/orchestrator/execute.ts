@@ -712,6 +712,10 @@ async function executeSpawn(context: RunContext, action: Action, options: Execut
 	} else {
 		recordOutcome(root, true, `${action.agent} ${action.key} ok`, "conductor");
 	}
+	if (action.state === "AUDIT") {
+		const cycle = Number(action.key.split(":")[1]);
+		if (Number.isInteger(cycle) && cycle > 0) syncAuditState(root, cycle);
+	}
 	refreshViews(root);
 	return {
 		performed: true,

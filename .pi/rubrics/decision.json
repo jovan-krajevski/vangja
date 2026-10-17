@@ -1,0 +1,69 @@
+{
+  "schema": "vangja-rubric/1",
+  "id": "decision",
+  "title": "Audit decision rule (plan/02_ARCHITECTURE.md §5.4)",
+  "kind": "decision",
+  "scale": [
+    "strong reject",
+    "reject",
+    "weak reject",
+    "borderline",
+    "weak accept",
+    "accept",
+    "strong accept"
+  ],
+  "max_cycles": 5,
+  "blocking_rules": {
+    "confirmed_s0": "any confirmed S0 caps the grade at weak reject",
+    "confirmed_core_s1": "any confirmed S1 in M/S/P/C caps the grade at weak reject",
+    "unfixed_other_s1": "an unfixed confirmed S1 outside M/S/P/C caps the grade at borderline",
+    "failed_gate": "a failed deterministic gate caps the grade at weak reject unless the adjudicator records inapplicability",
+    "accept_requires": "no confirmed S0/S1, all gates green, traceability complete, limitation disclosures present",
+    "calibration": "recall < 0.6 or a confirmed rejected Phase-A lead marks the run uncalibrated and refuses to grade",
+    "max_cycles": "at most 5 audit cycles, then BLOCKED for human direction"
+  },
+  "mapping": {
+    "strong reject": {
+      "action": "reopen-p0",
+      "reaudit": true,
+      "done": false,
+      "description": "reopen P0 tasks from the findings; new audit cycle after fixes"
+    },
+    "reject": {
+      "action": "reopen-p0",
+      "reaudit": true,
+      "done": false,
+      "description": "reopen P0 tasks from the findings; new audit cycle after fixes"
+    },
+    "weak reject": {
+      "action": "fix-s0-s1",
+      "reaudit": true,
+      "done": false,
+      "description": "fix all S0/S1 and the S2s named as blocking; re-audit"
+    },
+    "borderline": {
+      "action": "fix-s0-s1",
+      "reaudit": true,
+      "done": false,
+      "description": "fix all S0/S1 and the S2s named as blocking; re-audit"
+    },
+    "weak accept": {
+      "action": "fix-feasible",
+      "reaudit": true,
+      "done": false,
+      "description": "fix the feasible fixes (all S0/S1 + blocking S2); re-audit unless purely editorial"
+    },
+    "accept": {
+      "action": "fix-blocking-or-done",
+      "reaudit": false,
+      "done": true,
+      "description": "if the report lists no blocking fixes → DONE (human sign-off); otherwise fix and re-audit"
+    },
+    "strong accept": {
+      "action": "fix-blocking-or-done",
+      "reaudit": false,
+      "done": true,
+      "description": "if the report lists no blocking fixes → DONE (human sign-off); otherwise fix and re-audit"
+    }
+  }
+}

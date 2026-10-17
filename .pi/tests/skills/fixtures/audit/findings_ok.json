@@ -13,7 +13,9 @@
       "confidence": "high",
       "status": "verified",
       "reproducible": "yes",
-      "evidence": ["tests/test_regularization.py:112"],
+      "evidence": [
+        "tests/test_regularization.py:112"
+      ],
       "cross_refs": [],
       "owner": "code",
       "found_in_cycle": 3
@@ -23,7 +25,7 @@
       "title": "Docstring promises MAP but code uses the mean",
       "location": "src/vangja/components/linear_trend.py:70",
       "snapshot": "audit-cycle/3@abc1234",
-      "command": "static reading of lines 60-80 and 200-210",
+      "command": "grep -n \"mean\" src/vangja/components/linear_trend.py",
       "expected": "the docstring describes the computed centre",
       "observed": "docstring says posterior mean; code uses .mean(); consistent",
       "consequence": "no impact; recorded to avoid duplicate work",
@@ -31,8 +33,12 @@
       "confidence": "high",
       "status": "refuted",
       "reproducible": "yes",
-      "evidence": ["src/vangja/components/linear_trend.py:204"],
-      "cross_refs": ["WS-H-002"],
+      "evidence": [
+        "src/vangja/components/linear_trend.py:204"
+      ],
+      "cross_refs": [
+        "WS-H-002"
+      ],
       "owner": "docs",
       "found_in_cycle": 3
     }

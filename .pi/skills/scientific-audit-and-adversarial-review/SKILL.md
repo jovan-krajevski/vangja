@@ -16,7 +16,7 @@ never synthesise; synthesis adds no new primary claims. The authority is
 ```
 ### <WS>-<NNN> · <one-line title>
 - **Location:** <file:line, or artifact path + config/seed>
-- **Command / test:** <exact command, or "static reading of lines X–Y">
+- **Command / test:** <exact re-runnable command; a "static reading" is NOT a command>
 - **Expected:** <what should hold, per the paper/spec/sound practice>
 - **Observed:** <what actually happens, with numbers>
 - **Consequence:** <scientific or practical impact>
@@ -26,8 +26,9 @@ never synthesise; synthesis adds no new primary claims. The authority is
 ```
 
 Machine form adds `id`, `snapshot`, `reproducible`, `evidence`, `cross_refs`,
-`owner`, `found_in_cycle` (plan/07 §4). **No command (or exact file:line plus
-observed output) → not a finding**; it goes to a question, not the register.
+`owner`, `found_in_cycle` (plan/07 §4). **No command → not a finding**; a
+static reading is not a command. If you cannot reproduce it, record it as
+`to-verify` with the failed command, or drop it.
 
 Severity: **S0** a result is wrong or the method cannot support any claim ·
 **S1** a claim is unsupported/overstated · **S2** documentation, usability or

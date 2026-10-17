@@ -1,0 +1,261 @@
+{
+  "schema": "vangja-rubric/1",
+  "id": "audit",
+  "title": "Audit rubric (one branch per workstream + cross-cutting)",
+  "kind": "rubric",
+  "scale": [
+    "0",
+    "0.5",
+    "1"
+  ],
+  "branches": [
+    {
+      "id": "ws_M",
+      "title": "WS-M Methodology & design",
+      "weight": 0.06,
+      "children": [
+        {
+          "id": "ws_M_evidence",
+          "text": "WS-M findings carry nine-field evidence and stay in boundary",
+          "criterion": "1 only when every WS-M finding has a reproducing command and no finding crosses its boundary without a cross-ref.",
+          "type": "binary",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "ws_S",
+      "title": "WS-S Statistics & math",
+      "weight": 0.06,
+      "children": [
+        {
+          "id": "ws_S_evidence",
+          "text": "WS-S findings carry nine-field evidence and stay in boundary",
+          "criterion": "1 only when every WS-S finding has a reproducing command and no finding crosses its boundary without a cross-ref.",
+          "type": "binary",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "ws_P",
+      "title": "WS-P Probabilistic UQ & calibration",
+      "weight": 0.06,
+      "children": [
+        {
+          "id": "ws_P_evidence",
+          "text": "WS-P findings carry nine-field evidence and stay in boundary",
+          "criterion": "1 only when every WS-P finding has a reproducing command and no finding crosses its boundary without a cross-ref.",
+          "type": "binary",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "ws_D",
+      "title": "WS-D Data handling & leakage",
+      "weight": 0.06,
+      "children": [
+        {
+          "id": "ws_D_evidence",
+          "text": "WS-D findings carry nine-field evidence and stay in boundary",
+          "criterion": "1 only when every WS-D finding has a reproducing command and no finding crosses its boundary without a cross-ref.",
+          "type": "binary",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "ws_I",
+      "title": "WS-I Implementation & software quality",
+      "weight": 0.06,
+      "children": [
+        {
+          "id": "ws_I_evidence",
+          "text": "WS-I findings carry nine-field evidence and stay in boundary",
+          "criterion": "1 only when every WS-I finding has a reproducing command and no finding crosses its boundary without a cross-ref.",
+          "type": "binary",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "ws_R",
+      "title": "WS-R Reproducibility & provenance",
+      "weight": 0.06,
+      "children": [
+        {
+          "id": "ws_R_evidence",
+          "text": "WS-R findings carry nine-field evidence and stay in boundary",
+          "criterion": "1 only when every WS-R finding has a reproducing command and no finding crosses its boundary without a cross-ref.",
+          "type": "binary",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "ws_H",
+      "title": "WS-H Documentation & hygiene",
+      "weight": 0.06,
+      "children": [
+        {
+          "id": "ws_H_evidence",
+          "text": "WS-H findings carry nine-field evidence and stay in boundary",
+          "criterion": "1 only when every WS-H finding has a reproducing command and no finding crosses its boundary without a cross-ref.",
+          "type": "binary",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "ws_E",
+      "title": "WS-E Evaluation integrity & anti-gaming",
+      "weight": 0.06,
+      "children": [
+        {
+          "id": "ws_E_evidence",
+          "text": "WS-E findings carry nine-field evidence and stay in boundary",
+          "criterion": "1 only when every WS-E finding has a reproducing command and no finding crosses its boundary without a cross-ref.",
+          "type": "binary",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "ws_C",
+      "title": "WS-C Claims ↔ artifacts traceability",
+      "weight": 0.06,
+      "children": [
+        {
+          "id": "ws_C_evidence",
+          "text": "WS-C findings carry nine-field evidence and stay in boundary",
+          "criterion": "1 only when every WS-C finding has a reproducing command and no finding crosses its boundary without a cross-ref.",
+          "type": "binary",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "ws_L",
+      "title": "WS-L Literature & positioning",
+      "weight": 0.06,
+      "children": [
+        {
+          "id": "ws_L_evidence",
+          "text": "WS-L findings carry nine-field evidence and stay in boundary",
+          "criterion": "1 only when every WS-L finding has a reproducing command and no finding crosses its boundary without a cross-ref.",
+          "type": "binary",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "evidence_quality",
+      "title": "Cross-cutting: evidence quality",
+      "weight": 0.08,
+      "children": [
+        {
+          "id": "evidence_nine_fields",
+          "text": "Every confirmed finding has the nine fields and a command",
+          "criterion": "1 only when every confirmed finding validates against the finding schema.",
+          "type": "binary",
+          "weight": 0.5
+        },
+        {
+          "id": "hash_ok",
+          "text": "Artifact hashes match",
+          "criterion": "Autofilled from the artifacts-complete gate.",
+          "type": "auto",
+          "weight": 0.5,
+          "auto": "hash_ok"
+        }
+      ]
+    },
+    {
+      "id": "coverage",
+      "title": "Cross-cutting: coverage",
+      "weight": 0.08,
+      "children": [
+        {
+          "id": "coverage_matrix",
+          "text": "The coverage matrix is complete",
+          "criterion": "1 only when every workstream boundary item is marked covered/partial/absent with evidence.",
+          "type": "binary",
+          "weight": 0.5
+        },
+        {
+          "id": "no_boundary_violation",
+          "text": "No workstream reported outside its boundary",
+          "criterion": "1 only when out-of-scope leads are cross-refs, not findings.",
+          "type": "binary",
+          "weight": 0.5
+        }
+      ]
+    },
+    {
+      "id": "refutation_effort",
+      "title": "Cross-cutting: refutation effort",
+      "weight": 0.08,
+      "children": [
+        {
+          "id": "refutation_attempted",
+          "text": "Every S0/S1/S2 finding was tested against a refutation",
+          "criterion": "1 only when VERIFY.md records an attempted refutation (changed assumption/probe) per finding.",
+          "type": "binary",
+          "weight": 0.5
+        },
+        {
+          "id": "unresolved_tagged",
+          "text": "Unresolved findings carry an author question tag",
+          "criterion": "1 only when every unresolved finding appears in QUESTIONS_FOR_AUTHORS.md as blocking/non-blocking.",
+          "type": "binary",
+          "weight": 0.5
+        }
+      ]
+    },
+    {
+      "id": "reproducibility",
+      "title": "Cross-cutting: reproducibility",
+      "weight": 0.08,
+      "children": [
+        {
+          "id": "reproduce_headline",
+          "text": "Headline numbers were recomputed",
+          "criterion": "Autofilled from the reproduce-headline gate.",
+          "type": "auto",
+          "weight": 0.5,
+          "auto": "reproduce_headline"
+        },
+        {
+          "id": "audit_reproducible",
+          "text": "The audit itself is reproducible from the snapshot",
+          "criterion": "1 only when SCOPE.md pins the snapshot, hashes, and commands that regenerate every finding.",
+          "type": "binary",
+          "weight": 0.5
+        }
+      ]
+    },
+    {
+      "id": "integrity",
+      "title": "Cross-cutting: integrity",
+      "weight": 0.08,
+      "children": [
+        {
+          "id": "gaming_scan_clean",
+          "text": "The anti-gaming scan is clean or explained",
+          "criterion": "Autofilled from the gaming-scan gate.",
+          "type": "auto",
+          "weight": 0.5,
+          "auto": "gaming_scan_clean"
+        },
+        {
+          "id": "no_synth_findings",
+          "text": "Synthesis added no primary findings",
+          "criterion": "1 only when every reported finding carries a verified finder-phase id.",
+          "type": "binary",
+          "weight": 0.5
+        }
+      ]
+    }
+  ]
+}

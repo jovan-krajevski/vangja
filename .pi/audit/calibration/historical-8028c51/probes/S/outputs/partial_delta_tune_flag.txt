@@ -1,0 +1,3 @@
+PROBE partial_delta_tune_flag pool=complete   tune_method=parametric delta_tune_method=None: fit=OK
+PROBE partial_delta_tune_flag pool=partial    tune_method=parametric delta_tune_method=None: fit=FAILED KeyError: "No variable named 'lt_0 - delta'. Did you mean one of ('lt_0 - slope',)?"
+PROBE partial_delta_tune_flag pool=individual tune_method=parametric delta_tune_method=None: fit=OK

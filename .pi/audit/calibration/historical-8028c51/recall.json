@@ -1,0 +1,98 @@
+{
+  "schema": "vangja-calibration-report/1",
+  "generated_at": "2026-10-17T14:56:16.780Z",
+  "mode": "finder",
+  "snapshot": "8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+  "snapshot_readonly": true,
+  "findings_source": ".pi/audit/calibration/historical-8028c51/findings",
+  "expected_source": ".pi/audit/calibration/expected.json",
+  "calibrated": false,
+  "recall": 0.8571428571428571,
+  "threshold": 0.6,
+  "cases": 7,
+  "hit_count": 6,
+  "hits": [
+    {
+      "expected": "WS-S-001",
+      "finding": "S-006",
+      "workstream": "S",
+      "severity": "S2",
+      "title": "Parametric transfer uses the posterior mean, not the mode/MAP estimator the paper reports as better"
+    },
+    {
+      "expected": "WS-S-002",
+      "finding": "S-001",
+      "workstream": "S",
+      "severity": "S2",
+      "title": "Complete-pooling LinearTrend regularization potential has inverted sign and wrong functional form"
+    },
+    {
+      "expected": "WS-M-001",
+      "finding": "M-001",
+      "workstream": "M",
+      "severity": "S1",
+      "title": "Model configuration is selected on the test horizon with no validation split"
+    },
+    {
+      "expected": "WS-M-002",
+      "finding": "M-002",
+      "workstream": "M",
+      "severity": "S1",
+      "title": "Claimed Prophet and TimeSeers baselines are absent: no runner imports either package"
+    },
+    {
+      "expected": "WS-R-001",
+      "finding": "R-001",
+      "workstream": "R",
+      "severity": "S1",
+      "title": "PyMC is a direct runtime dependency but is not declared in pyproject.toml"
+    },
+    {
+      "expected": "WS-R-004",
+      "finding": "R-002",
+      "workstream": "R",
+      "severity": "S1",
+      "title": "No lockfile; container and CI install floating PyMC while docs claim 'bit-for-bit reproducibility'"
+    }
+  ],
+  "misses": [
+    {
+      "expected": "WS-S-003",
+      "workstream": "S",
+      "severity": "S1",
+      "title": "FourierSeasonality regularization scale lam is inconsistent across pooling modes"
+    }
+  ],
+  "rejected_confirmed": 1,
+  "rejected_hits": [
+    {
+      "lead": "F-015",
+      "finding": "M-010",
+      "title": "Prophet baseline is a single default configuration while Vangja is a 2592-config grid search",
+      "evidence": "case_studies/smart_home/run.py:12-19: The Vangja runner searches 2592 configurations (2 x 2 x 2 x 6 x 3 x 3 x 2 x 3), all selected on the test horizon. The paper describes the primary Prophet baseline as 'A default configuration Prophet m"
+    }
+  ],
+  "by_workstream": {
+    "S": {
+      "expected": 3,
+      "hit": 2
+    },
+    "M": {
+      "expected": 2,
+      "hit": 2
+    },
+    "R": {
+      "expected": 2,
+      "hit": 2
+    }
+  },
+  "narrow_briefs": {
+    "S": [
+      "WS-S-003"
+    ],
+    "M": [
+      "F-015 (superseded framing; report the stronger identity finding, not this one)"
+    ]
+  },
+  "detail": "recall 6/7 = 0.857 (threshold 0.6); rejected leads confirmed 1; UNCALIBRATED"
+}

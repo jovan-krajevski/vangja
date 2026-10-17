@@ -1,0 +1,196 @@
+{
+  "schema": "vangja-rubric/1",
+  "id": "readiness",
+  "title": "Readiness rubric (plan/02_ARCHITECTURE.md §5.3)",
+  "kind": "rubric",
+  "scale": [
+    "0",
+    "0.5",
+    "1"
+  ],
+  "branches": [
+    {
+      "id": "findings_closed",
+      "title": "All S0/S1 findings closed or waived with evidence",
+      "weight": 0.14,
+      "children": [
+        {
+          "id": "all_s0s1_closed",
+          "text": "No open S0/S1 finding",
+          "criterion": "1 only when every S0/S1 finding is closed or covered by a waiver naming the evidence.",
+          "type": "binary",
+          "weight": 0.6
+        },
+        {
+          "id": "waivers_recorded",
+          "text": "Every waiver is recorded and justified",
+          "criterion": "1 only when each waiver names the failed gate and why it does not invalidate the result.",
+          "type": "binary",
+          "weight": 0.4
+        }
+      ]
+    },
+    {
+      "id": "plan_items_closed",
+      "title": "All P0/P1 REVIEW/PLAN.md items closed",
+      "weight": 0.12,
+      "children": [
+        {
+          "id": "p0p1_closed",
+          "text": "P0/P1 plan items are closed",
+          "criterion": "1 only when every P0/P1 item is closed or explicitly re-scoped by a recorded decision.",
+          "type": "binary",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "confirmation_complete",
+      "title": "Confirmation runs complete with PROTOCOL §11 artifacts",
+      "weight": 0.15,
+      "children": [
+        {
+          "id": "confirmation_frozen",
+          "text": "Confirmation origins were frozen before results",
+          "criterion": "Autofilled from the confirmation-frozen gate.",
+          "type": "auto",
+          "weight": 0.4,
+          "auto": "confirmation_frozen"
+        },
+        {
+          "id": "artifacts_complete",
+          "text": "Required artifacts exist and validate",
+          "criterion": "Autofilled from the artifacts-complete gate.",
+          "type": "auto",
+          "weight": 0.4,
+          "auto": "artifacts_complete"
+        },
+        {
+          "id": "no_failures_hidden",
+          "text": "Failure and availability files reconcile with N",
+          "criterion": "Autofilled from the no-failures-hidden gate.",
+          "type": "auto",
+          "weight": 0.2,
+          "auto": "no_failures_hidden"
+        }
+      ]
+    },
+    {
+      "id": "baselines_identical",
+      "title": "Baselines on identical data; context excluded",
+      "weight": 0.12,
+      "children": [
+        {
+          "id": "context_excluded",
+          "text": "Context series absent from target aggregates",
+          "criterion": "Autofilled from the context-excluded gate.",
+          "type": "auto",
+          "weight": 0.5,
+          "auto": "context_excluded"
+        },
+        {
+          "id": "baselines_same_data",
+          "text": "Baselines use identical splits and data",
+          "criterion": "1 only when every baseline runs on the same target units, splits, and data hash as Vangja.",
+          "type": "binary",
+          "weight": 0.5
+        }
+      ]
+    },
+    {
+      "id": "uncertainty",
+      "title": "Uncertainty: calibration done, MAP disclosure ready",
+      "weight": 0.14,
+      "children": [
+        {
+          "id": "calibration_analysis",
+          "text": "Calibration analysis exists",
+          "criterion": "1 only when coverage/sharpness/CRPS is computed on held-out forecasts and reported.",
+          "type": "binary",
+          "weight": 0.4
+        },
+        {
+          "id": "calibration_ok",
+          "text": "The calibration check passes",
+          "criterion": "Autofilled from the calibration verdict.",
+          "type": "auto",
+          "weight": 0.3,
+          "auto": "calibration_ok"
+        },
+        {
+          "id": "map_disclosure",
+          "text": "MAP-heuristic uncertainty is disclosed",
+          "criterion": "1 only when the paper/docs state that MAP uncertainty is a heuristic, not a posterior.",
+          "type": "binary",
+          "weight": 0.3
+        }
+      ]
+    },
+    {
+      "id": "reproducibility",
+      "title": "Reproducibility: make verify passes on present artifacts",
+      "weight": 0.13,
+      "children": [
+        {
+          "id": "reproduce_headline",
+          "text": "Headline numbers reproduce from artifacts",
+          "criterion": "Autofilled from the reproduce-headline gate.",
+          "type": "auto",
+          "weight": 0.4,
+          "auto": "reproduce_headline"
+        },
+        {
+          "id": "make_verify",
+          "text": "The paper build verifies",
+          "criterion": "1 only when `make verify` (paper build) passes on the artifacts present.",
+          "type": "binary",
+          "weight": 0.3
+        },
+        {
+          "id": "env_pinned",
+          "text": "Environment is pinned and consistent",
+          "criterion": "Autofilled from the env-pinned gate.",
+          "type": "auto",
+          "weight": 0.3,
+          "auto": "env_pinned"
+        }
+      ]
+    },
+    {
+      "id": "environment",
+      "title": "Environment pinned; CI-equivalent run green",
+      "weight": 0.1,
+      "children": [
+        {
+          "id": "tests_pass",
+          "text": "The CI-equivalent test run is green",
+          "criterion": "Autofilled from the tests gate.",
+          "type": "auto",
+          "weight": 0.5,
+          "auto": "tests_pass"
+        },
+        {
+          "id": "ci_green",
+          "text": "CI runs tests on the pinned environment",
+          "criterion": "1 only when CI executes the test suite on the locked environment.",
+          "type": "binary",
+          "weight": 0.5
+        }
+      ]
+    },
+    {
+      "id": "limitations",
+      "title": "Negative/limitation findings documented",
+      "weight": 0.1,
+      "children": [
+        {
+          "id": "limitations_documented",
+          "text": "Limitations and negative results are documented",
+          "criterion": "1 only when the paper's limitations section covers the audit's negative and limitation findings.",
+          "type": "binary",
+          "weight": 1
+        }
+      ]
+    }
+  ]
+}

@@ -20,7 +20,7 @@
 ## Evidence required for every finding
 
 - exact `file:line` (or artifact path + config/seed), and the snapshot SHA;
-- the exact command run (or "static reading of lines X–Y");
+- the exact re-runnable command (a static reading is not a command);
 - observed output (trimmed) or numbers;
 - severity (S0–S3) + confidence (high/medium/low) + status
   (verified/to-verify/refuted/unresolved);

@@ -352,7 +352,7 @@ test("PAPER spawns the writer, then supervises its PR, then merges and audits", 
 	assert.equal(spawn.agent, "supervisor");
 });
 
-test("AUDIT stops at the cycle cap and otherwise spawns the finder for the current phase", () => {
+test("AUDIT stops at the cycle cap and spawns the agent that owns the current phase", () => {
 	const capped = nextAction(
 		loopState({ state: "AUDIT" }),
 		view({ audit: { cycle: 6, phase: "find", complete: false } }),
@@ -360,14 +360,26 @@ test("AUDIT stops at the cycle cap and otherwise spawns the finder for the curre
 	);
 	assert.equal(capped.kind, "block");
 	assert.match(capped.reason, /maxAuditCycles=5/);
-	const running = nextAction(
-		loopState({ state: "AUDIT" }),
-		view({ audit: { cycle: 2, phase: "verify", complete: false } }),
-		loopOptions(),
-	);
-	assert.equal(running.kind, "spawn");
-	assert.equal(running.agent, "audit_finder");
-	assert.equal(running.key, "audit:2:verify");
+	// S6 contract: gates → find → verify → synthesise → adjudicate, each phase
+	// spawned to the agent that owns it (the S4 contract spawned the finder for
+	// every phase; that was the placeholder this stage replaces).
+	const phases: Array<[string, string]> = [
+		["find", "audit_finder"],
+		["verify", "audit_verifier"],
+		["synthesise", "audit_synthesizer"],
+		["adjudicate", "audit_adjudicator"],
+		["gates", "supervisor"],
+	];
+	for (const [phase, agent] of phases) {
+		const running = nextAction(
+			loopState({ state: "AUDIT" }),
+			view({ audit: { cycle: 2, phase, complete: false } }),
+			loopOptions(),
+		);
+		assert.equal(running.kind, "spawn", phase);
+		assert.equal(running.agent, agent, phase);
+		assert.equal(running.key, `audit:2:${phase}:1`);
+	}
 	const complete = nextAction(
 		loopState({ state: "AUDIT" }),
 		view({ audit: { cycle: 2, phase: "adjudicate", complete: true } }),

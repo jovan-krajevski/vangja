@@ -1,0 +1,169 @@
+{
+  "schema": "vangja-rubric/1",
+  "id": "paper",
+  "title": "Paper rubric",
+  "kind": "rubric",
+  "scale": [
+    "0",
+    "0.5",
+    "1"
+  ],
+  "branches": [
+    {
+      "id": "structure",
+      "title": "Structure",
+      "weight": 0.12,
+      "children": [
+        {
+          "id": "structure_sections",
+          "text": "The paper has the expected sections",
+          "criterion": "1 only when introduction, method, experiments, results, limitations, and conclusion are present and ordered.",
+          "type": "binary",
+          "weight": 0.5
+        },
+        {
+          "id": "structure_reproducibility",
+          "text": "A reproducibility section names how to rebuild every number",
+          "criterion": "1 only when the paper names the exact commands and artifact layout for reproduction.",
+          "type": "binary",
+          "weight": 0.5
+        }
+      ]
+    },
+    {
+      "id": "claims_artifacts",
+      "title": "Claims ↔ artifacts",
+      "weight": 0.2,
+      "children": [
+        {
+          "id": "every_number_claimed",
+          "text": "Every number has a claims entry and artifact",
+          "criterion": "1 only when each number in paper/** maps to CLAIMS.json with a manifest SHA ancestor of the audited tag.",
+          "type": "binary",
+          "weight": 0.5
+        },
+        {
+          "id": "traceability_ok",
+          "text": "Traceability gate passes",
+          "criterion": "Autofilled from the traceability gate.",
+          "type": "auto",
+          "weight": 0.5,
+          "auto": "traceability_ok"
+        }
+      ]
+    },
+    {
+      "id": "baselines_honesty",
+      "title": "Baselines honesty",
+      "weight": 0.14,
+      "children": [
+        {
+          "id": "baselines_named_correctly",
+          "text": "Every baseline is the package it says it is",
+          "criterion": "1 only when a baseline labelled with a package name actually imports and runs that package.",
+          "type": "binary",
+          "weight": 0.6
+        },
+        {
+          "id": "baselines_same_tuning",
+          "text": "Tuning effort is comparable and disclosed",
+          "criterion": "1 only when the baseline and Vangja search budgets are comparable or the asymmetry is disclosed.",
+          "type": "binary",
+          "weight": 0.4
+        }
+      ]
+    },
+    {
+      "id": "limitations",
+      "title": "Limitations",
+      "weight": 0.12,
+      "children": [
+        {
+          "id": "limitations_honest",
+          "text": "Limitations cover the method's real failure modes",
+          "criterion": "1 only when negative transfer, MAP uncertainty, and selection effects are named where they apply.",
+          "type": "binary",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "calibration_disclosure",
+      "title": "Calibration disclosure",
+      "weight": 0.12,
+      "children": [
+        {
+          "id": "uq_calibration_reported",
+          "text": "UQ is calibrated or its lack is disclosed",
+          "criterion": "1 only when coverage/sharpness/CRPS is reported or the absence is explicitly stated.",
+          "type": "binary",
+          "weight": 0.5
+        },
+        {
+          "id": "map_disclosed",
+          "text": "Point-estimate headlines are labelled as such",
+          "criterion": "1 only when results labelled Bayesian name their estimator (MAP/MCMC/ADVI) and its limits.",
+          "type": "binary",
+          "weight": 0.5
+        }
+      ]
+    },
+    {
+      "id": "reproducibility_statement",
+      "title": "Reproducibility statement",
+      "weight": 0.12,
+      "children": [
+        {
+          "id": "repro_statement_true",
+          "text": "The reproducibility statement is true",
+          "criterion": "1 only when every artefact the statement claims is reachable at the audited tag.",
+          "type": "binary",
+          "weight": 0.5
+        },
+        {
+          "id": "reproduce_headline",
+          "text": "Headline numbers reproduce",
+          "criterion": "Autofilled from the reproduce-headline gate.",
+          "type": "auto",
+          "weight": 0.5,
+          "auto": "reproduce_headline"
+        }
+      ]
+    },
+    {
+      "id": "ai_use_disclosure",
+      "title": "AI-use disclosure",
+      "weight": 0.08,
+      "children": [
+        {
+          "id": "ai_use_statement",
+          "text": "AI assistance is disclosed per venue policy",
+          "criterion": "1 only when the AI-use statement names the tools, the tasks, and human verification.",
+          "type": "binary",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "venue_fit",
+      "title": "Venue fit",
+      "weight": 0.1,
+      "children": [
+        {
+          "id": "venue_scope_match",
+          "text": "The contribution matches the venue's scope",
+          "criterion": "1 only when the claimed contribution is within the target venue's scope and article type.",
+          "type": "binary",
+          "weight": 0.5
+        },
+        {
+          "id": "venue_format",
+          "text": "Length, structure, and references fit the venue",
+          "criterion": "1 only when the manuscript meets the venue's formal constraints (length, template, reference style).",
+          "type": "binary",
+          "weight": 0.5
+        }
+      ]
+    }
+  ]
+}
