@@ -132,9 +132,27 @@ test("killing the conductor mid-child leaves a stale lock, and the resumed run h
 		});
 		const lockFile = path.join(sandbox.root, ".pi", "state", "locks", "child.json");
 		const deadline = Date.now() + 15_000;
-		while (!fs.existsSync(lockFile) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 100));
-		assert.ok(fs.existsSync(lockFile), "child lock was never written");
-		const lock = JSON.parse(fs.readFileSync(lockFile, "utf8")) as { pid: number; action_key: string };
+		const conductorPid = conductor.pid;
+		let lock: { pid: number; action_key: string } | null = null;
+		while (Date.now() < deadline) {
+			if (fs.existsSync(lockFile)) {
+				const candidate = JSON.parse(fs.readFileSync(lockFile, "utf8")) as { pid: number; action_key: string };
+				// The provisional lock carries the conductor pid; wait for onSpawn to
+				// replace it with the child pid so the kill below also kills the child.
+				if (candidate.pid !== conductorPid) {
+					lock = candidate;
+					break;
+				}
+			}
+			await new Promise((resolve) => setTimeout(resolve, 25));
+		}
+		assert.ok(lock, "child lock with the child pid was never written");
+		// The start event is appended before the lock: a kill can no longer leave a
+		// lock with no start event (the V2 race).
+		const startsBeforeKill = readEvents(sandbox.root).filter(
+			(event) => event.action_phase === "start" && String(event.action_key ?? "").startsWith("work:"),
+		);
+		assert.equal(startsBeforeKill.length, 1, "the start event must precede the child lock");
 		conductor.kill("SIGKILL");
 		try {
 			process.kill(lock.pid, "SIGKILL");

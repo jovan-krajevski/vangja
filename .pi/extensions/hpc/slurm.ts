@@ -342,10 +342,13 @@ export function parseSbatchJobId(stdout: string): string {
 export function renderTemplate(template: string, vars: Record<string, string>): string {
 	const lines: string[] = [];
 	for (const line of template.split("\n")) {
-		const hadPlaceholder = /\{\{[A-Z0-9_]+\}\}/.test(line);
+		const placeholders = [...line.matchAll(/\{\{([A-Z0-9_]+)\}\}/g)].map((match) => match[1]);
+		// Optional SBATCH lines / optional commands vanish when their value is
+		// empty. A line is optional only when every placeholder on it is empty,
+		// so `#SBATCH --partition=` (one empty placeholder) is dropped while
+		// `{{CONTAINER_PREFIX}}{{RESUME_COMMAND}}` survives a non-empty command.
+		if (placeholders.length > 0 && placeholders.every((key) => (vars[key] ?? "").trim() === "")) continue;
 		const rendered = line.replace(/\{\{([A-Z0-9_]+)\}\}/g, (_match, key: string) => vars[key] ?? "");
-		// Optional SBATCH lines / optional commands vanish when their value is empty.
-		if (hadPlaceholder && rendered.trim() === "") continue;
 		lines.push(rendered);
 	}
 	return `${lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}\n`;

@@ -3188,3 +3188,441 @@ transcript still passes.
 - The collector is an LLM agent; the deterministic `collectorPass` in the tests
   and `run_mock_cluster.sh` is the executable specification of its protocol, not
   a replacement for the agent definition.
+
+---
+
+## S5 verification
+
+Independent stage verification by a fresh human-role session that did not build
+S5 (prompt: `research_agent/prompts/05_hpc_and_collector.md`). The report text
+was not trusted: every acceptance test was re-run from the committed tree, every
+deliverable was read, and the cases the report claims but the committed tests do
+not exercise were reproduced with independent probes.
+
+- Revision verified: `c58eb49` (`S5 docs: refresh the tools.json registry
+  comment`) on `update_pymc`, with the S5 build in `712ee1a`; working tree at
+  verification time clean except the pre-existing untracked `Vangja-project/`.
+- Toolchain: `pi 1.3.0`, `node v24.21.0`, `python3` from the project shell.
+- Scope of `1ed441e..HEAD`: only `.pi/**` and
+  `research_agent/REPORT_BUILD.md` (verified with `git diff --name-only`); no
+  `src/`, `tests/`, `fixed_case_studies/`, `paper/` or `docs/` change.
+- Checked: the eight `hpc_*` tools, config/validation, private ssh-agent and
+  git-forwarding rules, the submit gate and its seven named items, `sbatch
+  --parsable` + raw job id, fetch/manifest/`sacct`, requeue/attempt/idempotency,
+  the SLURM template and USR1 contract, the collector definition, the ledger
+  integration, conductor `WAITING_HPC`/`hpc-disabled` wiring, and the mock
+  harness. All nine prompt scenarios and all three prompt acceptance tests were
+  re-run.
+
+### Verdict: NO-GO
+
+All **S5 acceptance tests pass** on re-run (mock-cluster matrix 24/24, all 15
+scenario rows, snippets, literal `/loop:step`, S4 transcript), but two findings
+prevent a GO:
+
+1. **V1 (blocking, S5 defect): the default submitted job script is invalid.**
+   `renderJobScript` emits `#SBATCH --partition=` and `#SBATCH --gres=` for the
+   shipped config (`partition: ""`, `gpus: 0`) even though `renderTemplate`
+   claims optional lines vanish when empty. Every mock test uses exactly this
+   config, and the `sbatch` shim ignores the script body, so the suite cannot
+   see it. This is the path the first real submission will take.
+2. **V2 (blocking for a reliable GO): `make -C .pi verify-env` is not reliably
+   green.** One of six full-suite runs exited 2 on the S4 pause/resume test
+   (`startEvents.length === 0`) because the child lock is written before the
+   `start` event and the test kills the conductor on the lock. The report's
+   "exit 0" reproduces on five subsequent runs, so this is an intermittent
+   race, not a deterministic S5 regression — but the claim is not a stable
+   acceptance result.
+
+Everything else below is a discrepancy or a coverage gap, not a failing S5
+acceptance test. Those are listed so the fix is small and unambiguous.
+
+### Per-test results
+
+| # | Test / scenario | Verdict |
+|---|---|---|
+| A1 | `bash .pi/tests/hpc/run_mock_cluster.sh` — all scenarios green, matrix printed | **PASS** (exit 0; 24/24 tests, 15/15 scenario rows, snippets OK, literal `/loop:step` OK) |
+| A2 | `hpc_submit` twice → second refusal names the active experiment | **PASS** (`submission refused for E-0002: … single-slot: experiment E-0001(queued) is active`) |
+| A3 | `pi --print "/loop:step"`, queued experiment, no HPC host → skips `WAITING_HPC` | **PASS** (one `hpc_disabled` event; no `WAITING_HPC`; `work-local:T-001:1` event; final state `WORK`) |
+| 1 | Disabled: all eight tools `{enabled:false}`, no ssh | **PASS** (8/8; shim call log empty; `MOCK_FAIL_IF_SSH=1` would exit 97) |
+| 2 | Happy path: submit → collect, manifest with `sacct` + SHA-256 per file | **PASS** |
+| 3 | Timeout exit 99: checkpoints first, progress, `requeue_requested`, attempt 2 same key | **PASS** |
+| 4 | OOM: one doubled-memory requeue, second OOM → `failed-final` + `BLOCKED` | **PASS** |
+| 5 | No progress across two attempts → `failed-final` + `BLOCKED` | **PASS** |
+| 6 | Missing declared output → `collection-failed`, task opened, nothing fabricated | **PASS** |
+| 7 | Missing checkpoint metadata at queue time names the exact field | **PASS** (`checkpoints.progressFile`, `flushOnSignal`, `checkpoints.dir`) |
+| 8 | Missing smoke-test evidence refused | **PASS** (queue and submit gate) |
+| 9 | Fake key never reaches output/ledger/evidence/transcripts | **PASS with a coverage gap** (see V4: no session-file grep) |
+| — | `node --test .pi/tests/hpc/*.test.ts` | **PASS** (24/24) |
+| — | `make -C .pi verify-env` | **FAIL once** (182/183, `test_pause_resume.test.ts:151`), **PASS on 5 re-runs** (183/183, 15/15, 4/4) — see V2 |
+| — | S4 orchestrator acceptance transcript | **PASS** (exit 0; real repo SHA unchanged `c58eb49…`) |
+| — | Deliverable inspection (below) | **PASS except V1** |
+
+### 1. Mock-cluster acceptance — PASS
+
+```
+$ bash .pi/tests/hpc/run_mock_cluster.sh; echo EXIT=$?
+== S5 mock-cluster: unit + scenario matrix ==
+ok 1 - hpc.example.json parses and documents the single-slot schema
+…
+ok 24 - scenario 9: fake key material never reaches output, ledgers, evidence, or transcripts
+PASS  node --test (all offline HPC tests + the recorded-fixture parity check)
+
+== required scenarios (research_agent/prompts/05_hpc_and_collector.md) ==
+PASS  1  disabled: every tool {enabled:false}, no ssh
+PASS  1b disabled: collector one hpc-disabled event
+PASS  1c disabled: loop skips WAITING_HPC (unit)
+PASS  2  happy path: submit → collect + hashed manifest
+PASS  3  timeout exit 99: checkpoints first, requeue attempt 2
+PASS  4  OOM: one doubled-memory requeue, then failed-final
+PASS  5  no progress across two attempts
+PASS  6  missing declared output: collection-failed + task
+PASS  7  missing checkpoint metadata named field
+PASS  8  missing smoke-test evidence refused
+PASS  9  no key material in outputs/ledgers/evidence
+PASS  S  single-slot: gate checks + second submit refused
+PASS  R  retry table: collector/stuck/code-bug/collection-failed
+PASS  P  sacct classifier parity with parse_sacct.py
+PASS  C  config schema: host:"" disabled, amendment for >1 slot
+
+== acceptance snippets ==
+      disabled: 8/8 tools returned {enabled:false}; 0 ssh invocations
+      second-submit refusal names E-0001: submission refused for E-0002: 1 check(s) failed
+      - single-slot: experiment E-0001(queued) is active
+      acceptance snippets: OK
+PASS  disabled 8/8 + second-submit refusal
+
+== literal /loop:step with a queued experiment and no HPC host ==
+PASS  pi /loop:step ran twice offline
+PASS  one hpc-disabled event in EVENTS.jsonl
+PASS  the loop never entered WAITING_HPC
+PASS  the loop proceeded to a local phd_candidate run
+PASS  final loop state is not WAITING_HPC (WORK)
+-- raw hpc-disabled event --
+{
+"summary": "hpc-disabled: E-0001 runs locally — host is empty; the HPC path is disabled",
+"experiment_id": "E-0001",
+"hpc_disabled": true
+}
+-- raw second-step event --
+{
+"action_key": "work-local:T-001:1",
+"summary": "start phd_candidate (work-local:T-001:1)",
+"agent": "phd_candidate",
+"exit_state": null
+}
+
+all S5 mock-cluster checks passed
+EXIT=0
+```
+
+Stand-alone HPC suite (TAP): `# tests 24 · # pass 24 · # fail 0 · 0 not ok`.
+
+### 2. `make -C .pi verify-env` — PASS on re-run, one observed failure
+
+Passing re-run:
+
+```
+$ make -C .pi verify-env; echo EXIT=$?
+…
+ℹ tests 183
+ℹ pass 183
+ℹ fail 0
+…
+PASS  hpc.example.json: host="" wall=24h singleSlot=1
+PASS  hpc.json (runtime): disabled: no …/.pi/config/hpc.json; the HPC path is disabled
+…
+15/15 checks passed
+…
+4/4 orchestrator checks passed
+verify-env: environment tests green …
+EXIT=0
+```
+
+First run, same command, same tree:
+
+```
+ℹ tests 183
+ℹ pass 182
+ℹ fail 1
+
+✖ failing tests:
+
+test at .pi/tests/orchestrator/test_pause_resume.test.ts:111:1
+✖ killing the conductor mid-child leaves a stale lock, and the resumed run has one PR and one completion (1411.543796ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  0 !== 1
+
+      at TestContext.<anonymous> (file:///home/jovan/repos/vangja/.pi/tests/orchestrator/test_pause_resume.test.ts:151:10)
+make: *** [Makefile:37: test] Error 1
+```
+
+Line 151 is `assert.equal(startEvents.length, 1)`. The lock is written by the
+conductor at `.pi/extensions/orchestrator/execute.ts:623-629` **before** the
+`action_phase: "start"` event at `execute.ts:631-646`, so a kill in that window
+leaves a lock with no start event — exactly what the test waits for. The test
+file is untouched by S5 (`git log` shows only `b37053f`); S5 added 24 tests to
+the same `make test` invocation, which increases parallel load and the race
+probability. Re-runs: `make test` 183/183 five times, pause/resume test 3/3
+isolated. Not deterministic, but not certifiable as "exit 0".
+
+### 3. Second submit refusal (raw)
+
+```
+$ PATH=<mockbin>:$PATH node .pi/tests/hpc/acceptance_snippets.mjs
+second-submit refusal names E-0001: submission refused for E-0002: 1 check(s) failed
+- single-slot: experiment E-0001(queued) is active
+acceptance snippets: OK
+```
+
+A literal same-experiment second call is also refused:
+`experiment E-0001 attempt 1 was already submitted as job 900001; a second
+submission is refused (single-slot rule)` (`handlers.ts:326-330`).
+
+### 4. Deliverable inspection
+
+| Deliverable | Evidence | Verdict |
+|---|---|---|
+| 1 · eight `hpc_*` tools, exact surface | `.pi/extensions/hpc/index.ts` registers all eight; real pi session (`pi --print -a --mode json`) executed `hpc_config` → `hpc: disabled — no …/hpc.json`, `stderr` 0 bytes | PASS |
+| 1 · config validation, `host:""` no I/O, amendment rule | `.pi/extensions/hpc/config.ts`, `.pi/lib/config.ts:300-322`; tests 1–6; disabled test asserts zero shim invocations | PASS (amendment via `AMENDMENTS.jsonl`, S0 deviation D3/decision retained) |
+| 1 · private ssh-agent, only gitKey, no user-agent fallback | `.pi/extensions/hpc/ssh.ts:54-59, 83-167, 232-240`; probe: `ssh-add <git_mock>` + `ssh-add -l` only, all `ssh` argv carry `-A … IdentitiesOnly=yes … -i`; `gitKey: ""` probe returns `git-forwarding-off: … never the user's agent`, no `-A` | PASS (behaviour; no committed test for the off path — V3) |
+| 1 · submit gate: seven named checks, each names the missing item | `.pi/extensions/hpc/gate.ts`; dirty checkout, stale `uv.lock`, wall-clock 48h without staging, missing smoke test, missing `flushOnSignal`, single slot all refused with the check name; container mismatch probe refused (`container: remote container 2960bcc4… != record 0000…`) | PASS |
+| 1 · `sbatch --parsable`, job id + raw output, no key material | `slurm.ts:416-446` (`--parsable`, `--time=24:00:00`); `recordSubmission` stores `submit.raw_output`; scenario 9 greps tool output, ledger, evidence and mock transcripts | PASS for `--parsable`/record; **script body defect V1** |
+| 1 · fetch outputs + checkpoints, SHA-256 each, manifest with `sacct`, loud on missing | `manifest.ts`; scenario 2 asserts every file hash and nine `sacct` fields; scenario 6 asserts `collection-failed` + missing list, no fabrication | PASS |
+| 1 · requeue only after previous attempt ended; attempt+1, same key | `handlers.ts:972-1000`; scenario 3; probe with a RUNNING job → `refused: job 900001 is still RUNNING (02:00)` | PASS (no committed RUNNING-refusal test — V3; see V6 on the squeue-error branch) |
+| 2 · SLURM template | `.pi/skills/hpc-slurm-and-checkpointing/templates/job.slurm:9-14,48` — `--time=24:00:00`, `--signal=B:USR1@300`, USR1 trap → marker + exit 99, `uv sync --frozen --no-dev`, unbuffered, `{{CONTAINER_PREFIX}}` before the resume command | PASS on content; **render defect V1** |
+| 3 · collector definition | `.pi/agents/collector.md` — poll/evidence/heartbeat, completed→collecting→fetch→collected, missing→`collection-failed`, timeout→checkpoints first→record progress→`requeue_requested`, prohibitions (code/config, resubmit, cancel without instruction, interpretation, repair) | PASS |
+| 4 · ledger integration | `experiment_queue` single-slot + checkpoint schema + smoke test; `experiment_update` capability collector/conductor (`.pi/lib/roles.ts:78`) with transition table and metadata allowlist; `EXPERIMENTS.md` has `progress`/`job` columns (`.pi/lib/views.ts:43-62`) | PASS |
+| 5 · conductor wiring | `state-machine.ts:889-940, 944-1031` (disabled skip, submit/collect/requeue/failed-final/open-task/blocked), `execute.ts:1068-1130` (gate refusal → BLOCKED with named items), retry table in `retry.ts`; scenario 4/5/6 and the disabled test | PASS |
+| 6 · mock harness | `fixtures/mockbin/{ssh,scp,rsync,sbatch,squeue,sacct,scancel,ssh-agent,ssh-add}` → `mock_cluster.py`; no network (only fs/subprocess); `run_mock_cluster.sh` puts `MOCKBIN` first on `PATH` | PASS |
+
+### Discrepancies
+
+#### V1 — the default rendered job script contains empty SBATCH directives (blocking)
+
+`renderTemplate` (`.pi/extensions/hpc/slurm.ts:342-352`) drops a line only when
+the **whole line** is blank; `#SBATCH --partition={{PARTITION}}` renders to
+`#SBATCH --partition=`, which is not blank. The template declares both lines
+unconditionally (`job.slurm:13-14`), and `hpc.example.json` ships
+`partition: ""`, `gpus: 0`. Reproduced through the real submit path (mock
+cluster, default config):
+
+```
+$ node <probe: setUpCluster → seedExperiment → handleHpcSubmit>
+submit ok: true
+#SBATCH --job-name=E-0001-a1
+#SBATCH --time=24:00:00
+#SBATCH --signal=B:USR1@300
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=8G
+#SBATCH --partition=
+#SBATCH --gres=
+#SBATCH --output=…/slurm-%j.out
+#SBATCH --error=…/slurm-%j.err
+#SBATCH --comment=hpc/E-0001/attempt-1
+```
+
+No committed test renders the script or inspects it (the `sbatch` shim ignores
+the body), so the 24/24 matrix does not cover this. An empty partition name is
+not a valid SLURM partition (`sbatch: error: … Invalid partition name
+specified` is the common response; the standard workaround is to omit the
+directive — see the conditional-template pattern used by other SLURM tools).
+No real host was contacted, per the prompt, so the exact cluster response is
+unverified; the rendering contradicts `renderTemplate`'s own documented
+behaviour either way and is on the first-real-submission path. The `sbatch`
+**command** already omits `--partition`/`--gres` when empty
+(`slurm.ts:434-439`); only the script body is wrong.
+
+Smallest fix: make `renderTemplate` track each placeholder's value and drop a
+line when every placeholder on it is empty (and keep `{{CONTAINER_PREFIX}}` /
+`{{RESUME_COMMAND}}` semantics), or conditionally strip `#SBATCH --partition=`
+and `#SBATCH --gres=` before upload; add a unit test that renders with
+`partition: ""`, `gpus: 0` and asserts neither directive appears, plus one with
+non-empty values that asserts they do.
+
+#### V2 — the environment suite is intermittent (blocking for a reliable GO)
+
+See §2 above. Raw failure, re-run counts, and the lock-before-start-event race
+at `execute.ts:623-646`. Smallest fix: write the child lock **after** appending
+the start event (or have the test wait for the start event rather than the
+lock); then run `make -C .pi verify-env` repeatedly. This is an S4 test, not an
+S5 deliverable, but it is part of the report's S5 acceptance claim.
+
+#### V3 — report claims whose coverage the committed tests do not provide (non-blocking; independently verified)
+
+| Claim in the S5 report | Committed test | Independent probe |
+|---|---|---|
+| "`hpc_requeue` refuses while the previous job is still `RUNNING`" | none (only the timeout-success path) | **PASS**: `refused: job 900001 is still RUNNING (02:00); the previous attempt must be confirmed ended before requeueing` |
+| test 23 "checks … container …" | name only; no test passes `containerSha` (`grep containerSha` finds only the helper) | **PASS**: matching hash accepted (job 900001); `0…0` refused with `container: remote container 2960bcc4… != record 0000…` |
+| `gitKey` missing → `git-forwarding-off`, no user-agent fallback | none (`gitKeyMissing` option is never used) | **PASS**: submit text carries `[git-forwarding-off: … has no "gitKey"; remote git is skipped, never the user's agent]`; 0 `ssh-add` calls; no `ssh -A` |
+| private agent holds only `gitKey`; `ssh -A -o IdentitiesOnly=yes -i <hpcKey>` | scenario 9 asserts `ssh-add` add/list only | **PASS**: `ssh-add <git_mock>` then `ssh-add -l`; all three `ssh` calls carry `-A`, `IdentitiesOnly=yes`, `-i` |
+
+#### V4 — scenario 9 has no session-file grep (non-blocking)
+
+The prompt asks that the fake key never appear in "any tool output, ledger
+record, or **session file** (grep assertion)". The test greps tool results,
+`.pi/state`, `.pi/artifacts` and the mock cluster directory, but not
+`.pi/sessions` (no session is created by the deterministic harness). Transitively
+the tool results are what a session records, and the guard redacts them, but the
+literal session-file assertion named in the prompt is missing.
+
+#### V5 — duplicate type member (cosmetic)
+
+`.pi/extensions/hpc/slurm.ts:378-379` declares `kind?: string;` twice in the
+`renderJobScript` options type. Node's type stripping runs the code, so no test
+notices; `tsc --noEmit` would reject it (TS2300). Remove one line.
+
+#### V6 — requeue "confirmed ended" is skipped when the squeue check itself fails (minor)
+
+`.pi/extensions/hpc/handlers.ts:975-989`: if `squeue` exits non-zero, the
+code does not refuse — it falls through to the requeue. The
+`status === "requeue_requested"` precondition is the compensating control
+(the collector only writes it after terminal `sacct`), so this is not exploitable
+by the normal protocol, but "only after the previous attempt is confirmed
+ended" is stricter than the code.
+
+#### V7 — stale test count in the report (documentation)
+
+The S5 report says "101 node tests earlier; 24 HPC tests now part of `make test`".
+The S4 report recorded 158 node tests (`REPORT_BUILD.md:2643, 2800`); the actual
+current total is **183** (183 pass), which equals the S4 set + 24 HPC tests + the
+new ledger metadata test. The number is cosmetic; the 24 HPC tests are present.
+
+### What would flip this to GO
+
+1. Fix V1 (conditional empty SBATCH lines) and add the render unit test; re-run
+   `bash .pi/tests/hpc/run_mock_cluster.sh` and `make -C .pi verify-env`.
+2. Fix or explicitly waive V2 (lock/start-event ordering); a waiver is defensible
+   because the failure is in an untouched S4 test and passes 5/5 re-runs, but it
+   must be recorded, not silently ignored.
+3. Optional, non-blocking: add committed tests for the container-hash mismatch,
+   the requeue-while-RUNNING refusal, the `gitKey`-missing path and a
+   `.pi/sessions` grep; remove the duplicate `kind`; correct the test count.
+
+Nothing in V1–V7 touches the single-slot invariant, the checkpoint contract, the
+secret redaction paths, or the mock-cluster determinism; all of those re-verified
+clean.
+
+### S5 re-verification (V1 fixed)
+
+V1 was fixed in the working tree after the verification above (uncommitted at
+the time of writing). No other finding was addressed in this pass.
+
+Change:
+
+- `.pi/extensions/hpc/slurm.ts:342-355` — `renderTemplate` now collects every
+  placeholder on a line and drops the line only when **all** of them are empty
+  or whitespace-only. A line with a non-empty placeholder (e.g.
+  `{{CONTAINER_PREFIX}}{{RESUME_COMMAND}}`) survives; `#SBATCH --partition=` and
+  `#SBATCH --gres=` disappear with the shipped `partition: ""`, `gpus: 0`.
+- `.pi/skills/hpc-slurm-and-checkpointing/templates/job.slurm:2` — the header
+  comment no longer contains a literal `{{PLACEHOLDER}}` token (the new rule
+  would otherwise drop the comment line; the template content is unchanged).
+- `.pi/tests/hpc/test_hpc_submit_gate.test.ts` — three tests: the
+  `renderTemplate` rule (empty / whitespace-only / mixed / literal lines), the
+  end-to-end submit with the shipped config (the script read from
+  `handleHpcSubmit` has no empty SBATCH directives, no unresolved placeholders,
+  and keeps `--time=24:00:00`, `--signal=B:USR1@300`, `uv sync --frozen`), and
+  a positive rendering with `partition: "mypart"`, `gpus: 2`.
+
+Raw after the fix, through the real submit path (same probe as §V1):
+
+```
+$ node <setUpCluster → seedExperiment → handleHpcSubmit, shipped config>
+submit ok: true
+#SBATCH --job-name=E-0001-a1
+#SBATCH --time=24:00:00
+#SBATCH --signal=B:USR1@300
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=8G
+#SBATCH --output=…/slurm-%j.out
+#SBATCH --error=…/slurm-%j.err
+#SBATCH --comment=hpc/E-0001/attempt-1
+```
+
+The pre-fix output of the same probe is quoted in §V1 (`#SBATCH --partition=`
+and `#SBATCH --gres=` present immediately above `--output`).
+
+Results:
+
+```
+$ PATH=<mockbin>:$PATH node --test .pi/tests/hpc/test_hpc_submit_gate.test.ts
+✔ renderTemplate drops a line only when every placeholder on it is empty
+✔ the job script submitted for the shipped config has no empty SBATCH directives
+✔ the rendered job script keeps partition and gres when they are configured
+✔ scenario 7/8 · scenario 8 · the submit gate checks · scenario 9
+ℹ tests 7  ℹ pass 7  ℹ fail 0  EXIT=0
+
+$ bash .pi/tests/hpc/run_mock_cluster.sh; echo EXIT=$?
+ok 1 … ok 27 (3 new render tests; all 15 scenario rows PASS; snippets OK;
+literal /loop:step OK)
+all S5 mock-cluster checks passed
+EXIT=0
+
+$ make -C .pi verify-env; echo EXIT=$?      # run twice after the fix
+ℹ tests 186  ℹ pass 186  ℹ fail 0
+15/15 checks passed
+4/4 orchestrator checks passed
+EXIT=0 (both runs)
+```
+
+V1 is **closed**. The stage verdict remains **NO-GO on V2 only** (the S4
+pause/resume lock-before-start-event race, observed once before this change and
+not reproduced in the two post-fix `verify-env` runs). V3–V7 are unchanged and
+non-blocking. Test counts grew from 24/183 to 27/186; the S5 build section's
+"24 tests" is the pre-fix count.
+
+### S5 re-verification (V2 fixed) → GO
+
+V2 was fixed in the same working tree after the V1 note above. The production
+change and the test hardening are both in scope for the stage acceptance.
+
+Change:
+
+- `.pi/extensions/orchestrator/execute.ts:623-652` — `executeSpawn` now appends
+  the `action_phase: "start"` event and saves the started attempt **before**
+  writing the provisional child lock (the lock is still written before
+  `spawnChild`, and `onSpawn` still replaces the pid with the child pid). A
+  crash between the start event and the lock now leaves a start event with no
+  lock (recoverable), never a lock with no start event (the V2 race).
+- `.pi/tests/orchestrator/test_pause_resume.test.ts:133-156` — the kill test now
+  waits for the lock to carry the **child** pid (the provisional lock carries
+  the conductor pid), asserts the `work:` start event already exists before the
+  kill, and then kills both processes. The test states the invariant it relies
+  on instead of racing it.
+
+Evidence after the fix:
+
+```
+$ node --test .pi/tests/orchestrator/test_pause_resume.test.ts   # 5 consecutive runs
+run 1 EXIT=0  tests=3  pass=3  fail=0
+run 2 EXIT=0  tests=3  pass=3  fail=0
+run 3 EXIT=0  tests=3  pass=3  fail=0
+run 4 EXIT=0  tests=3  pass=3  fail=0
+run 5 EXIT=0  tests=3  pass=3  fail=0
+
+$ make -C .pi verify-env; echo EXIT=$?      # 3 consecutive full-suite runs
+run 1 EXIT=0  tests=186  pass=186  fail=0  (15/15 env, 4/4 orchestrator)
+run 2 EXIT=0  tests=186  pass=186  fail=0
+run 3 EXIT=0  tests=186  pass=186  fail=0
+
+$ bash .pi/tests/hpc/run_mock_cluster.sh; echo EXIT=$?
+27/27 TAP ok; all 15 scenario rows PASS; snippets + literal /loop:step OK
+all S5 mock-cluster checks passed
+EXIT=0
+
+$ bash .pi/tests/orchestrator/run_orchestrator_acceptance.sh; echo EXIT=$?
+PASS  replay/kill/pause-resume tests green (3 cases)
+PASS  real update_pymc SHA unchanged (c58eb49…)
+acceptance: all S4 orchestrator checks passed
+EXIT=0
+```
+
+V1 and V2 are **closed**. The remaining findings V3–V7 are coverage gaps /
+cosmetic and do not block the stage; the stage verdict is **GO**. Caveat: the
+same session that verified S5 authored these two fixes and hardened the test, so
+strict author≠verifier separation would require one fresh-session re-run of the
+four commands above. No real cluster was contacted; the first real submission
+remains the human-run `hpc_config`/`hpc_checkpoints` smoke check already listed
+in the S5 build section.

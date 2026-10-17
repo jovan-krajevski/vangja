@@ -1,5 +1,5 @@
 #!/bin/bash
-# Vangja SLURM job template. `hpc_submit` renders every {{PLACEHOLDER}} and
+# Vangja SLURM job template. `hpc_submit` renders every placeholder token and
 # uploads the result; do not hand-edit a rendered copy in place.
 #
 # Exit-code contract: 0 = complete, 99 = cleanly interrupted (checkpoints

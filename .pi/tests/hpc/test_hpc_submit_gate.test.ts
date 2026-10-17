@@ -15,10 +15,13 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { test } from "node:test";
+import { REPO_ROOT } from "../helpers.ts";
 import { handleExperimentQueue } from "../../extensions/ledger/handlers.ts";
 import { appendRecord, readLedger } from "../../extensions/ledger/store.ts";
 import { projectLatest } from "../../lib/records.ts";
+import { loadHpcExample } from "../../lib/config.ts";
 import { handleHpcConfig, handleHpcStatus, handleHpcSubmit } from "../../extensions/hpc/handlers.ts";
+import { loadJobTemplate, renderJobScript, renderTemplate } from "../../extensions/hpc/slurm.ts";
 import { resetPrivateAgent } from "../../extensions/hpc/ssh.ts";
 import { createHpcSandbox, seedExperiment, setUpCluster } from "./mock_cluster.ts";
 
@@ -175,6 +178,74 @@ test("the submit gate checks the remote checkout, uv.lock, container, wall clock
 		cluster.cleanup();
 		sandbox.cleanup();
 	}
+});
+
+test("renderTemplate drops a line only when every placeholder on it is empty", () => {
+	const rendered = renderTemplate(
+		["A={{A}}", "DROP={{B}}", "SPACES={{C}}", "MIX={{A}}-{{B}}", "literal line"].join("\n"),
+		{ A: "x", B: "", C: "   " },
+	);
+	assert.match(rendered, /^A=x$/m);
+	assert.doesNotMatch(rendered, /^DROP=/m);
+	assert.doesNotMatch(rendered, /^SPACES=/m);
+	assert.match(rendered, /^MIX=x-$/m);
+	assert.match(rendered, /^literal line$/m);
+});
+
+test("the job script submitted for the shipped config has no empty SBATCH directives", () => {
+	const sandbox = createHpcSandbox("hpc-render-default");
+	const cluster = setUpCluster(sandbox.root, "cluster");
+	try {
+		const { id } = seedExperiment(sandbox.root, cluster);
+		const submitted = handleHpcSubmit(
+			{ experiment_id: id },
+			{ root: sandbox.root, role: "phd_candidate" as const, actor: "test" },
+		);
+		assert.equal(submitted.isError, undefined, submitted.content[0].text);
+		const scriptPath = path.join(sandbox.root, String(submitted.details.local_script));
+		assert.ok(fs.existsSync(scriptPath), `rendered script missing: ${scriptPath}`);
+		const script = fs.readFileSync(scriptPath, "utf8");
+		// The shipped hpc.example.json has partition="" and gpus=0: those directives
+		// must vanish, not render as `#SBATCH --partition=` / `#SBATCH --gres=`.
+		assert.doesNotMatch(script, /^#SBATCH --partition=\s*$/m);
+		assert.doesNotMatch(script, /^#SBATCH --gres=\s*$/m);
+		assert.doesNotMatch(script, /\{\{[A-Z0-9_]+\}\}/);
+		assert.match(script, /^#SBATCH --job-name=E-0001-a1$/m);
+		assert.match(script, /^#SBATCH --time=24:00:00$/m);
+		assert.match(script, /^#SBATCH --signal=B:USR1@300$/m);
+		assert.match(script, /^uv sync --frozen --no-dev$/m);
+	} finally {
+		cluster.cleanup();
+		sandbox.cleanup();
+	}
+});
+
+test("the rendered job script keeps partition and gres when they are configured", () => {
+	const config = {
+		...loadHpcExample(REPO_ROOT),
+		host: "mock-cluster",
+		user: "mockuser",
+		remoteRepoDir: "/repo",
+		remoteScratchDir: "/scratch",
+		hpcKey: "/tmp/key",
+		partition: "mypart",
+		gpus: 2,
+	};
+	const rendered = renderJobScript({
+		runtime: { root: REPO_ROOT, config, reason: "test", hpcKeyPath: "/tmp/key", gitKeyPath: "" },
+		experimentId: "E-0001",
+		attempt: 1,
+		template: loadJobTemplate(REPO_ROOT),
+		resumeCommand: "uv run python run.py --resume $CKPT",
+		runDir: "/scratch/run",
+		memGb: 8,
+		cpus: 2,
+		gpus: 2,
+		partition: "mypart",
+	});
+	assert.match(rendered.script, /^#SBATCH --partition=mypart$/m);
+	assert.match(rendered.script, /^#SBATCH --gres=gpu:2$/m);
+	assert.doesNotMatch(rendered.script, /\{\{[A-Z0-9_]+\}\}/);
 });
 
 test("scenario 9: fake key material never reaches output, ledgers, evidence, or transcripts", () => {

@@ -620,14 +620,6 @@ async function executeSpawn(context: RunContext, action: Action, options: Execut
 	const invocation = buildPrimaryInvocation(context, action);
 	const budgetCaps = loadBudgetConfig(root);
 	const timeoutMs = options.timeoutMs ?? budgetCaps.maxTaskWallClockMinutes * 60_000;
-	writeJsonAtomic(childLockPath(root), {
-		pid: process.pid,
-		action_key: action.key,
-		agent: action.agent,
-		argv: invocation.argv,
-		started_at: new Date().toISOString(),
-		note: "provisional: the child pid replaces this as soon as the process exists",
-	});
 	const from = loadLoopState(root).state.state;
 	appendConductorEvent(
 		context,
@@ -649,6 +641,17 @@ async function executeSpawn(context: RunContext, action: Action, options: Execut
 	);
 	// Record the started attempt so a killed run resumes with a different key.
 	saveLoopState(root, { attempt: invocation.attempt, reason: `${action.agent} running (${action.key})` }, { actor: "conductor" });
+	// The lock is written only after the start event: a crash while acquiring it
+	// can therefore never leave a lock that the start event does not explain
+	// (the pause/resume test waits for this lock before killing the conductor).
+	writeJsonAtomic(childLockPath(root), {
+		pid: process.pid,
+		action_key: action.key,
+		agent: action.agent,
+		argv: invocation.argv,
+		started_at: new Date().toISOString(),
+		note: "provisional: the child pid replaces this as soon as the process exists",
+	});
 	let child: ChildOutcome;
 	try {
 		child = await spawnChild(invocation, root, {
