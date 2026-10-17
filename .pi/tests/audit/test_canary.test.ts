@@ -9,7 +9,7 @@ import * as path from "node:path";
 import { test } from "node:test";
 import { auditGrade, type GateResults } from "../../extensions/auditkit/grade.ts";
 import { gradeCitesFailingGates, writeGrade } from "../../extensions/auditkit/report.ts";
-import { runSeededAudit, renderCanaryMatrix, type CanaryResult } from "../../extensions/auditkit/canary.ts";
+import { probeWeakenedTest, runSeededAudit, renderCanaryMatrix, type CanaryResult } from "../../extensions/auditkit/canary.ts";
 import { registerForCycle } from "../../extensions/auditkit/store.ts";
 import { runGates } from "../../extensions/verify/gates.ts";
 import { CLEAN_CALIBRATION, CLEAN_RUBRIC, readText, scratchFixture, SEEDED_FIXTURE } from "./helpers.ts";
@@ -133,6 +133,33 @@ test("a canary with a missing defect is under the threshold and fails", () => {
 	assert.ok(result.misses.some((miss) => miss.expected === "D1"));
 	assert.ok(result.misses.some((miss) => miss.expected === "D5"));
 	assert.equal(result.ok, false);
+});
+
+test("the weakened-test probe counts unittest-style assertions and commented ones", () => {
+	const root = fs.mkdtempSync(path.join(process.env.TMPDIR ?? "/tmp", "vangja-canary-unittest-"));
+	fs.mkdirSync(path.join(root, "tests_baseline"), { recursive: true });
+	fs.mkdirSync(path.join(root, "tests"), { recursive: true });
+	fs.writeFileSync(
+		path.join(root, "tests_baseline", "test_metrics.py"),
+		"import unittest\n\n\nclass T(unittest.TestCase):\n    def test_a(self):\n        self.assertEqual(1, 1)\n        self.assertTrue(True)\n",
+	);
+	fs.writeFileSync(
+		path.join(root, "tests", "test_metrics.py"),
+		"import unittest\n\n\nclass T(unittest.TestCase):\n    def test_a(self):\n        # self.assertEqual(1, 1)\n        self.assertTrue(True)\n",
+	);
+	const commented = probeWeakenedTest(root);
+	assert.equal(commented.length, 1, JSON.stringify(commented));
+	assert.match(commented[0].observed, /1 assertion\(s\) remain/);
+	assert.match(commented[0].observed, /commented out/);
+
+	fs.writeFileSync(
+		path.join(root, "tests", "test_metrics.py"),
+		"import unittest\n\n\nclass T(unittest.TestCase):\n    def test_a(self):\n        self.assertTrue(True)\n",
+	);
+	const removed = probeWeakenedTest(root);
+	assert.equal(removed.length, 1, JSON.stringify(removed));
+	assert.match(removed[0].observed, /1 assertion\(s\) remain/);
+	assert.ok(!/commented out/.test(removed[0].observed));
 });
 
 function fsRemove(target: string): void {

@@ -141,6 +141,33 @@ test("verify_guards flags a removed assertion and a protected paper write", () =
 	assert.match(result.test_diff.problems.join(" "), /removed 1 more assertion/);
 });
 
+test("verify_guards counts unittest-style assertions in the test diff", () => {
+	const root = fs.mkdtempSync(path.join(process.env.TMPDIR ?? "/tmp", "vangja-guards-unittest-"));
+	fs.mkdirSync(path.join(root, "tests"), { recursive: true });
+	fs.writeFileSync(
+		path.join(root, "tests", "test_metrics.py"),
+		"import unittest\n\n\nclass T(unittest.TestCase):\n    def test_a(self):\n        self.assertEqual(1, 1)\n        self.assertTrue(True)\n",
+	);
+	const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8" });
+	git("init", "-q");
+	git("config", "user.email", "audit@example.invalid");
+	git("config", "user.name", "audit");
+	git("add", ".");
+	git("commit", "-qm", "baseline");
+	fs.writeFileSync(
+		path.join(root, "tests", "test_metrics.py"),
+		"import unittest\n\n\nclass T(unittest.TestCase):\n    def test_a(self):\n        self.assertTrue(True)\n",
+	);
+	git("add", ".");
+	git("commit", "-qm", "remove the unittest assertion");
+
+	const result = verifyGuards(root, { range: "HEAD~1..HEAD", runner: defaultRunner });
+	assert.equal(result.test_diff.removed, 1, JSON.stringify(result.test_diff));
+	assert.equal(result.test_diff.added, 0, JSON.stringify(result.test_diff));
+	assert.equal(result.test_diff.ok, false);
+	assert.match(result.test_diff.problems.join(" "), /removed 1 more assertion/);
+});
+
 test("run_gates reports all thirteen gates and writes gates.json", () => {
 	const root = scratchFixture();
 	const gates = runGates(root, { cycle: 2, snapshot: "fixture@sha" });

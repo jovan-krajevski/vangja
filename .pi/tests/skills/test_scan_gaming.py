@@ -23,6 +23,7 @@ STATIC_CATEGORIES = {
 }
 PATCH_CATEGORIES = {
     "removed_assert.patch": "test-weakening-assertion-removed",
+    "removed_unittest_assert.patch": "test-weakening-assertion-removed",
     "seed_change.patch": "seed-change-frozen-config",
     "exclusion_change.patch": "exclusion-change",
     "horizon_crop.patch": "horizon-cropping",

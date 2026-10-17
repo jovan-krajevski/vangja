@@ -611,7 +611,7 @@ export function verifyGuards(
 		}
 	}
 
-	const assertion = /\b(assert\b|pytest\.raises|expect\()/;
+	const assertion = /\b(assert\b|(self\.)?assert[A-Z]\w*|pytest\.raises|expect\()/;
 	const testDiff = run(["git", "diff", "-U0", range, "--", "*test*"], { cwd: root });
 	let added = 0;
 	let removed = 0;

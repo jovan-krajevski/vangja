@@ -46,6 +46,15 @@ class TestProtocolCompliance(unittest.TestCase):
         self.assertNotIn("deled", proc.stdout)
         self.assertIn("deleted", proc.stdout)
 
+    def test_unittest_assertion_removal_patch_is_flagged(self):
+        proc = run_script(CHECK, [
+            "--repo", REPO_ROOT, "--patch", PROTOCOL_FIXTURES / "assert_removed.patch",
+        ])
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("assertion-removed", proc.stdout)
+        self.assertIn("deleted", proc.stdout)
+        self.assertNotIn("deled", proc.stdout)
+
     def test_json_report_written_to_out(self):
         import tempfile
         from pathlib import Path

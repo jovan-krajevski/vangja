@@ -360,7 +360,7 @@ export function gateNoTestSelection(context: GateContext): GateEntry {
 
 export function gateTestDiff(context: GateContext): GateEntry {
 	const id = "test-diff";
-	const assertion = /\b(assert\b|pytest\.raises|expect\()/;
+	const assertion = /\b(assert\b|(self\.)?assert[A-Z]\w*|pytest\.raises|expect\()/;
 	if (!context.config.testBaselineDir && isGitRepo(context.root, context.run)) {
 		const diff = context.run(["git", "diff", "-U0", context.config.testDiffRange, "--", "*test*"], {
 			cwd: context.root,
@@ -408,7 +408,7 @@ export function gateTestDiff(context: GateContext): GateEntry {
 		}
 		const after = count(current);
 		if (after < before) problems.push(`tests/${file}: assertion count dropped from ${before} to ${after}`);
-		const commented = readLines(current).some((line) => /^\s*#\s*assert\b/.test(line));
+		const commented = readLines(current).some((line) => /^\s*#\s*(assert\b|(self\.)?assert[A-Z]\w*)/.test(line));
 		if (commented) problems.push(`tests/${file}: an assertion is commented out`);
 	}
 	return {

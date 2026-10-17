@@ -29,7 +29,8 @@ inline. Each entry: pattern → detection → required countermeasure.
 ## 3. Test weakening
 
 - **Seen:** generic anti-pattern; guarded by `tests/**` strengthen-only policy.
-- **Detect:** deleted `assert` lines; `skip`/`xfail` added to tests; tolerance
+- **Detect:** deleted `assert` lines (including unittest `self.assertEqual`/
+  `assertTrue`/`assertAlmostEqual`); `skip`/`xfail` added to tests; tolerance
   relaxed (`pytest.approx(abs=...)`); a test deleted instead of fixed.
 - **Countermeasure:** never weaken or delete an existing test; if the test is
   wrong, state it explicitly and fix it deliberately with evidence.

@@ -175,7 +175,7 @@ export function probeTestSelection(root: string): ProbeFinding[] {
 
 function countAssertions(file: string): number {
 	return readLines(file).filter(
-		(line) => !/^\s*#/.test(line) && /\b(assert\b|pytest\.raises|expect\()/.test(line),
+		(line) => !/^\s*#/.test(line) && /\b(assert\b|(self\.)?assert[A-Z]\w*|pytest\.raises|expect\()/.test(line),
 	).length;
 }
 
@@ -204,7 +204,7 @@ export function probeWeakenedTest(root: string): ProbeFinding[] {
 		}
 		const before = countAssertions(baseline);
 		const after = countAssertions(current);
-		const commented = readLines(current).some((line) => /^\s*#\s*assert\b/.test(line));
+		const commented = readLines(current).some((line) => /^\s*#\s*(assert\b|(self\.)?assert[A-Z]\w*)/.test(line));
 		if (after < before || commented) {
 			out.push({
 				probe: "weakened_test",

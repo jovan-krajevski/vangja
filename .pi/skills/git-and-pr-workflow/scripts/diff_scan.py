@@ -40,7 +40,7 @@ PROTECTED = [
     (".pi/state/", "loop state, owned by the ledger tools"),
 ]
 PAPER_PREFIX = "paper/"
-ASSERT_RE = re.compile(r"^\s*assert\b")
+ASSERT_RE = re.compile(r"^\s*(assert\b|(self\.)?assert[A-Z]\w*)")
 SKIP_RE = re.compile(r"(pytest\.mark\.(skip|xfail)|unittest\.skip|@skip\b)")
 
 

@@ -143,6 +143,30 @@ test("a removal of an assertion in a test file fails the test-diff check", () =>
 	}
 });
 
+test("a removal of a unittest-style assertion fails the test-diff check", () => {
+	const sandbox = createSandbox("gates-testdiff-unittest");
+	try {
+		const fixture = makePr(sandbox, (worktree) => {
+			fs.mkdirSync(path.join(worktree, "tests"), { recursive: true });
+			fs.writeFileSync(
+				path.join(worktree, "tests", "test_gate.py"),
+				"import unittest\n\n\nclass T(unittest.TestCase):\n    def test_gate(self):\n        self.assertEqual(1, 1)\n",
+			);
+		});
+		// Second commit: delete the unittest-style assertion.
+		fs.writeFileSync(
+			path.join(fixture.worktree.path, "tests", "test_gate.py"),
+			"import unittest\n\n\nclass T(unittest.TestCase):\n    def test_gate(self):\n        pass\n",
+		);
+		const head = commitAll(fixture.worktree.path, { message: "weaken the unittest test" });
+		const run = runPreMergeGates(options(sandbox, fixture.prId, head, fixture.base));
+		assert.equal(check(run, "test-diff").status, "fail");
+		assert.match(check(run, "test-diff").detail, /removed 1 more assertion/);
+	} finally {
+		sandbox.cleanup();
+	}
+});
+
 test("provenance fails for a missing artifact without a manifest and passes with one", () => {
 	const sandbox = createSandbox("gates-provenance");
 	try {

@@ -1,0 +1,7 @@
+diff --git a/tests/test_metrics.py b/tests/test_metrics.py
+--- a/tests/test_metrics.py
++++ b/tests/test_metrics.py
+@@ -15,4 +15,3 @@ class TestRelativeMaeReference(unittest.TestCase):
+     def test_reference_value(self):
+         expected = 0.5
+-        self.assertEqual(round(0.5, 6), expected)

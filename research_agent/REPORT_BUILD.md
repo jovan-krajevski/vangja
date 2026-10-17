@@ -3889,7 +3889,7 @@ EXIT=0
 10. **`verify_guards` on the S6 commit reports 12 S1 gaming-scan hits; each is
     explained here.** `verify_guards c8ea377^..c8ea377` returns
     `gaming.ok=false` with 12 S1 (0 S0), no protected-path violations, and a
-    guarded test diff of +497/−3 assertions with `test_diff.problems=[]`. The
+    guarded test diff of +512/−3 assertions with `test_diff.problems=[]`. The
     hits: three `test-weakening-assertion-removed` at
     `.pi/tests/orchestrator/test_state_machine.test.ts:368-370` — those lines
     asserted the S4 placeholder (`running.agent === "audit_finder"` for the
@@ -3944,10 +3944,10 @@ that prompt plus `research_agent/plan/07_AUDIT_HARNESS.md` and plan/08 §S6.
 
 ### Verdict: **GO** — all seven acceptance tests pass on independent re-run
 
-No acceptance test failed. Nine discrepancies are recorded below; none of them
-invalidates a test result. D1–D5 were report-accuracy/provenance/coverage issues
-and are corrected after verification (see "Corrections applied after
-verification" at the end of this section).
+No acceptance test failed. Ten discrepancies are recorded below; none of them
+invalidates a test result. D1–D5 and D10 are corrected after verification (see
+"Corrections applied after verification" at the end of this section); D6–D9
+remain open.
 
 ### Acceptance tests, re-run
 
@@ -4140,6 +4140,22 @@ absolute `/home/jovan/...` paths (runtime probe path `.pi/audit/cycle-900/…` a
 snapshot path). No secret is exposed and the README documents the path mapping, but
 the artifacts are machine-specific.
 
+**D10 (S1 for the merge gate, found while fixing D4) — FIXED.** Both the
+`test-diff` gate and the diff scanner matched assertions with `\bassert\b`,
+which does not match unittest-style `self.assertEqual`/`assertTrue`/
+`assertAlmostEqual` lines. A commit that deletes `self.assertEqual(...)` and
+adds nothing is therefore invisible to `test-diff`, to `verify_guards`, and to
+`test-weakening-assertion-removed`. Evidence: the D4 commit added three
+`self.assertEqual` lines and `verify_guards` reported `test_diff.added=0`
+(`git diff 0c91dc6 04896d5 -- .pi/tests/skills/test_scan_gaming.py | grep -c
+'^+.*assertEqual'` = 3). The follow-up commit widens the regex to
+`\b(assert\b|(self\.)?assert[A-Z]\w*|pytest\.raises|expect\()` in
+`verify/lib.ts`, `verify/gates.ts`, `auditkit/canary.ts`,
+`orchestrator/gates.ts`, `scan_gaming.py`, `diff_scan.py` and
+`check_protocol_compliance.py`, widens the commented-assertion checks, and adds
+tests/patch fixtures at every site. The S6 commit's guarded test diff now reads
+`+512/−3` (was `+497/−3`) with the same 12 diff-scan hits.
+
 ### What this verification did **not** establish
 
 - The ten per-workstream briefs, the four agent definitions and the template set were
@@ -4160,8 +4176,8 @@ the artifacts are machine-specific.
 ### Corrections applied after verification
 
 The S6 section was corrected in place (D1–D3 and D5 in `0c91dc6`, D4 in the
-follow-up scanner commit); the discrepancy text above records what was wrong at
-verification time.
+follow-up scanner commit, D10 in the assertion-regex commit); the discrepancy
+text above records what was wrong at verification time.
 
 - **D2** — the WS-R-004 hit is now reported as `R-002` *by the scorer's
   first-match rule*, with the note that the register's dedicated seed finding is
@@ -4175,5 +4191,10 @@ verification time.
   `nsmallest`/`nlargest` over test/metric tokens (constants, rule, catalogue,
   two new tests); the seeded fixture's `gaming-scan` gate now fails on the
   planted selector and the S6 transcript shows the post-fix output.
+- **D10** (found after verification) — the assertion regex counts
+  unittest-style assertions in `verify/lib.ts`, `verify/gates.ts`,
+  `auditkit/canary.ts`, `orchestrator/gates.ts`, `scan_gaming.py`,
+  `diff_scan.py` and `check_protocol_compliance.py`, with new tests and patch
+  fixtures at each site; the S6 guarded test diff reads `+512/−3`.
 
 D6, D7, D8 and D9 remain open and are recorded here without a code edit.

@@ -83,6 +83,14 @@ class TestDiffScan(unittest.TestCase):
         for expected in ("protected-path", "frozen-config", "assertion-removed",
                          "test-skip-added", "test-file-deleted"):
             self.assertIn(expected, rules, report)
+        utils = [
+            f for f in report["findings"]
+            if f["rule"] == "assertion-removed" and f["location"] == "tests/test_utils.py"
+        ]
+        self.assertEqual(len(utils), 1, report)
+        # The bare `assert np.isnan(...)` and the unittest-style
+        # `self.assertAlmostEqual(...)` are both counted.
+        self.assertIn("2 assertion(s) removed", utils[0]["message"], report)
 
     def test_gaming_scan_composed(self):
         code, report = self._run("gaming.diff")

@@ -40,6 +40,9 @@ FROZEN_EDIT = re.compile(
     r"|^\s*(exclude[d]?(_series)?)\s*="
 )
 SEED_EDIT = re.compile(r"\b(BASE_SEED|FINALIST_SEEDS|random_seed)\b\s*=")
+# Assertions counted as removed by the patch scan: bare `assert`, unittest
+# camelCase (self.assertEqual/assertTrue/...), pytest.raises, JS expect().
+ASSERT_RE = re.compile(r"\b(assert\b|(self\.)?assert[A-Z]\w*|pytest\.raises|expect\()")
 HASH64 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -302,7 +305,7 @@ def scan_patch(repo: Path, patch_text: str) -> list[dict]:
                 f"{verb} seed constant in a frozen config file",
                 content,
             ))
-        if re.search(r"\bassert\b", content) and kind == "del":
+        if ASSERT_RE.search(content) and kind == "del":
             out.append(finding(
                 "assertion-removed", "S1", location,
                 "an assertion was deleted",

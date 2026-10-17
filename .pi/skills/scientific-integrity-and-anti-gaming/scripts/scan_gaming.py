@@ -25,6 +25,9 @@ EXCLUDE_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache",
                 ".ruff_cache", ".ipynb_checkpoints", "fixtures"}
 SELECTORS = {"idxmin", "idxmax", "argmin", "argmax", "nsmallest", "nlargest"}
 BUILTIN_SELECTORS = {"min", "max", "sorted"}
+# Assertions the diff scan counts: bare `assert`, unittest camelCase
+# (self.assertEqual/assertTrue/...), pytest.raises, JS expect().
+ASSERTION_RE = re.compile(r"\b(assert\b|(self\.)?assert[A-Z]\w*|pytest\.raises|expect\()")
 TEST_TOKENS = ("test", "confirm", "holdout", "hold_out", "out_of_sample", "oos")
 METRIC_TOKENS = ("mae", "rmse", "mape", "elpd", "score", "metric", "error", "loss")
 SWALLOW_FUNCS = re.compile(
@@ -348,7 +351,7 @@ def scan_patch(patch_text: str) -> list[dict]:
     for path, line, kind, content in parse_patch(patch_text):
         location = f"{path}:{line}"
         verb = {"add": "added", "del": "deleted"}.get(kind, kind)
-        if kind == "del" and re.search(r"\bassert\b", content):
+        if kind == "del" and ASSERTION_RE.search(content):
             out.append(finding("test-weakening-assertion-removed", "S1", location,
                                "assertion deleted", content,
                                "a regression can no longer be caught"))

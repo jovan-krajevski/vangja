@@ -259,7 +259,7 @@ export function checkTestDiff(options: PreMergeOptions): GateCheck {
 		removed = 0;
 		added = 0;
 	};
-	const assertion = /\b(assert|pytest\.raises|expect\()/;
+	const assertion = /\b(assert\b|(self\.)?assert[A-Z]\w*|pytest\.raises|expect\()/;
 	for (const line of log.split("\n")) {
 		if (line.startsWith("commit ")) {
 			flush();
