@@ -33,6 +33,7 @@ import { loadAgentDefinitions } from "../../lib/agents.ts";
 import { loadLoopState, saveLoopState, type LoopState, type LoopStateName } from "../../lib/state.ts";
 import { statePath } from "../../lib/paths.ts";
 import { ledgerDigest, recordOutcome, recordSession } from "./budget.ts";
+import { syncAuditState } from "./audit.ts";
 import {
 	childLockPath,
 	isCompleted,
@@ -784,6 +785,17 @@ function applyEffects(context: RunContext, action: Action, actor: string): void 
 			case "clear_pr":
 				saveLoopState(context.root, { pr_id: null, next_gate: null }, { actor });
 				break;
+			case "archive_readiness": {
+				// The readiness verdict is consumed exactly once: archive it so a later
+				// READINESS entry re-evaluates instead of re-reading a stale verdict
+				// (which would livelock SELECT_TASK ↔ READINESS).
+				const source = statePath(context.root, "READINESS.json");
+				if (fs.existsSync(source)) {
+					fs.copyFileSync(source, statePath(context.root, "READINESS.verdict.json"));
+					fs.rmSync(source, { force: true });
+				}
+				break;
+			}
 			case "hpc_disabled": {
 				const events = readJsonlFile<Record<string, unknown>>(statePath(context.root, "EVENTS.jsonl"));
 				const already = events.some(
@@ -954,7 +966,7 @@ async function executeMerge(
 		baseSha: String(prRecord.base_sha ?? project.baseBranch),
 		headSha: String(prRecord.head_sha ?? ""),
 		branch: String(prRecord.branch ?? ""),
-		kind: String(prRecord.kind ?? "work"),
+		kind: String(prRecord.pr_kind ?? (prRecord.kind === "paper" ? "paper" : "work")),
 		state: action.state,
 		artifacts,
 		protectedPaths,
@@ -1026,6 +1038,7 @@ async function executeMerge(
 			already_merged: merge.alreadyMerged,
 			gate_run: path.relative(root, gateRun.path),
 			gate_ok: true,
+			from: "MERGE",
 			to: action.to,
 			summary: `merged ${action.pr_id} (review ${action.review_id}) into ${project.baseBranch}${merge.alreadyMerged ? " (already up to date)" : ` as ${merge.sha.slice(0, 12)}`}${merge.tag ? `; tag ${merge.tag}` : ""}`,
 		},

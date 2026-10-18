@@ -28,6 +28,7 @@ implementation.
 | `extensions/status/` | TUI status line/widget + ledger `renderResult` | yes |
 | `loop/` | headless shims for the orchestrator (`step.sh`, `status.sh`, `collect.sh`) | yes |
 | `tests/` | offline `node --test` suite, fixtures, acceptance scripts | yes |
+| `tests/e2e/` | S7 end-to-end sandbox smoke test, resilience matrix, model-pin audit, calibration wrapper | yes |
 | `state/` | `LOOP_STATE.json`, `*.jsonl` ledgers, derived `*.md` views, sessions, worktrees | **no** (runtime) |
 | `artifacts/` | collected experiment outputs + manifests | **no** (runtime; manifests are the committed part once S5 lands — see open items) |
 | `agents/`, `prompts/` | 16 agent definitions and 11 argument-driven slash-command templates (S3) | yes |
@@ -40,18 +41,52 @@ implementation.
 ## Verify
 
 ```bash
-make -C .pi test           # unit + integration suite (offline, ~10s)
+make -C .pi test           # unit + integration suite (offline, ~80s)
 make -C .pi skills-test    # validate .pi/skills + python skill-script tests
 make -C .pi env-check      # config/settings/roster/secrets checks with PASS lines
-make -C .pi verify-env     # node + python skill suite + env checks + orchestrator checks
+make -C .pi model-pin      # every recorded child argv used the pinned model + thinking
+make -C .pi verify-env     # node + python skill suite + env checks + orchestrator checks + model pin
+make -C .pi smoke          # end-to-end sandbox loop (BOOT → audit → decision; ~20s)
+make -C .pi resilience     # kill/restart matrix, exactly-once assertions (~25s)
+make -C .pi calibration    # offline audit-calibration modes + refusal paths
+make -C .pi all            # verify-env + test + smoke
 make -C .pi agents-accept  # S3 model-backed acceptance (dispatch a scout, role refusals)
 make -C .pi hpc-accept     # S5 mock-cluster acceptance transcript
 make -C .pi audit-accept   # S6 audit acceptance transcript (offline fixtures)
 make -C .pi audit-calibrate # score the committed strong calibration fixture
 ```
 
-`verify-env` is green: 277 node tests, 156 python tests, 15/15 environment
-checks, 4/4 orchestrator checks. `verify-env-strict` is an alias.
+`verify-env` is green: 285 node tests, 162 python tests, 15/15 environment
+checks, 4/4 orchestrator checks, and 0 model-pin violations. `verify-env-strict`
+is an alias. `smoke` and `resilience` are deterministic (a stub child replaces the
+model) and never touch the real repository — they clone it under `.pi/state/`,
+run with `--sandbox`, and assert the real `update_pymc` SHA and refs are
+unchanged.
+
+## End-to-end smoke test (S7)
+
+`make -C .pi smoke` builds a scratch clone with a synthetic task ("add a
+docstring and a passing test to a fixture module"), a mock experiment with a
+checkpoint/resume contract, and the S6 seeded-defect audit tree, then drives the
+real conductor through BOOT → WORK → REVIEW → MERGE → READINESS → PAPER →
+PAPER_REVIEW → MERGE → AUDIT → DECIDE. It prints one `CHECK <name>: PASS|FAIL`
+line per assertion:
+
+- the transition sequence matches `plan/02_ARCHITECTURE.md` §2;
+- exactly one work branch / PR / review / merge commit (plus exactly one paper PR
+  and merge, the route into AUDIT);
+- exactly one experiment record and one collected artifact with verified hashes;
+- a tampered copy of the artifact is caught by the readiness check *before* PAPER
+  and the loop returns to SELECT_TASK;
+- the deterministic audit gates run before any finder, the seeded canary detects
+  8/8 defects with no false positives, and DECIDE writes a grade with a blocking
+  fix list;
+- the sandbox `update_pymc` moved and the real one did not;
+- every child invocation is recorded with argv, prompt hash, model, and usage.
+
+The last run is archived (checks + transcript) under
+`.pi/state/e2e-tests/smoke-<stamp>.json`; the resilience matrix and its kill
+points are documented in `.pi/tests/e2e/resilience.md`.
 
 ## Audit harness (S6)
 
@@ -114,9 +149,11 @@ with the highest `seq` for that id. Nothing rewrites history.
 - Every session is pinned to `opencode-go/deepseek-v4.1-flash`, thinking `max`.
   The guard drops input, blocks tools, and exits 3 on drift; the message names
   `.pi/config/model.json`.
-- Protected paths: `Vangja-project/**`, `research_agent/plan/**`,
-  `fixed_case_studies/protocol/**` (amendment only), `paper/**` (PAPER state
-  only), `AGENTS.md` (supervisor/conductor), `.git/**`, `.pi/state/**`.
+- Protected paths: `Vangja-project/**`, `research_agent/plan/**` (read-only except
+  a human S7 session editing a path named by a recorded S7 decision — the
+  `planEditCovers` exception), `fixed_case_studies/protocol/**` (amendment only),
+  `paper/**` (PAPER state only), `AGENTS.md` (supervisor/conductor), `.git/**`,
+  `.pi/state/**`.
 - Secrets: writes matching `.env`, `auth.json`, `hpc.json`, `*.pem`, `id_*` are
   refused, and the same rule applies to shell write targets and to
   `git add`/`git commit` (a staged secret file is refused; the guard reads the
@@ -134,15 +171,24 @@ with the highest `seq` for that id. Nothing rewrites history.
 
 ## Open items for later stages
 
-- `make verify-env` prints `STUB (S4)` in place of the `/loop:verify-env` child
-  check (see above).
-- `.pi/artifacts/*/` is gitignored wholesale per the S0 spec; the plan wants
-  manifests committed. S5 must either narrow the ignore rule or write manifests
-  to a versioned path (`.pi/artifacts/manifests/`).
-- `paper_*` tools are declared `planned` in `.pi/config/tools.json`; S7
-  registers them. `verify`, `rubric`, and `auditkit` tools are implemented.
+- `.pi/artifacts/*/` is gitignored wholesale per the S0 spec, so artifact
+  *manifests* are not committed either. The S5 fetch writes
+  `.pi/artifacts/<experiment_id>/manifest.json` (SHA-256 per file + sacct
+  accounting); if the plan wants manifests versioned, narrow the ignore rule.
+- `paper_build` and `paper_diff_summary` are still declared `planned` in
+  `.pi/config/tools.json`; the PAPER phase in the S7 smoke run exercises the
+  state machine and PR route but does not rebuild the manuscript.
 - `tests/**` protection (strengthen-only) is implemented in the pre-merge scan
   and the audit `test-diff` gate, not in the write guard.
 - The audit's real calibration run is UNCALIBRATED by design: see
   `.pi/audit/calibration/historical-8028c51/REPORT.md` for the two narrowings
-  required before a graded cycle.
+  required before a graded cycle. The smoke test's sandbox supplies a synthetic
+  calibrated result so the decision path can be exercised; the S6 harness owns
+  the refusal-path tests.
+- The S7 smoke run seeds the audit tree *after* the paper merge (the defects are
+  the audit's target, not a PR's diff), and its paper PR touches `docs/` rather
+  than `paper/**` so the uncited-number defect survives to the audit. A real
+  paper revision runs the full claims pipeline instead.
+- Runtime state under `.pi/state/**` (test sandboxes, worktrees, calibration
+  snapshots) is excluded from the static integrity/protocol scanners as of S7;
+  before that a kept sandbox could make the real-repo scan dirty.

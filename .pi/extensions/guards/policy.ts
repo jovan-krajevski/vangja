@@ -83,6 +83,8 @@ export interface ToolCallContext extends ProtectionContext {
 	sharedBranches?: string[];
 	/** Caller reads the amendment ledger; receives the repo-relative path. */
 	amendmentCovers?: (rel: string) => boolean;
+	/** Caller reads the decision ledger for the S7 plan-edit exception. */
+	planEditCovers?: (rel: string) => boolean;
 }
 
 export function toolCallDecision(input: ToolCallInputs, ctx: ToolCallContext): GuardDecision {
@@ -106,6 +108,7 @@ export function toolCallDecision(input: ToolCallInputs, ctx: ToolCallContext): G
 				role: ctx.role,
 				loopState: ctx.loopState,
 				amendmentCovers: ctx.amendmentCovers?.(relative.rel) === true,
+				planEditCovers: ctx.planEditCovers?.(relative.rel) === true,
 			});
 			if (!pathDecision.allowed) return pathDecision;
 			const secretPath = secretPathDecision(relative.rel);
@@ -204,6 +207,31 @@ export function amendmentCovers(rel: string, records: AmendmentRecordLike[], ame
 	}
 	const candidates = amendmentId ? [latest.get(amendmentId)].filter(Boolean) : [...latest.values()];
 	return (candidates as AmendmentRecordLike[]).some((record) => record.path !== undefined && underPath(rel, record.path));
+}
+
+export interface DecisionRecordLike {
+	id?: string;
+	title?: string;
+	context?: string;
+	decision?: string;
+}
+
+/**
+ * The S7 plan-edit exception (research_agent/prompts/07_verify_smoke_and_docs.md):
+ * S7 is the one build stage allowed to correct `research_agent/plan/`. The guard
+ * allows it only for a human session and only for a path named by a recorded
+ * decision whose title starts with "S7" — so the edit carries its audit trail.
+ */
+export function planEditCovers(rel: string, records: DecisionRecordLike[]): boolean {
+	const latest = new Map<string, DecisionRecordLike>();
+	for (const record of records) {
+		if (record.id) latest.set(record.id, record);
+	}
+	return [...latest.values()].some((record) => {
+		const title = String(record.title ?? "").trim();
+		const text = `${String(record.context ?? "")} ${String(record.decision ?? "")}`;
+		return /^S7\b/.test(title) && text.includes(rel);
+	});
 }
 
 export function roleFromEnv(env: NodeJS.ProcessEnv): LoopRole {

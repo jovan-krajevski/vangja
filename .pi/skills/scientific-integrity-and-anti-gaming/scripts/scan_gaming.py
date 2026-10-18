@@ -23,6 +23,10 @@ from pathlib import Path
 
 EXCLUDE_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache",
                 ".ruff_cache", ".ipynb_checkpoints", "fixtures"}
+# Runtime state (test sandboxes, worktrees, calibration snapshots) is gitignored
+# and must never be scanned as repository source. Path-prefix, not basename: a
+# package directory named `state` is still scanned.
+EXCLUDE_PREFIXES = {(".pi", "state"), (".pi", "artifacts")}
 SELECTORS = {"idxmin", "idxmax", "argmin", "argmax", "nsmallest", "nlargest"}
 BUILTIN_SELECTORS = {"min", "max", "sorted"}
 # Assertions the diff scan counts: bare `assert`, unittest camelCase
@@ -82,6 +86,8 @@ def iter_files(root: Path, suffixes: tuple[str, ...]):
             continue
         rel = path.relative_to(root)
         if any(part in EXCLUDE_DIRS for part in rel.parts):
+            continue
+        if len(rel.parts) >= 2 and (rel.parts[0], rel.parts[1]) in EXCLUDE_PREFIXES:
             continue
         yield path, rel
 

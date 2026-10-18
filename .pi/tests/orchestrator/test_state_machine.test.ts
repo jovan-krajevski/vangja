@@ -7,7 +7,10 @@
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { nextAction, describeAction, readinessCriteria, completions } from "../../extensions/orchestrator/state-machine.ts";
+import { nextAction, describeAction, readinessCriteria, completions, latestPrs } from "../../extensions/orchestrator/state-machine.ts";
+import { loadLedgerView } from "../../extensions/orchestrator/ledgers.ts";
+import { appendRecord } from "../../extensions/ledger/store.ts";
+import { scratchRoot } from "../helpers.ts";
 import {
 	budget,
 	event,
@@ -307,6 +310,9 @@ test("READINESS passes to PAPER, fails to SELECT_TASK, otherwise spawns the supe
 	);
 	assert.equal(pass.kind, "bookkeep");
 	assert.equal(pass.to, "PAPER");
+	// The verdict is consumed once: a stale READINESS.json must not be re-read on
+	// the next entry (that livelocks SELECT_TASK ↔ READINESS).
+	assert.deepEqual(pass.kind === "bookkeep" ? pass.effects : [], [{ type: "archive_readiness" }]);
 	const fail = nextAction(
 		loopState({ state: "READINESS" }),
 		view({ readiness: { pass: false, reason: "confirmation runs missing" } }),
@@ -314,6 +320,7 @@ test("READINESS passes to PAPER, fails to SELECT_TASK, otherwise spawns the supe
 	);
 	assert.equal(fail.kind, "bookkeep");
 	assert.equal(fail.to, "SELECT_TASK");
+	assert.deepEqual(fail.kind === "bookkeep" ? fail.effects : [], [{ type: "archive_readiness" }]);
 	const spawn = nextAction(loopState({ state: "READINESS" }), view(), loopOptions());
 	assert.equal(spawn.kind, "spawn");
 	assert.equal(spawn.agent, "supervisor");
@@ -353,6 +360,14 @@ test("PAPER spawns the writer, then supervises its PR, then merges and audits", 
 });
 
 test("AUDIT stops at the cycle cap and spawns the agent that owns the current phase", () => {
+	// The first AUDIT step (no AUDIT.json yet) is the deterministic gate phase —
+	// plan/07_AUDIT_HARNESS.md §8 requires gates before any finder.
+	const first = nextAction(loopState({ state: "AUDIT", attempt: 0 }), view(), loopOptions());
+	assert.equal(first.kind, "spawn");
+	assert.equal(first.agent, "supervisor");
+	assert.equal(first.key, "audit:1:gates:1");
+	assert.match((first as { brief: string }).brief, /run_gates/);
+
 	const capped = nextAction(
 		loopState({ state: "AUDIT" }),
 		view({ audit: { cycle: 6, phase: "find", complete: false } }),
@@ -451,6 +466,45 @@ test("readinessCriteria reports the mechanical blockers it can check", () => {
 	assert.equal(waived.green, true);
 	const refuted = readinessCriteria(view({ findings: [{ id: "F-002", severity: "S1", status: "refuted" }] }));
 	assert.equal(refuted.green, true);
+});
+
+test("the ledger's own kind field does not hide the PR type (pr_kind)", () => {
+	// Regression: `appendRecord` owns `kind` (always the literal "pr"), so a PR
+	// written through the ledger used to lose its work/paper type and the loop
+	// could never reach AUDIT.
+	const root = scratchRoot("vangja-pr-kind-");
+	const ctx = { root, role: "phd_candidate" as const, actor: "test" };
+	const base = {
+		branch: "paper/paper-update",
+		head_sha: "a".repeat(40),
+		base_sha: "b".repeat(40),
+		summary: "paper PR",
+		artifacts: [],
+		tests: [],
+		claims: [],
+		hpc_jobs: [],
+		status: "open",
+	};
+	const paper = appendRecord(root, "pr", { ...base, task_id: "PAPER", pr_kind: "paper" }, ctx);
+	const work = appendRecord(root, "pr", { ...base, task_id: "T-001", pr_kind: "work" }, ctx);
+	assert.equal(paper.kind, "pr", "the ledger keeps its discriminator");
+	const loaded = loadLedgerView(root).prs;
+	assert.equal(loaded.find((entry) => entry.id === paper.id)?.kind, "paper");
+	assert.equal(loaded.find((entry) => entry.id === work.id)?.kind, "work");
+
+	// The merge routes a paper PR into AUDIT and a work PR into POST_MERGE.
+	const reviews = [review({ id: "RV-001", pr_id: String(paper.id) }), review({ id: "RV-002", pr_id: String(work.id) })];
+	const noGate = loopOptions({ requireHumanMerge: false });
+	const paperMerge = nextAction(loopState({ state: "MERGE", pr_id: String(paper.id) }), view({ prs: loaded, reviews }), noGate);
+	assert.equal(paperMerge.kind, "merge");
+	assert.equal(paperMerge.kind === "merge" ? paperMerge.to : null, "AUDIT");
+	const workMerge = nextAction(loopState({ state: "MERGE", pr_id: String(work.id) }), view({ prs: loaded, reviews }), noGate);
+	assert.equal(workMerge.kind, "merge");
+	assert.equal(workMerge.kind === "merge" ? workMerge.to : null, "POST_MERGE");
+
+	// Hand-written fixtures that still use `kind` keep working.
+	const legacy = latestPrs([{ id: "PR-003", seq: 1, kind: "paper", task_id: "PAPER", status: "open", branch: "p", head_sha: "a", base_sha: "b", summary: "s" }]);
+	assert.equal(legacy[0].kind, "paper");
 });
 
 test("nextAction is pure: same snapshot in, same action out, snapshot not mutated", () => {

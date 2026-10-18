@@ -20,6 +20,8 @@ export interface ProtectionContext {
 	loopState: string | null;
 	/** True when a recorded protocol amendment covers this path (caller reads the ledger). */
 	amendmentCovers?: boolean;
+	/** True when an S7 decision names this plan path (human-only exception, see below). */
+	planEditCovers?: boolean;
 }
 
 interface ProtectionRule {
@@ -43,7 +45,12 @@ const PROTECTION_RULES: ProtectionRule[] = [
 		code: "PROTECTED_PATH",
 		reason: (rel) => `"${rel}" is inside research_agent/plan/, the frozen build plan`,
 		alternative:
-			"record a proposed plan change with decision_record/amendment_record; only stage S7 may edit plan/ per research_agent/prompts/07_verify_smoke_and_docs.md",
+			"record an S7 decision naming the exact path (decision_record, title starting \"S7\") and edit it from the " +
+			"human S7 build session; every other role and every uncovered path stays read-only",
+		// research_agent/prompts/07_verify_smoke_and_docs.md makes S7 the one build
+		// stage allowed to correct the plan. The exception is deliberately narrow:
+		// human role only, and only for a path named by a recorded S7 decision.
+		unless: (ctx) => ctx.role === "human" && ctx.planEditCovers === true,
 	},
 	{
 		match: (rel) => underPath(rel, "fixed_case_studies/protocol"),

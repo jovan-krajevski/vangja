@@ -165,6 +165,9 @@ const RECORD_FIELDS: Record<LedgerKind, FieldSpec[]> = {
 		{ name: "hpc_jobs", type: "string[]" },
 		{ name: "risks", type: "string", optional: true },
 		{ name: "status", type: "string", values: ["open", "review", "merged", "closed"] },
+		// The PR *type* cannot live in `kind`: the ledger owns that field (it is
+		// always the literal "pr"), so the state machine reads `pr_kind`.
+		{ name: "pr_kind", type: "string", values: ["work", "paper"], optional: true },
 	],
 	review: [
 		{ name: "id", type: "string", nonEmpty: true },

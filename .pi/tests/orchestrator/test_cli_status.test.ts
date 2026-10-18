@@ -13,7 +13,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { CLI, STUB_CHILD, createSandbox, fileHashes, readEvents, readState, runCli, seedTask, writeGatesConfig } from "./orchestrator_helpers.ts";
 import { REPO_ROOT } from "../helpers.ts";
-
 const LOOP_DIR = path.join(REPO_ROOT, ".pi", "loop");
 
 function stable(event: Record<string, unknown>, root: string): Record<string, unknown> {
@@ -164,7 +163,7 @@ test("an unknown CLI command exits 2 with the usage text", () => {
 	assert.match(result.stderr, /unknown command "frobnicate"/);
 });
 
-test("every /loop:* command delegates to the shared command layer", () => {
+test("every /loop:* command delegates to the shared command layer", async () => {
 	const source = fs.readFileSync(path.join(REPO_ROOT, ".pi", "extensions", "orchestrator", "index.ts"), "utf8");
 	const pairs: Array<[string, string]> = [
 		["loop:start", "commandStart"],
@@ -186,6 +185,26 @@ test("every /loop:* command delegates to the shared command layer", () => {
 	for (const forbidden of ["executeAction", "saveLoopState", "nextAction", "runPreMergeGates"]) {
 		assert.equal(source.includes(`${forbidden}(`), false, `index.ts must not call ${forbidden} directly`);
 	}
+
+	// `pi --print "/loop:verify-env"` must print the PASS/FAIL lines to stdout:
+	// print mode has no toast UI, so emit.ts writes the same text the TUI shows
+	// (S7 acceptance test 5). The handler/message mapping is checked above; the
+	// rendering itself is unit-tested without importing pi's extension module.
+	const { emitResult } = await import("../../extensions/orchestrator/emit.ts");
+	const chunks: string[] = [];
+	const toasts: string[] = [];
+	const render = (mode: string) =>
+		emitResult(
+			{ mode, ui: { notify: (text) => toasts.push(text) }, write: (text) => chunks.push(text) },
+			"PASS  environment checks: 15 checks passed",
+			["PASS  environment checks"],
+		);
+	render("print");
+	assert.deepEqual(chunks, ["PASS  environment checks: 15 checks passed\n"]);
+	assert.deepEqual(toasts, [], "print mode must not rely on a toast");
+	render("tui");
+	assert.deepEqual(chunks, ["PASS  environment checks: 15 checks passed\n"], "tui mode must not write to stdout");
+	assert.deepEqual(toasts, ["PASS  environment checks: 15 checks passed"]);
 });
 
 test("a missing state directory is not silently created by status", () => {

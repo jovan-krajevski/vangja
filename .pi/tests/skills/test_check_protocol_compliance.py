@@ -1,7 +1,9 @@
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
-from helpers import FIXTURES, REPO_ROOT, assert_help, run_script, script
+from helpers import FIXTURES, REPO_ROOT, assert_help, run_script, script, write_text
 
 CHECK = script("experiment-protocol-design", "check_protocol_compliance.py")
 PROTOCOL_FIXTURES = FIXTURES / "protocol"
@@ -15,6 +17,20 @@ class TestProtocolCompliance(unittest.TestCase):
         proc = run_script(CHECK, ["--repo", REPO_ROOT])
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("CLEAN", proc.stdout)
+
+    def test_runtime_state_is_not_scanned(self):
+        # `.pi/state/**` is gitignored runtime state, not repository source.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_text(
+                root / ".pi" / "state" / "sandbox" / "evaluation.py",
+                'best = min(rows, key=lambda row: row["test_mape"])\n',
+            )
+            write_text(root / "evaluation.py", 'best = min(rows, key=lambda row: row["test_mape"])\n')
+            proc = run_script(CHECK, ["--repo", root])
+            self.assertEqual(proc.returncode, 1, proc.stdout)
+            self.assertIn("evaluation.py", proc.stdout)
+            self.assertNotIn(".pi/state", proc.stdout)
 
     def test_test_set_selection_is_flagged_with_file_line(self):
         proc = run_script(CHECK, ["--repo", PROTOCOL_FIXTURES / "dirty"])

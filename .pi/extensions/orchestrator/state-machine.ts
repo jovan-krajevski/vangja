@@ -195,6 +195,7 @@ export type BookkeepEffect =
 	| { type: "bump_attempt" }
 	| { type: "reset_failures" }
 	| { type: "clear_pr" }
+	| { type: "archive_readiness" }
 	| { type: "hpc_disabled"; experiment_id: string; reason: string }
 	| { type: "local_fallback"; experiment_id: string; reason: string }
 	| { type: "experiment_status"; experiment_id: string; status: string; evidence: string }
@@ -319,7 +320,10 @@ export function latestPrs(prs: Array<Record<string, unknown>>): PrView[] {
 		branch: String(pr.branch ?? ""),
 		head_sha: String(pr.head_sha ?? ""),
 		base_sha: String(pr.base_sha ?? ""),
-		kind: String(pr.kind ?? "work"),
+		// The ledger's own `kind` is always "pr"; the PR type is `pr_kind`.
+		// Legacy records that put "paper" in `kind` (hand-written fixtures) are
+		// still honoured, everything else is a work PR.
+		kind: pr.pr_kind === "paper" || pr.kind === "paper" ? "paper" : "work",
 		summary: String(pr.summary ?? ""),
 	}));
 }
@@ -1276,13 +1280,26 @@ export const RULES: Rule[] = [
 	{
 		id: "readiness-pass",
 		when: (state, ledgers) => state.state === "READINESS" && ledgers.readiness?.pass === true,
-		action: (state, ledgers) => bookkeep(state, "PAPER", [], `readiness rubric passed: ${ledgers.readiness?.reason ?? ""}`, "loop"),
+		action: (state, ledgers) =>
+			bookkeep(
+				state,
+				"PAPER",
+				[{ type: "archive_readiness" }],
+				`readiness rubric passed: ${ledgers.readiness?.reason ?? ""}`,
+				"loop",
+			),
 	},
 	{
 		id: "readiness-fail",
 		when: (state, ledgers) => state.state === "READINESS" && ledgers.readiness?.pass === false,
 		action: (state, ledgers) =>
-			bookkeep(state, "SELECT_TASK", [], `readiness rubric failed: ${ledgers.readiness?.reason ?? "no reason"}`, "loop"),
+			bookkeep(
+				state,
+				"SELECT_TASK",
+				[{ type: "archive_readiness" }],
+				`readiness rubric failed: ${ledgers.readiness?.reason ?? "no reason"}`,
+				"loop",
+			),
 	},
 	{
 		id: "readiness-spawn",
@@ -1369,7 +1386,9 @@ export const RULES: Rule[] = [
 		id: "audit-spawn",
 		when: (state) => state.state === "AUDIT",
 		action: (state, ledgers) => {
-			const audit = ledgers.audit ?? { cycle: ledgers.budget.auditCycles + 1, phase: "find", complete: false };
+			// plan/07_AUDIT_HARNESS.md §8: the deterministic gates run before any
+			// finder. With no AUDIT.json yet, the first phase is the gate step.
+			const audit = ledgers.audit ?? { cycle: ledgers.budget.auditCycles + 1, phase: "gates", complete: false };
 			return spawn(
 				state,
 				`audit:${audit.cycle}:${audit.phase}:${state.attempt + 1}`,

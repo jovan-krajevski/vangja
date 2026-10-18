@@ -3,15 +3,44 @@
  */
 
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { test } from "node:test";
 import { loadAgentsManifest } from "../../lib/config.ts";
 import { loadToolRegistry, expandTools } from "../../lib/toolset.ts";
-import { readText, REPO_ROOT } from "./helpers.ts";
+import { readText, REPO_ROOT, SEEDED_FIXTURE } from "./helpers.ts";
 
 const TEMPLATES = path.join(REPO_ROOT, ".pi", "audit", "_templates");
 const WORKSTREAMS = ["M", "S", "P", "D", "I", "R", "H", "E", "C", "L"];
+
+/**
+ * A fixture that is present in the working tree but ignored by .gitignore is
+ * invisible in a fresh clone — the S6 fixture's `data/` and `paper/` files were
+ * exactly that, and a fresh clone's audit tests failed (found by S7 acceptance
+ * test 6). Every fixture file must be tracked.
+ */
+test("every seeded-fixture file is committed (a fresh clone is complete)", () => {
+	const files: string[] = [];
+	const walk = (dir: string): void => {
+		for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+			const full = path.join(dir, entry.name);
+			if (entry.isDirectory()) walk(full);
+			else if (entry.isFile()) files.push(path.relative(REPO_ROOT, full));
+		}
+	};
+	walk(SEEDED_FIXTURE);
+	assert.ok(files.length >= 20, `expected the full fixture, found ${files.length} file(s)`);
+	const untracked: string[] = [];
+	for (const file of files) {
+		try {
+			execFileSync("git", ["ls-files", "--error-unmatch", "--", file], { cwd: REPO_ROOT, encoding: "utf8" });
+		} catch {
+			untracked.push(file);
+		}
+	}
+	assert.deepEqual(untracked, [], `fixture files missing from the index (ignored or untracked): ${untracked.join(", ")}`);
+});
 
 test("every required audit template exists", () => {
 	const required = [

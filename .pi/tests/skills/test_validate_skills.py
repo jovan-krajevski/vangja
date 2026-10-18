@@ -82,6 +82,24 @@ class TestValidateSkills(unittest.TestCase):
             self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
             self.assertIn("does not exist", proc.stdout)
 
+    def test_external_input_paths_are_allowed_to_be_absent(self):
+        # `.pi/state/**`, `Vangja-project/**` and `paper/**` are human-provided or
+        # runtime inputs (paper/ is untracked by decision D-001), so a fresh clone
+        # legitimately lacks them; a skill may name them without failing validation.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            skill = root / "external-refs"
+            skill.mkdir()
+            content = GOOD_FRONTMATTER.format(name="external-refs") + (
+                "\nRead `.pi/state/CONTEXT.md`, `Vangja-project/REVIEW/FINDINGS.md` "
+                "and `paper/paper.tex` when they exist.\n"
+            )
+            (skill / "SKILL.md").write_text(content)
+            (root / "README.md").write_text("external-refs")
+            proc = run_validator(root, REPO_ROOT)
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            self.assertIn("external", proc.stdout)
+
     def test_too_many_lines_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

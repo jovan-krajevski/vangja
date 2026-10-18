@@ -1,0 +1,19 @@
+{
+  "schema": "vangja-claims/1",
+  "claims": [
+    {
+      "id": "C-001",
+      "statement": "Vangja relative MAE",
+      "value": 0.0607,
+      "artifact": "artifacts/E-0001/manifest.json",
+      "sha": "fixture"
+    },
+    {
+      "id": "C-002",
+      "statement": "Improvement over the baseline",
+      "value": 0.32,
+      "artifact": "artifacts/E-9999/manifest.json",
+      "sha": "fixture"
+    }
+  ]
+}

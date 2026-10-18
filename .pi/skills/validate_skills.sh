@@ -111,6 +111,14 @@ def looks_like_path(token: str) -> bool:
 
 RUNTIME_PARTS = {"data", "results", "results_hyperparams", ".venv", "node_modules"}
 
+# Paths that are inputs rather than versioned repo content: the loop's runtime
+# state (gitignored), the read-only historical audit archive the human supplies,
+# and paper/ (kept untracked until publication by decision D-001). A skill may
+# name them, and a fresh clone legitimately lacks them, so absence is not a
+# validation failure; the skipped references are reported in a NOTE line.
+EXTERNAL_PREFIXES = (".pi/state/", "Vangja-project", "paper/")
+external_skipped: set[str] = set()
+
 # Directories that must never make a referenced path "exist": a virtualenv or a
 # node_modules tree contains a file named like almost anything (e.g. pandas ships
 # `missing.py`), which would silently pass the existence check below.
@@ -187,6 +195,9 @@ for skill_dir in skill_dirs:
             continue
         candidate = candidate.strip("/") if candidate.endswith("/") else candidate
         if set(Path(candidate).parts) & RUNTIME_PARTS:
+            continue
+        if candidate.startswith(EXTERNAL_PREFIXES):
+            external_skipped.add(candidate)
             continue
         if candidate.startswith((".pi/",)):
             target = repo_root / candidate
@@ -265,5 +276,8 @@ for skill_dir in skill_dirs:
 if failures:
     print(f"\nvalidate_skills: {failures} failure(s)")
     sys.exit(1)
+if external_skipped:
+    print(f"NOTE  {len(external_skipped)} external/runtime reference(s) not checked for "
+          f"existence (absent in a fresh clone): {', '.join(sorted(external_skipped))}")
 print(f"\nvalidate_skills: all {len(skill_dirs)} skills valid")
 PY

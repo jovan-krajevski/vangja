@@ -28,6 +28,9 @@ from pathlib import Path
 
 EXCLUDE_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache",
                 ".ruff_cache", "docs/_build", ".ipynb_checkpoints", "fixtures"}
+# Runtime state (test sandboxes, worktrees, calibration snapshots) is gitignored
+# and must never be scanned as repository source.
+EXCLUDE_PREFIXES = {(".pi", "state"), (".pi", "artifacts")}
 EXCLUDE_READONLY = {"Vangja-project"}
 TEST_TOKENS = ("test", "confirm", "holdout", "hold_out", "out_of_sample", "oos")
 METRIC_TOKENS = ("mae", "rmse", "mape", "elpd", "score", "metric", "error", "loss")
@@ -61,6 +64,8 @@ def iter_files(repo: Path, include_readonly: bool, suffixes: tuple[str, ...]):
             continue
         rel = path.relative_to(repo)
         if any(part in EXCLUDE_DIRS for part in rel.parts):
+            continue
+        if len(rel.parts) >= 2 and (rel.parts[0], rel.parts[1]) in EXCLUDE_PREFIXES:
             continue
         if not include_readonly and rel.parts and rel.parts[0] in EXCLUDE_READONLY:
             continue

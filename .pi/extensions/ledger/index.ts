@@ -128,7 +128,9 @@ export default function (pi: ExtensionAPI) {
 			name: "pr_open",
 			label: "PR open",
 			description:
-				"Record a PR for a task: task_id, head_sha, base_sha, branch, summary, artifacts, tests, claims, hpc_jobs.",
+				"Record a PR for a task: task_id, head_sha, base_sha, branch, summary, artifacts, tests, claims, hpc_jobs." +
+				" Set pr_kind=\"paper\" for the manuscript PR — the ledger's own `kind` is always \"pr\", and the " +
+				"conductor routes a paper merge into AUDIT.",
 			parameters: Type.Object({ footer: JSON_OBJECT }),
 			executionMode: "sequential",
 			async execute(_id, params, _signal, _update, ctx) {

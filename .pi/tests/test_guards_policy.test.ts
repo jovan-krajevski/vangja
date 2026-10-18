@@ -13,6 +13,7 @@ import {
 	checkModelPin,
 	destructiveBashDecision,
 	formatDenial,
+	planEditCovers,
 	protectedPathDecision,
 	extractWriteTargets,
 } from "../extensions/guards/policy.ts";
@@ -62,6 +63,30 @@ test("protected-path exceptions: amendment, PAPER state, supervisor AGENTS.md", 
 	assert.equal(protectedPathDecision("AGENTS.md", { role: "supervisor", loopState: "WORK" }).allowed, true);
 	assert.equal(protectedPathDecision("AGENTS.md", { role: "conductor", loopState: "WORK" }).allowed, true);
 	assert.equal(protectedPathDecision("Vangja-project/README.md", { role: "supervisor", loopState: "PAPER", amendmentCovers: true }).allowed, false);
+});
+
+test("the plan-edit exception is human-only and needs an S7 decision naming the path", () => {
+	const path = "research_agent/plan/09_OPERATIONS_RUNBOOK.md";
+	const covered = [{ id: "D-001", title: "S7: plan/09 runbook cross-check", context: `command names differ from the implementation in ${path}`, decision: `fix ${path} in place` }];
+	assert.equal(planEditCovers(path, covered), true);
+	assert.equal(planEditCovers(path, [{ id: "D-002", title: "S6: other", context: path, decision: "no" }]), false);
+	assert.equal(planEditCovers(path, [{ id: "D-003", title: "S7: another path", context: "research_agent/plan/08_BUILD_PLAN.md", decision: "fix it" }]), false);
+	// Latest record per id wins: a withdrawn decision re-denies the path.
+	assert.equal(planEditCovers(path, [...covered, { id: "D-001", title: "S7: withdrawn", context: "no plan edits", decision: "revert" }]), false);
+
+	assert.equal(
+		protectedPathDecision(path, { role: "human", loopState: null, planEditCovers: true }).allowed,
+		true,
+		"the human S7 session may edit a covered plan path",
+	);
+	assert.equal(protectedPathDecision(path, { role: "human", loopState: null, planEditCovers: false }).allowed, false);
+	for (const role of ["supervisor", "conductor", "phd_candidate", "paper_writer"] as LoopRole[]) {
+		assert.equal(
+			protectedPathDecision(path, { role, loopState: "WORK", planEditCovers: true }).allowed,
+			false,
+			`${role} must not get the plan-edit exception`,
+		);
+	}
 });
 
 test("normal working paths stay writable", () => {

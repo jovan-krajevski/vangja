@@ -2,6 +2,10 @@
 
 Everything below happens at the repository root; runtime state is in `.pi/state/`.
 
+> Cross-checked against the implementation in S7 (decision D-003): command names,
+> gate storage (`GATES.jsonl`, not `HUMAN_GATES.json`), the `hpc gate` wording,
+> and `collect.sh` (no experiment id) were corrected to match the code.
+
 ## 1. First run
 
 ```bash
@@ -9,13 +13,15 @@ cd /path/to/vangja
 uv sync --extra test --extra datasets --extra reproducibility
 pi                                # trust the project when asked
 /loop:verify-env                  # must be green (model pin, resources, schemas)
-/loop:status                      # state should be IDLE/BOOT
+/loop:status                      # state is UNINITIALIZED before the first step
 ```
 
 Optional HPC: `cp .pi/config/hpc.example.json .pi/config/hpc.json`, fill
 `host/user/remoteRepoDir/remoteScratchDir/hpcKey/gitKey`; leave `host` empty to
-disable the HPC path completely. Check with `/loop:verify-env` (it reports
-`hpc: disabled` or `hpc: ok`).
+disable the HPC path completely. Check with `/loop:verify-env`: its `hpc gate`
+line reads `not-configured` (no host: experiments run locally), `ok` (host
+configured and validated), or `blocked` (config present but invalid — the loop
+will not guess).
 
 Optional PRs on GitHub: `gh auth status` must succeed; otherwise PRs are recorded
 locally and nothing is pushed.
@@ -40,18 +46,21 @@ the collector re-reads `squeue`/`sacct` on resume. Nothing needs to be re-run.
 
 ## 3. Human gates
 
-Gates are listed in `.pi/state/HUMAN_GATES.json` and shown by `/loop:status`.
+Gates live in the `.pi/state/GATES.jsonl` ledger and are shown by `/loop:status`
+and `/loop:gate list`.
 
 | Gate | When | Default |
 |---|---|---|
-| `merge` | every accepted PR before it lands on `update_pymc` | on |
-| `confirmation` | before the first confirmation-stage run | on |
-| `audit` | before starting an audit cycle | on |
-| `submission` | before anything labelled ready-to-submit | on |
+| `merge` | every accepted PR before it lands on `update_pymc` | on (`requireHumanMerge`) |
+| `submission` | when the decision rule says DONE — the sign-off to finish the run | on |
+| `confirmation` | defined for the first confirmation-stage run; opened by whoever reaches it, not by the conductor | manual |
+| `audit` | defined for starting an audit cycle; the conductor reaches AUDIT through the paper merge without this gate | manual |
+| `enqueue` | opened by `amendment_record` when a protected protocol path must change | on for amendments |
 
-`/loop:gate list`, `/loop:gate approve <id> [note]`, `/loop:gate reject <id> <why>`.
-Rejecting a gate sends the loop back with your note attached to the task; it does
-not stop the run.
+`/loop:gate list`, `/loop:gate approve <id> <note>` (the note is the audit trail),
+`/loop:gate reject <id> <why>`. Rejecting a `merge` gate sends the PR back to
+WORK with the note; rejecting the `submission` gate returns the loop to
+SELECT_TASK. It never stops the run.
 
 ## 4. Reading state
 
@@ -62,6 +71,8 @@ not stop the run.
 | `.pi/state/EVENTS.jsonl` | every transition, action, child invocation, usage record |
 | `.pi/state/TASKS.md` / `PRS.md` / `REVIEWS.md` / `EXPERIMENTS.md` | human-readable views |
 | `.pi/state/BUDGET.json` | sessions, wall clock, cost consumed vs caps |
+| `.pi/state/GATES.jsonl` | every human gate (pending/approved/rejected) |
+| `.pi/state/READINESS.json` | the supervisor's readiness verdict; consumed once and archived to `READINESS.verdict.json` |
 | `.pi/state/sessions/<run_id>/…` | full pi session transcripts — replay any agent step |
 | `.pi/artifacts/<experiment_id>/manifest.json` | what a run produced, with SHA-256 and SLURM accounting |
 | `.pi/audit/cycle-<n>/` | the audit: scope, gates, findings, verification, report, grade |
@@ -70,10 +81,13 @@ not stop the run.
 
 - **Redirect a task:** edit `.pi/state/tasks/T-###.md` before its `WORK` step, or
   reject the PR with instructions (the review note becomes the next brief).
-- **Add a task:** write a brief from the template and run `ledger task_enqueue`,
-  or drop a note in `state/HUMAN_GATES.json` with `action: "enqueue"`.
-- **Kill a bad experiment:** `/loop:gate reject <job-id> "why"` then instruct
-  `hpc_cancel` (the ledger records both). Never edit `EXPERIMENTS.jsonl` by hand.
+- **Add a task:** write a brief from the template and call the `task_enqueue`
+  tool (the ledger records it), or drop a note in `GATES.jsonl` with
+  `action: "enqueue"`.
+- **Kill a bad experiment:** record a decision naming the experiment and the
+  cancellation (`decision_record`), then `hpc_cancel` — a cancellation is refused
+  without an instruction record. The conductor owns requeue (`hpc_requeue`); never
+  edit `EXPERIMENTS.jsonl` by hand.
 - **Change the model/budget/venue:** edit `.pi/config/*.json`, then
   `/loop:verify-env` (the guard will refuse child processes that violate the pin).
 - **Emergency stop:** `touch .pi/state/STOP`; kill the pi process; remote SLURM
@@ -90,8 +104,9 @@ not stop the run.
 - Watch progress: `.pi/state/EXPERIMENTS.md` lists the checkpoint progress marker
   per attempt. If the marker does not move between attempts, the loop blocks for
   you instead of burning the queue.
-- Collect manually if needed: `bash .pi/loop/collect.sh E-0007` runs one collector
-  pass for one experiment.
+- Collect manually if needed: `bash .pi/loop/collect.sh` runs one collector pass
+  for the active experiment (the shim takes no experiment id; the collector is
+  bound to the one unfinished record).
 
 ## 7. Budgets and cost
 
@@ -108,7 +123,7 @@ resume command. Raise the cap deliberately and record why in
 | loop paused on `maxConsecutiveFailures` | read the last 3 events + session transcripts, fix the cause or enqueue a task, `/loop:resume` |
 | PR failed the pre-merge gate | read `.pi/state/reviews/RV-###.md`; either waive (supervisor, with reason) or send back for changes |
 | protected-path write refused | if the change is legitimate, record an amendment, then retry; otherwise stop and inspect the agent's reasoning in its session |
-| audit `uncalibrated` | narrow the workstream briefs (the calibration report names which findings were missed) and re-run those workstreams |
+| audit `uncalibrated` | narrow the workstream briefs (the calibration report names which findings were missed) and re-run those workstreams; the `UNCALIBRATED` marker under `.pi/audit/calibration/latest/` is authoritative over any stale `recall.json` |
 | artifact hash mismatch | treat as an S0 finding; re-collect the job; never use the artifact until reconciled |
 | HPC credentials missing | loop writes `BLOCKED` with `hpc-disabled`/`key-missing`; provide the key path in config and resume |
 | two jobs submitted | impossible by design; if seen, stop the loop immediately and file a bug against the conductor (single-slot invariant) |

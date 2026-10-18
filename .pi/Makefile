@@ -5,10 +5,13 @@
 #   test               unit + integration suite (offline, no model calls)
 #   skills-test        validate .pi/skills + run the skill-script tests
 #   env-check          config/settings/roster/secrets checks with PASS lines
-#   verify-env         test + skills-test + env-check + orchestrator-check
-#   verify-env-strict  alias of verify-env (kept for the S0..S3 reports)
+#   model-pin          audit .pi/state/EVENTS.jsonl for pinned model/thinking
+#   verify-env         test + skills-test + env-check + orchestrator-check + model-pin
+#   smoke              end-to-end sandbox loop (BOOT → audit → decision; no model calls)
+#   resilience         kill/restart matrix with exactly-once assertions
+#   calibration        offline audit-calibration modes (strong/weakened/rejected)
+#   all                verify-env test smoke
 #   accept             model-backed acceptance checks (small token cost)
-#   all                verify-env
 #   help               this list
 
 SHELL := /bin/bash
@@ -31,11 +34,12 @@ TEST_FILES := .pi/tests/test_settings.test.ts .pi/tests/test_schemas.test.ts \
 	.pi/tests/audit/test_rubrics.test.ts .pi/tests/audit/test_verify.test.ts \
 	.pi/tests/audit/test_canary.test.ts .pi/tests/audit/test_calibration.test.ts \
 	.pi/tests/audit/test_templates.test.ts .pi/tests/audit/test_audit_wiring.test.ts \
-	.pi/tests/audit/test_register_concurrency.test.ts
+	.pi/tests/audit/test_register_concurrency.test.ts \
+	.pi/tests/e2e/test_model_pin_audit.test.ts
 
-.PHONY: all test skills-test env-check verify-env verify-env-strict orchestrator-check orchestrator-accept hpc-accept audit-accept audit-calibrate accept agents-accept help
+.PHONY: all test skills-test env-check model-pin verify-env verify-env-strict orchestrator-check orchestrator-accept hpc-accept audit-accept audit-calibrate calibration smoke resilience accept agents-accept help
 
-all: verify-env
+all: verify-env test smoke
 
 test:
 	@echo "== node --test (offline) =="
@@ -49,11 +53,17 @@ env-check:
 	@echo "== environment checks =="
 	cd $(ROOT) && $(NODE) .pi/tests/check_env.ts
 
-verify-env: test skills-test env-check orchestrator-check
+verify-env: test skills-test env-check orchestrator-check model-pin
 	@echo
-	@echo "verify-env: environment tests green (the orchestrator is implemented; see loop/README.md)."
+	@echo "verify-env: environment tests green (every stage's suite, skills, schemas, model pin)."
 
 verify-env-strict: verify-env
+
+# Offline: every recorded child argv must use the pinned model and thinking level.
+model-pin:
+	@echo
+	@echo "== model-pin audit (.pi/state/EVENTS.jsonl) =="
+	cd $(ROOT) && $(NODE) .pi/tests/e2e/audit_model_pin.ts
 
 # Offline: reads the environment, runs the orchestrator's own checks, writes nothing.
 orchestrator-check:
@@ -77,6 +87,20 @@ audit-accept:
 # Offline calibration scorer on the committed strong fixture (no finder/model calls).
 audit-calibrate:
 	bash $(ROOT)/.pi/calibrate.sh --fixture .pi/tests/audit/fixtures/calibration/strong.json --out /tmp/vangja-calibration-strong
+
+# The three offline calibration modes + refusal paths (no model calls).
+calibration:
+	bash $(ROOT)/.pi/tests/e2e/calibration.sh
+
+# End-to-end sandbox loop: BOOT → work → review → merge → readiness → paper →
+# audit → decision, with the tampered-artifact and seeded-defect checks.
+# Deterministic child stub only: no model calls, no network, no HPC.
+smoke:
+	cd $(ROOT) && $(NODE) .pi/tests/e2e/smoke.ts
+
+# Kill/restart matrix with exactly-once assertions (no model calls).
+resilience:
+	cd $(ROOT) && $(NODE) .pi/tests/e2e/resilience.ts
 
 # Not part of verify-env: these make real model calls.
 accept:

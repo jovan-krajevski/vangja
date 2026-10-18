@@ -4214,3 +4214,454 @@ verification time.
   negative control.
 
 D6, D7, D8 and D9 remain open and are recorded here without a code edit.
+
+## S7 — end-to-end smoke, resilience, docs
+
+S7 adds no new architecture: it proves the environment works as a whole and
+leaves it documented. The stage is the first that runs the **real** conductor
+from BOOT to the audit decision, with a deterministic child stub in place of the
+model, in a scratch clone.
+
+### Deliverables
+
+1. **`.pi/Makefile`** — `test` (unit/integration only), `skills-test`,
+   `env-check`, `model-pin` (the S7 audit of `.pi/state/EVENTS.jsonl`),
+   `verify-env` = `test skills-test env-check orchestrator-check model-pin`,
+   `smoke` (end-to-end sandbox), `resilience` (kill/restart matrix),
+   `calibration` (three offline modes + refusal paths), `all` =
+   `verify-env test smoke`, plus the S4–S6 acceptance targets unchanged.
+2. **End-to-end sandbox smoke test** (`.pi/tests/e2e/smoke.ts`, `e2e_child.mjs`,
+   `fixture/`): scratch clone → synthetic task ("add a docstring and a passing
+   test to a fixture module") + mock experiment with a checkpoint/resume contract
+   → real conductor with `--sandbox` → BOOT → WORK → REVIEW → MERGE → POST_MERGE →
+   READINESS → PAPER → PAPER_REVIEW → MERGE → AUDIT → DECIDE. 20 checks, all
+   printed; 39 loop steps; ~18 s; no model call, no network, no HPC.
+3. **Resilience matrix** (`.pi/tests/e2e/resilience.ts` +
+   `.pi/tests/e2e/resilience.md`): seven kill points, each restarted with
+   `pause` + `resume`, with exactly-once assertions for branches, PRs, merges,
+   experiments, and artifacts.
+4. **Documentation**: this section; `.pi/README.md` (layout, verify block, smoke
+   test, security note for the plan-edit exception, corrected open items);
+   `research_agent/README.md` ("How to build it" status + verified commands);
+   `research_agent/plan/09_OPERATIONS_RUNBOOK.md` cross-checked and corrected
+   in place (decision D-003; S7 is the one build stage allowed to edit `plan/`).
+5. **Final scope report**: `git status` and `git diff --stat` below.
+
+### Defects the smoke test found (and the fixes)
+
+The e2e run is the first time the loop executes a *paper* PR and a *real* audit
+cycle, and it found eight wiring defects that the stage-level tests could not:
+
+1. **`pr_kind` (S1).** `appendRecord` owns the ledger's `kind` field (always the
+   literal `"pr"`), so a PR written with `kind: "paper"` lost its type. The
+   conductor then never saw a paper PR: `PAPER` re-spawned the writer, the paper
+   merge went to `POST_MERGE` instead of `AUDIT`, and the **AUDIT state was
+   unreachable in the real loop**. Fix: the PR type is now `pr_kind` (schema in
+   `lib/records.ts`, projection in `latestPrs`, merge routing in `execute.ts` and
+   `merge-tool.ts`, `pr_open` docs). Test: `test_state_machine.test.ts` writes a
+   paper PR through the real ledger and asserts `kind === "paper"`, the
+   `MERGE → AUDIT` route, and the legacy `kind: "paper"` fallback.
+2. **`syncAuditState` was not imported (S1).** `execute.ts` called it after every
+   AUDIT child; the first call threw `ReferenceError: syncAuditState is not
+   defined` and the loop stalled in AUDIT. Fix: import it. The S6 acceptance
+   tests called `syncAuditState` directly, which is why it passed there.
+3. **READINESS livelock (S1).** A failed readiness verdict stayed in
+   `.pi/state/READINESS.json`, so `SELECT_TASK → READINESS → SELECT_TASK`
+   repeated forever (the tamper check in the smoke test exposed it). Fix: both
+   `readiness-pass` and `readiness-fail` consume the verdict with an
+   `archive_readiness` effect (archives to `READINESS.verdict.json`); the next
+   READINESS entry re-evaluates. Test in `test_state_machine.test.ts`.
+4. **The merge event had no `from`.** Plan/02 §2 says every transition records
+   `from`/`to`; the merge completion event recorded only `to`. Fix: `from:
+   "MERGE"`; the smoke test now asserts the complete transition sequence,
+   including `MERGE → POST_MERGE` and `MERGE → AUDIT`.
+5. **The first AUDIT spawn skipped the gates phase.** With no `AUDIT.json`, the
+   spawn defaulted to phase `find`, so the deterministic gates never ran before
+   the finders (plan/07 §8 requires the opposite). Fix: the default is `gates`;
+   test asserts the first AUDIT action is `audit:1:gates:1` with the `run_gates`
+   brief.
+6. **`/loop:verify-env` printed nothing in print mode.** The handler used
+   `ctx.ui.notify`, and print/JSON modes have no UI — acceptance test 5 was
+   unobservable. Fix: `.pi/extensions/orchestrator/emit.ts` writes the same text
+   to stdout when `ctx.mode !== "tui"`; unit-tested, and the fresh-process run
+   now prints the PASS lines.
+7. **The static scanners walked `.pi/state/**`.** A kept e2e sandbox (which
+   contains the seeded defect) made the real-repository scan dirty:
+   `test_real_repo_is_clean*` failed with 7 findings, all under
+   `.pi/state/e2e-tests/`. Fix: `scan_gaming.py` and
+   `check_protocol_compliance.py` skip the `.pi/state` and `.pi/artifacts`
+   prefixes (path-prefix, not basename), with new tests in
+   `test_scan_gaming.py` and `test_check_protocol_compliance.py`.
+8. **The guard denied the plan/09 edit the prompt allows.** Prompt 07 makes S7
+   the one stage allowed to correct `research_agent/plan/`, but the guard's
+   plan rule had no exception. Fix: a deliberately narrow `planEditCovers`
+   exception — human role only, and only for a path named by a recorded decision
+   whose title starts with "S7" (`protected.ts`, `policy.ts`, `index.ts`; tests
+   in `test_guards_policy.test.ts` and `test_guards_wiring.test.ts`). Decision
+   D-003 records the cross-check; the runbook was then corrected in a fresh pi
+   process (the running session's guard predates the change).
+9. **The S6 seeded fixture was not fully committed (S1 for packaging).** The
+   root `.gitignore` has `data/` and `paper/` patterns that match those
+   directory names at any depth, so
+   `.pi/tests/audit/fixtures/seeded/{data,paper}/**` (5 files, including
+   `CONFIRMATION_ORIGINS.csv` and `paper/CLAIMS.json`) were present in the
+   author's working tree but absent from a fresh clone. The first fresh-clone
+   acceptance run (below) failed three audit tests: `reproduce-headline`
+   skipped, the seeded canary recall dropped to 5/8, and the confirmation gate
+   skipped. Fix: `git add -f` the two fixture directories (they are synthetic
+   test inputs, not data dumps) plus a regression test that walks the fixture
+   and fails if any file is untracked
+   (`test_templates.test.ts: every seeded-fixture file is committed`). This is
+   exactly the defect class acceptance test 6 exists to catch; the S6
+   verification had checked `git ls-files` for the fixture root but not for
+   these ignored subdirectories.
+10. **The skills validator and one skill test required untracked human inputs.**
+    The second fresh-clone run failed `validate_skills.sh` on references to
+    `.pi/state/CONTEXT.md`, `Vangja-project/**`, and `paper/paper.tex`, and
+    `test_check_claims.py` failed because it scans the real `paper/paper.tex`.
+    All three are inputs by design: `.pi/state/**` is runtime state,
+    `Vangja-project/**` is the read-only historical archive, and `paper/**` is
+    untracked until publication (decision D-001). Fix: the validator treats those
+    prefixes as external roots and prints a NOTE naming the references it did not
+    check for existence (`validate_skills.sh`), with a new test; the check_claims
+    test skips with the decision named when the manuscript is absent. Arbitrary
+    missing paths are still rejected (`test_missing_referenced_path_is_rejected`).
+
+### Acceptance evidence
+
+**1. `make -C .pi all` → green** (raw tail; full log `/tmp/vangja-make-all-final.log`):
+
+```
+== node --test (offline) ==
+ℹ tests 288
+ℹ pass 288
+ℹ fail 0
+== skills (offline) ==
+validate_skills: all 15 skills valid
+NOTE  6 external/runtime reference(s) not checked for existence (absent in a fresh clone):
+      .pi/state/CONTEXT.md, Vangja-project, Vangja-project/REVIEW/FINDINGS.md, …
+Ran 163 tests in 42.944s
+OK
+15/15 checks passed
+PASS  environment checks: 15 checks passed
+4/4 orchestrator checks passed
+== model-pin audit (.pi/state/EVENTS.jsonl) ==
+model-pin audit: .pi/state/EVENTS.jsonl: 3 recorded child invocation(s)
+model-pin audit: 0 violation(s) — 3/3 recorded invocation(s) use the pin
+SMOKE PASS: 20/20 checks passed in 15.6s (39 loop step(s))
+```
+
+**2. The e2e checks, each printed** (`node .pi/tests/e2e/smoke.ts`, run
+2026-10-18):
+
+```
+CHECK loop-reached-decision: PASS — stop=DECISION.json written and applied; steps=39
+CHECK transition-sequence: PASS — UNINITIALIZED->SELECT_TASK → SELECT_TASK->WORK → WORK->WORK →
+  WORK->REVIEW → REVIEW->MERGE → MERGE->POST_MERGE → POST_MERGE->SELECT_TASK →
+  SELECT_TASK->READINESS → READINESS->SELECT_TASK → SELECT_TASK->READINESS → READINESS->PAPER →
+  PAPER->PAPER_REVIEW → PAPER_REVIEW->MERGE → MERGE->AUDIT → AUDIT->DECIDE → DECIDE->SELECT_TASK
+CHECK boot-snapshot: PASS — base=a0827600d225 model=opencode-go/deepseek-v4.1-flash thinking=max
+CHECK exactly-one-work-branch: PASS — 1: + work/T-001-fixture-docstring
+CHECK exactly-one-work-pr: PASS — 1 kind=work PR record(s)
+CHECK exactly-one-work-review: PASS — 1 review(s) for PR-001
+CHECK exactly-one-work-merge-commit: PASS — 1 merge commit(s): merge PR-001 (review RV-001)
+CHECK exactly-one-paper-pr-review-merge: PASS — 1 paper PR(s), 1 review(s), 1 merge commit(s), 2 merge(s) total
+CHECK exactly-one-experiment: PASS — 1 record(s); status=collected kind=local progress=[{"attempt":1,"completed":3}]
+CHECK exactly-one-collected-artifact: PASS — dirs=1; 3 declared file(s); checkpoints=1
+CHECK tampered-artifact-caught-before-paper: PASS — READINESS.json pass=false reason=artifact E-0001
+  failed verification: 3 declared file(s); hash mismatches: outputs/numbers.json; PAPER entered
+  while tampered=false; restored=true
+CHECK audit-gates-before-finders: PASS — first audit spawn=audit:1:gates:9; finders=10; gates.json=true
+CHECK seeded-defect-audit-recall: PASS — recall=1 (8/8); false positives=0
+CHECK audit-grade-and-fix-list: PASS — grade=weak reject; blocking_fixes=23; GRADE.md fix list=true
+CHECK decision-rule-applied: PASS — done=false reaudit=true action=fix-s0-s1 trace=5
+CHECK sandbox-update_pymc-moved: PASS — a0827600d225 → 6edb6171bd88
+CHECK real-update_pymc-unchanged: PASS — 21b0a0deb1a9995cb9da3456928a0e099f8ec227
+CHECK real-repo-refs-unchanged: PASS — 13 ref(s) identical
+CHECK child-records-complete: PASS — 21 child spawn(s), 0 incomplete record(s)
+CHECK model-pin: PASS — 42 recorded argv record(s) (start+complete), 0 violation(s)
+```
+
+Interpretation of the "one PR record" line: the plan's unit is one *work* PR;
+the AUDIT state is only reachable through a `kind=paper` merge, so the run
+necessarily creates a second (paper) PR, review and merge commit. Both counts
+are asserted separately and printed. The tampered artifact is a real tamper of
+`.pi/artifacts/E-0001` before the readiness step: the readiness check verifies
+hashes first, writes `pass:false`, the loop returns to SELECT_TASK, PAPER is
+never entered, and the artifact is restored from a saved copy. The audit runs on
+the S6 seeded-defect tree planted at the AUDIT boundary (so the pre-merge gates
+never see it) and the canary detects 8/8 defects with no false positive.
+
+**3. Resilience matrix → 7/7** (`make -C .pi resilience`):
+
+```
+KILLPOINT before-child-spawn: PASS — stale=1 starts(work:T-001:1)=1 experiments=1
+KILLPOINT during-child-before-effect: PASS — failed=1 starts(work:1)=1 starts(work:2)=1 experiments=1
+KILLPOINT after-child: PASS — starts(work:T-001:3)=1 PRs=1
+KILLPOINT before-ledger-append: PASS — branches=1 PRs=1 starts(work:3)=1 starts(work:4)=1
+KILLPOINT after-ledger-append: PASS — PRs=1 starts(work:3)=1 state=REVIEW
+KILLPOINT during-merge: PASS — merge commits=1 completions=1 already_merged=true
+KILLPOINT during-collection: PASS — experiments=1 status=collected progress=[{"attempt":1,"completed":3}] checkpoint=["fit","predict","score"]
+RESILIENCE PASS: 7/7 kill point(s) recovered with exactly-once semantics in 22.9s
+```
+
+**4. Model-pin audit → 100 %, zero violations.** In this repository
+`.pi/state/EVENTS.jsonl` holds 3 recorded child invocations, all pinned
+(`model-pin audit: 0 violation(s) — 3/3`). In a fresh clone the ledger does not
+exist yet and the audit reports `file absent — nothing recorded yet` with 0
+violations (vacuously 100 % of nothing). Fixtures in
+`test_model_pin_audit.test.ts` prove a wrong model, a wrong thinking level, and a
+missing `--thinking` each fail.
+
+**5. `pi --print "/loop:verify-env"` → green, zero warnings.** Exit 0; the
+PASS lines are written to stderr in print mode (pi keeps stdout for the final
+assistant text) and stdout stays empty:
+
+```
+PASS  environment checks: 15 checks passed
+PASS  hpc gate: not-configured: no .pi/config/hpc.json; the HPC path is disabled; …
+PASS  human merge gate: requireHumanMerge=true base=update_pymc
+PASS  open human gates: 0 pending
+4/4 orchestrator checks passed
+```
+
+**6. Fresh clone.** `git clone --local` of the S7 commit (no local state, no
+`hpc.json`, no `.pi/state/`) runs `make -C .pi verify-env` green, and also
+`make -C .pi smoke` (20/20) and `make -C .pi resilience` (7/7). The first two
+attempts **failed** and exposed defects 9 and 10 above; after the fixes the clone
+is fully green. All three transcripts are below.
+
+**7. Key material.** `grep -rIE` for PEM blocks and provider token prefixes
+across `.pi/`: exactly two hits, both the deliberately fake
+`MOCKPRIVATEKEYMATERIAL…` body in `test_hpc_config.test.ts` /
+`test_hpc_submit_gate.test.ts` (they prove the guard refuses key material); one
+further `AKIA…` regex hit is a substring of a base64 blob in
+`.pi/state/calibration/snapshot/docs/source/notebooks/10_bayesian_workflow.ipynb`
+(a read-only, gitignored worktree of the frozen historical commit). The
+environment check's own scan of versioned `.pi/**` reports no PEM blocks or
+provider tokens, and `hpc.example.json` keeps empty placeholder fields.
+
+### Deviations from the plan
+
+- **Paper PR scope.** The smoke test's paper PR touches `docs/` rather than
+  `paper/**`, and the seeded audit tree is planted *after* the paper merge.
+  Reason: `check_claims.py --gate` rejects the S6 fixture's half-built
+  `CLAIMS.json`, and the seeded uncited-number defect must survive to the audit
+  snapshot. The PAPER state, its review, merge, and AUDIT route are exercised;
+  the claims pipeline is covered by the S6 gates and the paper rubric. Recorded
+  in `.pi/README.md`.
+- **Synthetic calibration.** The sandbox writes a calibrated
+  `latest/recall.json` so the decision path can be exercised; the refusal paths
+  (weakened brief, rejected lead, missing calibration) are the S6 acceptance
+  tests and the `calibration` target.
+- **"One PR record".** Interpreted as one work PR plus the one paper PR the
+  AUDIT route requires; both are asserted and printed.
+- **Deterministic audit.** The AUDIT children are the seeded-defect canary (a
+  deterministic probe), not LLM finders. A live multi-agent audit remains
+  unexercised (carried over from the S6 verification).
+- **`make all` runs `test` once.** The spec lists `verify-env test smoke`; make
+  builds the shared prerequisite once, so the node suite runs once, not twice.
+- **`paper_build`/`paper_diff_summary` remain `planned`.** Not in the S7 prompt's
+  deliverable list; the PAPER phase in the smoke run does not rebuild the
+  manuscript.
+- **Resilience kill points 1 and 6 are simulated boundaries.** A real `SIGKILL`
+  cannot be injected into the conductor's own merge between the effect and the
+  event; the scenario reproduces the exact resulting state (effect present, no
+  event). Scenarios 2, 4, 5 and 7 use real `SIGKILL` of the child.
+
+### Known limitations
+
+- No real HPC host was contacted; the HPC path is exercised by the S5 mock
+  cluster only.
+- No model calls happen in `smoke`/`resilience` (that is the point); the S3
+  `agents-accept` and the calibration `--run-finders` mode are the model-backed
+  paths.
+- The real calibration is still UNCALIBRATED (S6), so a real audit cycle would
+  be refused until the two narrowings are done; `verify_traceability` on real
+  claims is untested because `paper/CLAIMS.json` does not exist.
+- The e2e sandbox is a stripped clone (real `src/`, `tests/`, `paper/` removed
+  and replaced by the S6 fixture) — it proves the loop, not the scientific code.
+- Artifact manifests under `.pi/artifacts/*/` remain gitignored (open item).
+
+### Files
+
+`.pi/Makefile`; `.pi/README.md`; `.pi/extensions/orchestrator/{emit.ts,index.ts,
+execute.ts,state-machine.ts,merge-tool.ts}`; `.pi/extensions/guards/{index.ts,
+policy.ts,protected.ts}`; `.pi/extensions/ledger/index.ts`; `.pi/lib/records.ts`;
+`.pi/skills/{scientific-integrity-and-anti-gaming/scripts/scan_gaming.py,
+experiment-protocol-design/scripts/check_protocol_compliance.py}`;
+`.pi/tests/{helpers.ts,test_guards_policy.test.ts,test_guards_wiring.test.ts}`;
+`.pi/tests/orchestrator/{test_cli_status.test.ts,test_state_machine.test.ts}`;
+`.pi/tests/skills/{test_scan_gaming.py,test_check_protocol_compliance.py,test_validate_skills.py,test_check_claims.py}`;
+`.pi/skills/validate_skills.sh`;
+`.pi/tests/audit/{test_templates.test.ts,fixtures/seeded/data/**,fixtures/seeded/paper/**}`;
+`.pi/tests/e2e/**` (new: smoke, resilience, model-pin audit, calibration
+wrapper, fixture, stub child, resilience.md); `research_agent/README.md`;
+`research_agent/REPORT_BUILD.md`; `research_agent/plan/09_OPERATIONS_RUNBOOK.md`.
+
+### Guard scan on the S7 diff
+
+`verify_guards` on `21b0a0d..HEAD` (`verify/lib.ts` `verifyGuards`):
+
+- **test diff:** `ok=true`, `added=52`, `removed=0` — every test change is an
+  addition (the S7 stage adds tests for every fix).
+- **protected paths:** one violation, `research_agent/plan/09_OPERATIONS_RUNBOOK.md`
+  — the edit prompt 07 explicitly allows this one stage to make. It is covered by
+  decision D-003 and by the new human-only, decision-gated `planEditCovers`
+  exception in the guard (`protected.ts`, `policy.ts`, `index.ts`; tests in
+  `test_guards_policy.test.ts` and `test_guards_wiring.test.ts`). No other
+  protected path is touched (`Vangja-project/**`, `fixed_case_studies/protocol/**`,
+  `paper/**`, `AGENTS.md`, `.git/**`, `.pi/state/**`).
+- **gaming scan:** 5 × S1, each explained (plan/07 §5: a gate passes when the scan
+  is clean *or every hit is explained):
+  1. `.pi/extensions/guards/policy.ts:220` — `failure-trimming-swallow` matched the
+     word "exception" in the new doc comment describing the plan-edit exception;
+     the function contains no `try/except`.
+  2. `.pi/extensions/guards/protected.ts:51` — same false positive on the comment
+     "the exception is deliberately narrow".
+  3. `.pi/tests/audit/fixtures/seeded/data/CONFIRMATION_ORIGINS.csv.sha256` — the
+     fixture's own sidecar hash (defect 9's fix); the real frozen protocol file
+     `fixed_case_studies/protocol/CONFIRMATION_ORIGINS.csv` is untouched.
+  4. `research_agent/REPORT_BUILD.md:4307` and
+  5. `research_agent/REPORT_BUILD.md:4520` — `frozen-split-edit` matched prose in
+     this report that names the fixture file while describing defect 9.
+
+No `git push`, no history rewrite, and no branch/tag in the real repository was
+created by any S7 command (the smoke and resilience scripts assert this).
+
+### Scope report
+
+```
+$ git status --porcelain
+?? Vangja-project/            # pre-existing untracked read-only archive, not S7
+$ git diff --stat 21b0a0d..HEAD | tail -1
+ 44 files changed, 2973 insertions(+), 63 deletions(-)
+$ git diff --name-only 21b0a0d..HEAD | cut -d/ -f1 | sort -u
+.pi
+research_agent
+```
+
+Every changed file is under `.pi/**` or `research_agent/**`; `.gitignore`,
+`src/`, `tests/`, `fixed_case_studies/`, `paper/`, `case_studies/`, `docs/` and
+`Vangja-project/**` are untouched. The counts include this report and were taken
+before the last report-only edit, so they grow by the report's own lines; the
+file list is the stable proof (44 files, all in the two directories above).
+
+### Fresh-clone transcripts
+
+Attempt 1 (commit 84be16d, before the fixture force-add): **FAIL**.
+
+```
+$ git clone --quiet --no-hardlinks --local . /tmp/s7-clone && cd /tmp/s7-clone
+$ git rev-parse HEAD
+84be16db020b1a020ede19abce6d81bd6d3ec3be
+$ ls .pi/state
+ls: cannot access '.pi/state': No such file or directory
+$ make -C .pi verify-env
+✖ run_gates fails artifacts-complete and reproduce-headline on a tampered artifact
+  AssertionError: 'skip' !== 'fail'
+  at .pi/tests/audit/test_verify.test.ts:212:9
+make: *** [Makefile:46: test] Error 1
+```
+
+Diagnosis: `git check-ignore -v` named `.gitignore:176:data/` and
+`.gitignore:189:paper/` for the fixture's `data/CONFIRMATION_ORIGINS.csv` and
+`paper/CLAIMS.json`; `git ls-files` confirmed the two directories were never
+committed.
+
+Attempt 2 (after `git add -f`): **FAIL** — the next layer, the skills validator.
+
+```
+$ make -C .pi verify-env
+FAIL  research-memory-and-handoff: referenced path does not exist: .pi/state/CONTEXT.md
+FAIL  scientific-writing-latex: referenced path does not exist: Vangja-project/REVIEW/FINDINGS.md
+FAIL  scientific-writing-latex: referenced path does not exist: Vangja-project/audit/stage-2/ws-h-docs-hygiene/FINDINGS.md
+validate_skills: 6 failure(s)
+FAIL: test_legacy_paper_is_a_report_not_an_error
+  AssertionError: 2 != 0 : check_claims.py: error: --paper does not exist: …/paper/paper.tex
+FAILED (failures=2)
+```
+
+Diagnosis: `.pi/state/**` is runtime state, `Vangja-project/**` is the read-only
+historical archive, and `paper/**` is untracked until publication (decision
+D-001) — all three are human-provided inputs, not versioned environment files.
+
+Attempt 3 (commit b46622f; the S7 commit after this report section differs only
+in `research_agent/REPORT_BUILD.md`, so the environment files are identical):
+**PASS**.
+
+```
+$ git clone --quiet --no-hardlinks --local . /tmp/s7-clone3 && cd /tmp/s7-clone3
+$ git rev-parse HEAD
+b46622f68730f8ec85312deaded21f9dc6a83965
+$ ls .pi/state
+ls: cannot access '.pi/state': No such file or directory
+$ make -C .pi verify-env
+== node --test (offline) ==   ℹ tests 288  ℹ pass 288  ℹ fail 0
+== skills (offline) ==
+NOTE  6 external/runtime reference(s) not checked for existence (absent in a fresh clone):
+      .pi/state/CONTEXT.md, Vangja-project, Vangja-project/REVIEW/FINDINGS.md, …
+validate_skills: all 15 skills valid
+Ran 163 tests in 32.088s
+OK
+15/15 checks passed
+PASS  environment checks: 15 checks passed
+4/4 orchestrator checks passed
+model-pin audit: .pi/state/EVENTS.jsonl: file absent — nothing recorded yet
+model-pin audit: 0 violation(s) — 0/0 recorded invocation(s) use the pin
+verify-env: environment tests green (every stage's suite, skills, schemas, model pin).
+$ make -C .pi smoke
+SMOKE PASS: 20/20 checks passed in 14.0s (39 loop step(s))
+$ make -C .pi resilience
+RESILIENCE PASS: 7/7 kill point(s) recovered with exactly-once semantics in 17.7s
+```
+
+## GO / NO-GO
+
+Status: GO
+
+Evidence:
+- S0 `make -C .pi env-check` → 15/15 checks passed (model pin, settings, budgets, roster, prompts, shims, gitignore, secrets).
+- S1 `bash .pi/tests/run.sh skills` → 163 python tests OK, 15/15 skills valid, seeded gaming fixtures detected.
+- S2 same suite → name lint, sacct fixtures, bib_check refusals all covered; green.
+- S3 `make -C .pi agents-accept` → green at S3 (see § S3); not re-run in S7 (it makes model calls). The offline dispatch/roster/role-matrix tests are in the 288-test node suite.
+- S4 `bash .pi/tests/run.sh orchestrator` → 59/59 node tests + acceptance transcript "all S4 orchestrator checks passed".
+- S5 `make -C .pi hpc-accept` → "all S5 mock-cluster checks passed" (24/24 tests, 14/14 scenarios).
+- S6 `make -C .pi audit-accept` → PASS=8 FAIL=0; seeded recall 8/8, grade weak reject, tamper detected.
+- S7 `make -C .pi all` → EXIT=0: 288 node tests, 163 python tests, 15/15 env, 4/4 orchestrator, model-pin 0 violations, SMOKE 20/20 (39 steps).
+- S7 `make -C .pi resilience` → 7/7 kill points with exactly-once semantics.
+- S7 `make -C .pi calibration` → strong fixture calibrated; weakened and rejected-lead both exit 10 + UNCALIBRATED.
+- S7 `pi --print "/loop:verify-env"` → exit 0, 4/4 checks, zero warnings.
+- S7 fresh clone at b46622f → `make -C .pi verify-env` EXIT=0 (288 node, 163 python, 15/15, 4/4, 0/0 model pin), plus smoke 20/20 and resilience 7/7. The final S7 commit differs only in this report file.
+- S7 scope: `git status` clean except the pre-existing untracked `Vangja-project/`; all S7 changes under `.pi/**` and `research_agent/**` (plan/09 edited under decision D-003).
+
+Environment: pi 1.3.0, model opencode-go/deepseek-v4.1-flash, thinking max,
+node v24.21.0, python 3.14.4, uv.lock committed.
+
+Start the loop:
+```
+pi                                     # trust the project
+/loop:verify-env                       # must be green
+/loop:status                           # UNINITIALIZED before the first step
+/loop:start                            # or: bash .pi/loop/step.sh --forever
+```
+Offline checks first if you want them: `make -C .pi all` then
+`make -C .pi resilience`.
+
+Known limitations:
+- No real HPC host was contacted in any stage; the HPC path is exercised by the S5 mock cluster.
+- The audit has not run as a live multi-agent cycle: the S7 smoke test drives the real conductor with a deterministic child and the seeded-defect canary. A live run is the first thing the loop will do for real, and the S6/S7 reports say what to watch.
+- The real calibration is UNCALIBRATED (recall 6/7, one confirmed rejected lead), so `audit-decide` will refuse to grade until the M brief is narrowed and WS-S-003 is re-derived.
+- `verify_traceability` on real claims is untested: `paper/CLAIMS.json` does not exist while `paper/` is untracked (decision D-001).
+- Artifact manifests under `.pi/artifacts/*/` remain gitignored; only the ledger references them.
+- `paper_build` / `paper_diff_summary` are still `planned`; the PAPER phase's manuscript rebuild is not implemented.
+- The e2e sandbox is a stripped clone (real `src/`, `tests/`, `paper/` removed and replaced by the S6 fixture): it proves the loop, not the scientific code.
+
+Deviations from plan:
+- Paper PR scope in the smoke test: the paper-kind PR touches `docs/` rather than `paper/**`, and the seeded audit tree is planted after the paper merge — so the claims gate stays meaningful and the uncited-number defect survives to the audit (reason: `check_claims.py --gate` rejects a half-built CLAIMS.json).
+- The smoke sandbox supplies a synthetic calibrated `recall.json`; the refusal paths are the S6 acceptance tests and `make calibration`.
+- "Exactly one PR record" is interpreted as one work PR plus the one paper PR the AUDIT route requires; both are asserted and printed.
+- The AUDIT children in the smoke run are the deterministic canary, not LLM finders.
+- `make all` runs the node suite once (make dedupes the shared prerequisite), not twice as the literal `verify-env test smoke` list suggests.
+- Resilience kill points 1 and 6 reproduce the crash boundary state instead of injecting a SIGKILL into the conductor itself; points 2, 4, 5 and 7 use real child SIGKILLs.
+- Ten wiring/packaging defects found by the S7 run were fixed in place (see § S7): `pr_kind`, missing `syncAuditState` import, READINESS livelock, merge event `from`, first AUDIT phase, print-mode `/loop:verify-env`, scanner runtime-state exclusion, the guard plan-edit exception, the uncommitted S6 fixture `data/`+`paper/`, and the skills validator's external inputs.

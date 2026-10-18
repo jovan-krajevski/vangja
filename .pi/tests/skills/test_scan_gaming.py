@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helpers import REPO_ROOT, SKILLS, assert_help, run_script, script
+from helpers import REPO_ROOT, SKILLS, assert_help, run_script, script, write_text
 
 SCAN = script("scientific-integrity-and-anti-gaming", "scan_gaming.py")
 FIXTURES = SKILLS / "scientific-integrity-and-anti-gaming" / "fixtures"
@@ -80,6 +80,24 @@ class TestScanGaming(unittest.TestCase):
     def test_real_repo_is_clean_statically(self):
         proc = run_script(SCAN, ["--root", REPO_ROOT])
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+
+    def test_runtime_state_is_not_scanned(self):
+        # `.pi/state/**` holds gitignored runtime state (test sandboxes, worktrees,
+        # calibration snapshots) — a planted defect there is not repository source.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_text(
+                root / ".pi" / "state" / "sandbox" / "runners" / "run_grid.py",
+                'best = min(rows, key=lambda row: row["test_mape"])\n',
+            )
+            write_text(
+                root / ".pi" / "artifacts" / "E-0001" / "scripts" / "pick.py",
+                'best = min(rows, key=lambda row: row["holdout_rmse"])\n',
+            )
+            write_text(root / "runners" / "run_grid.py", 'best = min(rows, key=lambda row: row["test_mape"])\n')
+            locations = [finding["location"] for finding in findings_for(root)]
+            self.assertTrue(any("runners/run_grid.py" in location for location in locations), locations)
+            self.assertFalse(any(".pi/state" in location or ".pi/artifacts" in location for location in locations), locations)
 
     def test_builtin_and_pandas_selection_is_detected(self):
         cases = {

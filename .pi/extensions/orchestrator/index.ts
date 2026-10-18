@@ -17,6 +17,7 @@ import { Type } from "typebox";
 import * as path from "node:path";
 import { parseRole } from "../../lib/roles.ts";
 import { parseFlags } from "./sandbox.ts";
+import { emitResult } from "./emit.ts";
 import { contextFromEnvironment, handleMergePr } from "./merge-tool.ts";
 import {
 	commandGate,
@@ -34,9 +35,12 @@ function runContextFor(cwd: string) {
 	return contextFromEnvironment(path.resolve(envRoot), path.resolve(realRoot), process.env.PI_LOOP_COMMAND);
 }
 
-function emit(ctx: ExtensionCommandContext, text: string, lines?: string[]): void {
-	if (lines) ctx.ui.setWidget("loop-status", lines);
-	ctx.ui.notify(text, "info");
+/**
+ * Show a command result (see emit.ts): TUI toast in interactive mode, plain
+ * stdout otherwise, so `pi --print "/loop:verify-env"` is observable.
+ */
+function emit(ctx: ExtensionCommandContext, text: string, lines?: string[], kind: "info" | "error" = "info"): void {
+	emitResult(ctx as never, text, lines, kind);
 }
 
 export default function (pi: ExtensionAPI) {
@@ -103,8 +107,8 @@ export default function (pi: ExtensionAPI) {
 			const { checks, ok } = commandVerifyEnv(context);
 			const lines = checks.map((check) => `${check.ok ? "PASS" : "FAIL"}  ${check.name}: ${check.detail}`);
 			lines.push(`${checks.filter((check) => check.ok).length}/${checks.length} orchestrator checks passed`);
-			emit(ctx, lines.join("\n"), lines.slice(-3));
-			if (!ok) ctx.ui.notify("loop:verify-env FAILED — see the lines above", "error");
+			if (!ok) lines.push("loop:verify-env FAILED — see the lines above");
+			emit(ctx, lines.join("\n"), lines.slice(-3), ok ? "info" : "error");
 		},
 	});
 
@@ -113,7 +117,7 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			const context = runContextFor(ctx.cwd);
 			const result = commandGate(context, args.trim() === "" ? ["list"] : args.trim().split(/\s+/));
-			ctx.ui.notify(result.message, result.ok ? "info" : "error");
+			emit(ctx, result.message, undefined, result.ok ? "info" : "error");
 		},
 	});
 

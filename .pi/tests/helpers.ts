@@ -49,6 +49,7 @@ export function readRepoJson<T = unknown>(relative: string): T {
 /** Minimal stand-in for `ExtensionAPI` that records handlers. */
 export function fakePi() {
 	const handlers = new Map<string, Array<(...args: unknown[]) => unknown>>();
+	const commands = new Map<string, { description?: string; handler: (...args: unknown[]) => unknown }>();
 	const api = {
 		on(event: string, handler: (...args: unknown[]) => unknown) {
 			const list = handlers.get(event) ?? [];
@@ -57,7 +58,9 @@ export function fakePi() {
 			return () => {};
 		},
 		registerTool() {},
-		registerCommand() {},
+		registerCommand(name: string, options: { description?: string; handler: (...args: unknown[]) => unknown }) {
+			commands.set(name, options);
+		},
 		registerToolRenderer() {},
 		registerShortcut() {},
 		registerFlag() {},
@@ -85,7 +88,7 @@ export function fakePi() {
 	function count(event: string): number {
 		return (handlers.get(event) ?? []).length;
 	}
-	return { api, fire, count, handlers };
+	return { api, fire, count, handlers, commands };
 }
 
 /** Minimal stand-in for `ExtensionContext`. */

@@ -87,7 +87,7 @@ export async function handleMergePr(args: MergePrArgs, ctx: LedgerContext): Prom
 			summary: `merge ${prId} (review ${String(review.id)})`,
 			pr_id: prId,
 			review_id: String(review.id),
-			to: String(pr.kind ?? "work") === "paper" ? ("AUDIT" as const) : ("POST_MERGE" as const),
+			to: String(pr.pr_kind ?? (pr.kind === "paper" ? "paper" : "work")) === "paper" ? ("AUDIT" as const) : ("POST_MERGE" as const),
 		};
 		if (project.requireHumanMerge) {
 			const gates = readJsonlFile<Record<string, unknown>>(statePath(ctx.root, "GATES.jsonl"));

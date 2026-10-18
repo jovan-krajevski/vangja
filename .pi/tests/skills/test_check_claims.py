@@ -86,6 +86,12 @@ class TestCheckClaims(unittest.TestCase):
                                 for f in report["findings"]), report)
 
     def test_legacy_paper_is_a_report_not_an_error(self):
+        paper = REPO_ROOT / "paper" / "paper.tex"
+        if not paper.exists():
+            # paper/ is untracked until publication (decision D-001), so a fresh
+            # clone has no manuscript to scan; the legacy-report behaviour is
+            # still covered by the fixture-based tests above.
+            self.skipTest("paper/paper.tex is absent (paper/ is untracked by decision D-001)")
         proc = run_script(
             CHECK,
             ["--paper", REPO_ROOT / "paper" / "paper.tex",

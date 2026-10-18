@@ -106,6 +106,12 @@ research_agent/
 
 ## How to build it
 
+**Status: S7 build complete on 2026-10-18 — GO** (self-verified in this
+session; independent verification pending, as for S0–S6). The environment is
+fully committed and self-contained: a fresh clone of the S7 commit runs
+`make -C .pi verify-env` green with no local state. Evidence per stage is in
+`REPORT_BUILD.md`; the final GO/NO-GO block is at the end of that file.
+
 The build is deliberately staged so each step is reviewable and testable:
 
 1. **Read the plan.** Start with `plan/00_GOAL_AND_CONSTRAINTS.md`, then
@@ -126,6 +132,19 @@ The build is deliberately staged so each step is reviewable and testable:
    (Or open pi and paste `/prompts/…` contents.) Each prompt ends with an
    acceptance checklist; do not proceed until it passes. Prompt 07 runs the
    end-to-end smoke test and prints the go/no-go summary.
+
+   Verified commands after S7 (use these; the runbook was corrected to match):
+   ```bash
+   make -C .pi all           # verify-env + test + smoke (offline, ~5 min)
+   make -C .pi verify-env    # every stage's suite, skills, schemas, model pin
+   make -C .pi smoke         # end-to-end sandbox loop, 20/20 checks (~20s)
+   make -C .pi resilience    # kill/restart matrix, 7/7 (~25s)
+   make -C .pi calibration   # offline calibration modes + refusal paths
+   pi --print "/loop:verify-env"   # 4/4 orchestrator checks (print mode)
+   ```
+   `collect.sh` takes no experiment id (one pass for the active experiment), and
+   human gates live in `.pi/state/GATES.jsonl` — both were wrong in plan/09
+   before the S7 cross-check (decision D-003).
 3. **Configure, then dry-run.** Copy `.pi/config/hpc.example.json` →
    `.pi/config/hpc.json` only if you have an HPC (leave `host` empty and the whole
    HPC path is disabled). Set budgets in `.pi/config/budgets.json`. Run the loop

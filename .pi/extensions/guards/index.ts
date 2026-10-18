@@ -32,10 +32,12 @@ import {
 	buildRolePreamble,
 	checkModelPin,
 	formatDenial,
+	planEditCovers as planEditCoversRecords,
 	roleFromEnv,
 	toolCallDecision,
 	type ActiveModel,
 	type AmendmentRecordLike,
+	type DecisionRecordLike,
 	type ToolCallInputs,
 } from "./policy.ts";
 import type { LoopRole } from "../../lib/roles.ts";
@@ -116,6 +118,15 @@ export function registerGuard(pi: ExtensionAPI, env: NodeJS.ProcessEnv = process
 		try {
 			const records = readJsonlFile<AmendmentRecordLike>(statePath(root, "AMENDMENTS.jsonl"));
 			return amendmentCoversRecords(rel, records, env.PI_LOOP_AMENDMENT);
+		} catch {
+			return false;
+		}
+	};
+
+	const planEditCovers = (root: string, rel: string): boolean => {
+		try {
+			const records = readJsonlFile<DecisionRecordLike>(statePath(root, "DECISIONS.jsonl"));
+			return planEditCoversRecords(rel, records);
 		} catch {
 			return false;
 		}
@@ -222,6 +233,7 @@ export function registerGuard(pi: ExtensionAPI, env: NodeJS.ProcessEnv = process
 			currentBranch: git.branch,
 			worktreeDirty: git.dirty,
 			amendmentCovers: (rel) => amendmentCovers(root, rel),
+			planEditCovers: (rel) => planEditCovers(root, rel),
 		});
 		if (!decision.allowed) {
 			return { block: true, reason: formatDenial(decision) };

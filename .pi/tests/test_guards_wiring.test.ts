@@ -10,6 +10,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { test } from "node:test";
 import { registerGuard, GUARD_EXIT_CODE } from "../extensions/guards/index.ts";
+import { appendRecord } from "../extensions/ledger/store.ts";
 import { fakeCtx, fakePi, resetExitCode, scratchRoot } from "./helpers.ts";
 
 interface Harness {
@@ -33,6 +34,31 @@ function harness(env: NodeJS.ProcessEnv = {}): Harness {
 function toolCallEvent(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
 	return { type: "tool_call", toolCallId: "call-1", toolName, input };
 }
+
+test("the plan-edit exception needs a recorded S7 decision naming the path", async () => {
+	const h = harness();
+	const rel = "research_agent/plan/09_OPERATIONS_RUNBOOK.md";
+	const event = toolCallEvent("edit", { path: path.join(h.root, rel), edits: [{ oldText: "a", newText: "b" }] });
+	const denied = (await h.fire("tool_call", event, h.ctx)) as { block?: boolean; reason?: string };
+	assert.equal(denied?.block, true, "a plan edit without a covering decision must be refused");
+	assert.match(denied?.reason ?? "", /research_agent\/plan/);
+
+	appendRecord(
+		h.root,
+		"decision",
+		{
+			id: "D-001",
+			title: "S7: plan/09 runbook cross-check",
+			context: `the commands in ${rel} differ from the implementation`,
+			decision: `correct ${rel} in place`,
+			alternatives: ["report only"],
+			consequences: ["the plan matches the code"],
+		},
+		{ root: h.root, role: "human", actor: "test" },
+	);
+	const allowed = (await h.fire("tool_call", event, h.ctx)) as { block?: boolean } | undefined;
+	assert.equal(allowed?.block, undefined, "the human S7 session may edit the covered path");
+});
 
 test("a drifting model is blocked before any model turn", async () => {
 	resetExitCode();
