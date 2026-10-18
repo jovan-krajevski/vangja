@@ -31,7 +31,8 @@ EXCLUDE_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache",
 EXCLUDE_READONLY = {"Vangja-project"}
 TEST_TOKENS = ("test", "confirm", "holdout", "hold_out", "out_of_sample", "oos")
 METRIC_TOKENS = ("mae", "rmse", "mape", "elpd", "score", "metric", "error", "loss")
-SELECTORS = {"idxmin", "idxmax", "argmin", "argmax"}
+SELECTORS = {"idxmin", "idxmax", "argmin", "argmax", "nsmallest", "nlargest"}
+BUILTIN_SELECTORS = {"min", "max", "sorted"}
 CONTEXT_VALUES = {"^GSPC", "source", "GC=F", "gspc"}
 CONTEXT_SERIES_LITERAL = re.compile(r"(?:\^GSPC|\bGC=F\b)")
 FROZEN_EDIT = re.compile(
@@ -92,18 +93,23 @@ def scan_selection(repo: Path, include_readonly: bool) -> list[dict]:
         except (SyntaxError, UnicodeDecodeError):
             continue
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                if node.func.attr in SELECTORS:
-                    segment = ast.get_source_segment(source, node) or ""
-                    low = segment.lower()
-                    if any(t in low for t in TEST_TOKENS) and any(m in low for m in METRIC_TOKENS):
-                        out.append(finding(
-                            "test-metric-selection", "S1",
-                            f"{rel}:{node.lineno}",
-                            f"selection by .{node.func.attr}() on an expression carrying "
-                            "test/confirmation metric tokens",
-                            segment,
-                        ))
+            selector = None
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Attribute) and node.func.attr in SELECTORS:
+                    selector = f".{node.func.attr}()"
+                elif isinstance(node.func, ast.Name) and node.func.id in BUILTIN_SELECTORS:
+                    selector = f"{node.func.id}()"
+            if selector is not None:
+                segment = ast.get_source_segment(source, node) or ""
+                low = segment.lower()
+                if any(t in low for t in TEST_TOKENS) and any(m in low for m in METRIC_TOKENS):
+                    out.append(finding(
+                        "test-metric-selection", "S1",
+                        f"{rel}:{node.lineno}",
+                        f"selection by {selector} on an expression carrying "
+                        "test/confirmation metric tokens",
+                        segment,
+                    ))
             if isinstance(node, (ast.Assign, ast.Expr)):
                 value = node.value if isinstance(node, ast.Expr) else node.value
                 if not any(isinstance(child, ast.Call) for child in ast.walk(value)):

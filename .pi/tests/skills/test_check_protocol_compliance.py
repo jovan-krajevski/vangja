@@ -22,6 +22,13 @@ class TestProtocolCompliance(unittest.TestCase):
         self.assertIn("test-metric-selection", proc.stdout)
         self.assertIn("evaluation.py:6", proc.stdout)
 
+    def test_builtin_selection_is_flagged(self):
+        proc = run_script(CHECK, ["--repo", PROTOCOL_FIXTURES / "builtin_selection"])
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("test-metric-selection", proc.stdout)
+        self.assertIn("evaluation.py:6", proc.stdout)
+        self.assertIn("selection by min()", proc.stdout)
+
     def test_development_selection_is_not_flagged(self):
         proc = run_script(CHECK, ["--repo", PROTOCOL_FIXTURES / "clean"])
         self.assertEqual(proc.returncode, 0, proc.stdout)

@@ -3944,10 +3944,10 @@ that prompt plus `research_agent/plan/07_AUDIT_HARNESS.md` and plan/08 §S6.
 
 ### Verdict: **GO** — all seven acceptance tests pass on independent re-run
 
-No acceptance test failed. Ten discrepancies are recorded below; none of them
-invalidates a test result. D1–D5 and D10 are corrected after verification (see
-"Corrections applied after verification" at the end of this section); D6–D9
-remain open.
+No acceptance test failed. Eleven discrepancies are recorded below; none of them
+invalidates a test result. D1–D5, D10 and D11 are corrected after verification
+(see "Corrections applied after verification" at the end of this section);
+D6–D9 remain open.
 
 ### Acceptance tests, re-run
 
@@ -4156,6 +4156,17 @@ adds nothing is therefore invisible to `test-diff`, to `verify_guards`, and to
 tests/patch fixtures at every site. The S6 commit's guarded test diff now reads
 `+512/−3` (was `+497/−3`) with the same 12 diff-scan hits.
 
+**D11 (S1 for the protocol gate, found while fixing D4/D10) — FIXED.**
+`.pi/skills/experiment-protocol-design/scripts/check_protocol_compliance.py`
+carried the same selector gap as D4 in its own static `test-metric-selection`
+rule (`SELECTORS = {idxmin, idxmax, argmin, argmax}`, `ast.Attribute` calls
+only), so `min(rows, key=lambda r: r["test_mape"])` was invisible to the
+protocol checker. The follow-up commit adds `nsmallest`/`nlargest` and
+`BUILTIN_SELECTORS {min, max, sorted}` (same rule as `scan_gaming.py`), a new
+`builtin_selection/` fixture, and a negative control in the clean fixture
+(`min(..., key=dev_mape)` stays unflagged); the real-repository scan stays
+clean.
+
 ### What this verification did **not** establish
 
 - The ten per-workstream briefs, the four agent definitions and the template set were
@@ -4176,8 +4187,9 @@ tests/patch fixtures at every site. The S6 commit's guarded test diff now reads
 ### Corrections applied after verification
 
 The S6 section was corrected in place (D1–D3 and D5 in `0c91dc6`, D4 in the
-follow-up scanner commit, D10 in the assertion-regex commit); the discrepancy
-text above records what was wrong at verification time.
+follow-up scanner commit, D10 in the assertion-regex commit, D11 in the
+protocol-checker commit); the discrepancy text above records what was wrong at
+verification time.
 
 - **D2** — the WS-R-004 hit is now reported as `R-002` *by the scorer's
   first-match rule*, with the note that the register's dedicated seed finding is
@@ -4196,5 +4208,9 @@ text above records what was wrong at verification time.
   `auditkit/canary.ts`, `orchestrator/gates.ts`, `scan_gaming.py`,
   `diff_scan.py` and `check_protocol_compliance.py`, with new tests and patch
   fixtures at each site; the S6 guarded test diff reads `+512/−3`.
+- **D11** (found after verification) — `check_protocol_compliance.py` detects
+  builtin `min`/`max`/`sorted` and pandas `nsmallest`/`nlargest` selection over
+  test/metric tokens, with a `builtin_selection/` fixture and a clean-fixture
+  negative control.
 
 D6, D7, D8 and D9 remain open and are recorded here without a code edit.
