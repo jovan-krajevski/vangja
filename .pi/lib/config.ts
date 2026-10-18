@@ -87,6 +87,32 @@ export interface HpcConfig {
 	maxParallelJobs: number;
 }
 
+/**
+ * `project.json` baseBranch value: merge into whatever branch the checkout is on
+ * when the run boots. The resolved name is pinned in LOOP_STATE.base_branch, so
+ * a later branch switch cannot silently retarget a run in flight.
+ */
+export const CURRENT_BRANCH_SENTINEL = "@current";
+
+/**
+ * Resolve the configured base branch against the checkout's current branch.
+ * A literal branch name is returned unchanged; `@current` requires a real branch
+ * (a detached HEAD has no merge target and is refused loudly).
+ */
+export function resolveBaseBranch(configured: string, current: string | null): string {
+	const value = configured.trim();
+	if (value !== CURRENT_BRANCH_SENTINEL) return value;
+	const branch = (current ?? "").trim();
+	if (branch === "" || branch === "HEAD") {
+		throw new VangjaLoopError(
+			"CONFIG_INVALID",
+			`.pi/config/project.json baseBranch is "${CURRENT_BRANCH_SENTINEL}" but the checkout is on a detached HEAD ` +
+				`(no current branch). Check out the branch the loop should merge into, or set "baseBranch" to a literal branch name.`,
+		);
+	}
+	return branch;
+}
+
 /** plan/02_ARCHITECTURE.md §6 — exact defaults. */
 export const DEFAULT_BUDGETS: BudgetConfig = {
 	maxSessionsPerDay: 120,

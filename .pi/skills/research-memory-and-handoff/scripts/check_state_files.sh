@@ -12,7 +12,7 @@
 #   check_state_files.sh [--root DIR] [--strict] [--help]
 #
 # Exit codes: 0 no failures, 1 failures, 2 usage error.
-# Missing LOOP_STATE.json warns (the orchestrator arrives in S4); --strict
+# Missing LOOP_STATE.json warns (run /loop:start to boot a run); --strict
 # turns that warning into a failure.
 set -uo pipefail
 

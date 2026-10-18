@@ -137,6 +137,46 @@ test("the sandbox cycle merges only after the gate run, the human gate, and one 
 	}
 });
 
+test("baseBranch @current merges into the branch the run booted on, not update_pymc", () => {
+	const sandbox = createSandbox("cycle-current");
+	const baseBefore = git(sandbox.root, ["rev-parse", "update_pymc"]);
+	const realBefore = git(REPO_ROOT, ["rev-parse", "update_pymc"]);
+	try {
+		// The human works on a feature branch and wants the loop to land there.
+		git(sandbox.root, ["checkout", "--quiet", "-b", "human-branch"]);
+		const projectFile = path.join(sandbox.root, ".pi", "config", "project.json");
+		const project = JSON.parse(fs.readFileSync(projectFile, "utf8")) as Record<string, unknown>;
+		project.baseBranch = "@current";
+		fs.writeFileSync(projectFile, `${JSON.stringify(project, null, 2)}\n`);
+		git(sandbox.root, ["commit", "--quiet", "-am", "test: baseBranch @current"]);
+		const bootBase = git(sandbox.root, ["rev-parse", "human-branch"]);
+
+		seedTask(sandbox.root);
+		writeGatesConfig(sandbox.root);
+		runCycle(sandbox);
+
+		// BOOT resolved @current once and pinned the branch name in LOOP_STATE.
+		assert.equal(readState(sandbox.root).base_branch, "human-branch");
+
+		const gate = latestById(readLedger<{ id: string; status: string }>(sandbox.root, "GATES.jsonl"))[0];
+		const approve = runCli(sandbox.root, ["gate", "approve", gate.id, "current-branch merge test"]);
+		assert.equal(approve.status, 0, approve.stderr);
+		const merge = runCli(sandbox.root, ["step"]);
+		assert.equal(merge.status, 0, merge.stderr);
+		assert.match(merge.stdout, /merged PR-001 → POST_MERGE/);
+
+		// The merge landed on the branch the run booted on; update_pymc did not move.
+		assert.match(git(sandbox.root, ["log", "--format=%s", "-1", "human-branch"]), /^merge PR-001/);
+		assert.equal(git(sandbox.root, ["rev-parse", "update_pymc"]), baseBefore);
+		assert.equal(git(sandbox.root, ["rev-list", "--count", `${bootBase}..human-branch`]).trim(), "2");
+		assert.match(git(sandbox.root, ["tag", "-n1", "--list", "run/*/merge/*"]), /merge PR-001 into human-branch/);
+		// The real repository is untouched.
+		assert.equal(git(REPO_ROOT, ["rev-parse", "update_pymc"]), realBefore);
+	} finally {
+		sandbox.cleanup();
+	}
+});
+
 test("merging is refused while the human gate is pending, and rejected gates send the PR back", () => {
 	const sandbox = createSandbox("cycle-reject");
 	try {

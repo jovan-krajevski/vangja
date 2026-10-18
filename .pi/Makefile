@@ -21,7 +21,7 @@ NODE ?= node
 TEST_FILES := .pi/tests/test_settings.test.ts .pi/tests/test_schemas.test.ts \
 	.pi/tests/test_guards_policy.test.ts .pi/tests/test_guards_wiring.test.ts \
 	.pi/tests/test_ledger.test.ts .pi/tests/test_ledger_concurrency.test.ts \
-	.pi/tests/test_status.test.ts .pi/tests/test_child_pi.test.ts \
+	.pi/tests/test_status.test.ts .pi/tests/test_understand_loop.test.ts .pi/tests/test_child_pi.test.ts \
 	.pi/tests/agents/test_agents_manifest.test.ts .pi/tests/agents/test_tools_registry.test.ts \
 	.pi/tests/agents/test_dispatch_unit.test.ts .pi/tests/agents/test_prompt_templates.test.ts \
 	.pi/tests/orchestrator/test_state_machine.test.ts .pi/tests/orchestrator/test_budget.test.ts \

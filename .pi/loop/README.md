@@ -20,6 +20,10 @@ Every command takes its configuration from `.pi/config/*.json`; none of them
 reads a private config. `--sandbox <path>` redirects the whole loop to a scratch
 clone and is refused if the path is the real repository.
 
+Before the first real run, fill in the repository-root `specs.md`: provider
+auth, the branch the loop should merge into, HPC keys/host/container, data and
+budgets. Its final checklist is the readiness gate.
+
 ## What each command does
 
 | Command | Behaviour |
@@ -48,7 +52,9 @@ bash .pi/tests/run.sh orchestrator   # the S4 acceptance tests + transcript scri
 - **Completion events are the idempotency key**: the effect is applied before the
   event, so a replayed action is a no-op and a killed action resumes.
 - **The base branch moves only by `git merge --no-ff`** with the review id in the
-  message, from a clean checkout, with a tag `run/<run_id>/merge/<n>`.
+  message, from a clean checkout, with a tag `run/<run_id>/merge/<n>`. The base
+  branch is the branch the checkout was on at BOOT (`project.json "@current"`),
+  pinned in `LOOP_STATE.base_branch`; it is never silently retargeted mid-run.
 - **Human gates never merge**: with `requireHumanMerge`, the loop opens the gate
   and returns; approving lets the next step merge.
 - **`--dry-run` writes exactly one file**, `.pi/state/DRYRUN.jsonl`.

@@ -22,7 +22,7 @@ import type {
 	ToolCallEvent,
 	ToolResultEvent,
 } from "@earendil-works/pi-coding-agent";
-import { loadModelPin, type ModelPin } from "../../lib/config.ts";
+import { loadModelPin, loadProjectConfig, resolveBaseBranch, type ModelPin } from "../../lib/config.ts";
 import { readJsonlFile } from "../../lib/io.ts";
 import { resolveRepoRoot, statePath } from "../../lib/paths.ts";
 import { describeFindings, scanForSecrets } from "../../lib/secrets.ts";
@@ -51,6 +51,21 @@ interface GitInfo {
 }
 
 let gitCache: GitInfo | null = null;
+
+/**
+ * Shared history includes the run's base branch, not just main/master. With
+ * `project.json "baseBranch": "@current"`, the checkout's branch is the one the
+ * conductor merges into, so it gets the same rebase protection.
+ */
+function sharedBranchesFor(root: string, current: string | null): string[] {
+	try {
+		const project = loadProjectConfig(root);
+		const base = resolveBaseBranch(project.baseBranch, current);
+		return [...new Set(["update_pymc", "main", "master", base])];
+	} catch {
+		return ["update_pymc", "main", "master"];
+	}
+}
 
 function gitInfo(root: string): { branch: string | null; dirty: boolean } {
 	if (gitCache && Date.now() - gitCache.at < 2000) return gitCache;
@@ -232,6 +247,7 @@ export function registerGuard(pi: ExtensionAPI, env: NodeJS.ProcessEnv = process
 			cwd: ctx.cwd,
 			currentBranch: git.branch,
 			worktreeDirty: git.dirty,
+			sharedBranches: sharedBranchesFor(root, git.branch),
 			amendmentCovers: (rel) => amendmentCovers(root, rel),
 			planEditCovers: (rel) => planEditCovers(root, rel),
 		});

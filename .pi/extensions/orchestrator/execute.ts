@@ -25,7 +25,7 @@ import { handleHpcRequeue, handleHpcSubmit } from "../hpc/handlers.ts";
 import { emptyUsage, parseStreamLine, type DispatchUsage } from "../dispatch/lib.ts";
 import { readJsonlFile, removeFileBestEffort, writeJsonAtomic } from "../../lib/io.ts";
 import { VangjaLoopError } from "../../lib/errors.ts";
-import { loadAgentsManifest, loadBudgetConfig, loadModelPin, loadProjectConfig, type AgentManifestEntry } from "../../lib/config.ts";
+import { loadAgentsManifest, loadBudgetConfig, loadModelPin, loadProjectConfig, resolveBaseBranch, type AgentManifestEntry } from "../../lib/config.ts";
 import { EXPERIMENT_TRANSITIONS, projectLatest } from "../../lib/records.ts";
 import { assertNoUnknownTools, loadToolRegistry } from "../../lib/toolset.ts";
 import { dispatchSessionName, sanitizeSegment } from "../../lib/agents.ts";
@@ -42,6 +42,7 @@ import {
 import {
 	mergeNoFf,
 	assertCleanCheckout,
+	currentBranch,
 	headSha,
 } from "./git.ts";
 import { runPreMergeGates, openGate, type GateRun } from "./gates.ts";
@@ -552,7 +553,10 @@ async function executeBoot(context: RunContext, action: Action, actor: string): 
 	const budgets = loadBudgetConfig(root);
 	const project = loadProjectConfig(root);
 	assertCleanCheckout(root, "start a loop run (BOOT requires a clean checkout)");
-	const baseSha = fs.existsSync(path.join(root, ".git")) ? headSha(root, project.baseBranch) : "no-git";
+	// Resolve `@current` once and pin it: a branch switch mid-run must not
+	// silently retarget the merge, and every later action reads this value.
+	const baseBranch = resolveBaseBranch(project.baseBranch, currentBranch(root));
+	const baseSha = fs.existsSync(path.join(root, ".git")) ? headSha(root, baseBranch) : "no-git";
 	const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
 	const runId = `run-${stamp}-${baseSha.slice(0, 8)}`;
 	for (const dir of ["sessions", "worktrees", "gate-runs", "locks"]) {
@@ -562,7 +566,7 @@ async function executeBoot(context: RunContext, action: Action, actor: string): 
 	const from = loaded.state.state;
 	saveLoopState(
 		root,
-		{ state: "BOOT", run_id: runId, reason: `BOOT: ${pin.provider}/${pin.model} thinking=${pin.thinking}; base ${project.baseBranch}@${baseSha.slice(0, 12)}` },
+		{ state: "BOOT", run_id: runId, base_branch: baseBranch, reason: `BOOT: ${pin.provider}/${pin.model} thinking=${pin.thinking}; base ${baseBranch}@${baseSha.slice(0, 12)}` },
 		{ actor, force: true },
 	);
 	appendConductorEvent(
@@ -578,7 +582,7 @@ async function executeBoot(context: RunContext, action: Action, actor: string): 
 			thinking: pin.thinking,
 			agents: manifest.agents.length,
 			budgets,
-			summary: `BOOT: run ${runId} on base ${project.baseBranch}@${baseSha.slice(0, 12)} (${manifest.agents.length} agents, budget caps loaded)`,
+			summary: `BOOT: run ${runId} on base ${baseBranch}@${baseSha.slice(0, 12)} (${manifest.agents.length} agents, budget caps loaded)`,
 		},
 		actor,
 	);
@@ -957,13 +961,15 @@ async function executeMerge(
 		throw new VangjaLoopError("STATE_INVALID", `merge ${action.pr_id} refused: review ${String(review.id)} decided "${String(review.decision)}"`);
 	}
 	const reviewActor = String(review.actor ?? "");
+	// Prefer the run's pinned branch; fall back for a run booted before the field existed.
+	const baseBranch = loaded.base_branch ?? resolveBaseBranch(project.baseBranch, currentBranch(root));
 	const artifacts = Array.isArray(prRecord.artifacts) ? (prRecord.artifacts as string[]) : [];
 	const protectedPaths = Array.isArray(prRecord.protected_paths) ? (prRecord.protected_paths as string[]) : [];
 	const gateRun = runPreMergeGates({
 		root,
 		prId: action.pr_id,
 		taskId: String(prRecord.task_id ?? ""),
-		baseSha: String(prRecord.base_sha ?? project.baseBranch),
+		baseSha: String(prRecord.base_sha ?? baseBranch),
 		headSha: String(prRecord.head_sha ?? ""),
 		branch: String(prRecord.branch ?? ""),
 		kind: String(prRecord.pr_kind ?? (prRecord.kind === "paper" ? "paper" : "work")),
@@ -1002,7 +1008,7 @@ async function executeMerge(
 		prId: action.pr_id,
 		reviewId: action.review_id,
 		branch: String(prRecord.branch ?? ""),
-		baseBranch: project.baseBranch,
+		baseBranch,
 		summary: String(prRecord.summary ?? ""),
 		runId: loaded.run_id,
 	});
@@ -1040,7 +1046,7 @@ async function executeMerge(
 			gate_ok: true,
 			from: "MERGE",
 			to: action.to,
-			summary: `merged ${action.pr_id} (review ${action.review_id}) into ${project.baseBranch}${merge.alreadyMerged ? " (already up to date)" : ` as ${merge.sha.slice(0, 12)}`}${merge.tag ? `; tag ${merge.tag}` : ""}`,
+			summary: `merged ${action.pr_id} (review ${action.review_id}) into ${baseBranch}${merge.alreadyMerged ? " (already up to date)" : ` as ${merge.sha.slice(0, 12)}`}${merge.tag ? `; tag ${merge.tag}` : ""}`,
 		},
 		"conductor",
 	);

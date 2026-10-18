@@ -89,7 +89,7 @@ check("budgets.json", () => {
 
 check("project.json", () => {
 	const project = loadProjectConfig(REPO_ROOT);
-	assert(project.baseBranch === "update_pymc", "baseBranch drift");
+	assert(project.baseBranch === "@current", "baseBranch drift (expected @current)");
 	assert(project.stateDir === ".pi/state", "stateDir drift");
 	return `${project.venue}; base=${project.baseBranch}; requireHumanMerge=${project.requireHumanMerge}; dryRun=${project.dryRun}`;
 });

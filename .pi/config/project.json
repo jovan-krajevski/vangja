@@ -1,7 +1,7 @@
 {
   "schema": "pi-project/1",
   "repoRoot": ".",
-  "baseBranch": "update_pymc",
+  "baseBranch": "@current",
   "venue": "Journal of Forecasting",
   "requireHumanMerge": true,
   "dryRun": false,

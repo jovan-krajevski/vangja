@@ -3,7 +3,8 @@
  *
  * Hard rules, encoded here and asserted by the tests:
  * - work happens in a worktree under `.pi/state/worktrees/<task_id>/` on branch
- *   `work/T-###-<slug>` branched from the configured base branch (`update_pymc`);
+ *   `work/T-###-<slug>` branched from the run's base branch (project.json
+ *   `baseBranch`; `@current` resolves to the checkout's branch at BOOT);
  * - the conductor never rebases and never force-pushes; `git push` does not exist
  *   in this module at all (a PR is a local ledger record unless GitHub is enabled);
  * - a merge is always `git merge --no-ff` with the review id in the message, run
@@ -235,7 +236,7 @@ export function mergeNoFf(root: string, options: MergeOptions): MergeResult {
 		}
 	}
 	const sha = headSha(root, options.baseBranch);
-	const tag = tagMerge(root, options.runId, options.prId);
+	const tag = tagMerge(root, options.runId, options.prId, options.baseBranch);
 	return { sha, alreadyMerged: false, tag };
 }
 
@@ -268,12 +269,12 @@ export function tagIfNew(root: string, name: string, message: string): boolean {
 	return true;
 }
 
-export function tagMerge(root: string, runId: string | null, prId: string): string | null {
+export function tagMerge(root: string, runId: string | null, prId: string, baseBranch: string): string | null {
 	const run = sanitizeSegment(runId ?? "no-run");
 	const prefix = `run/${run}/merge/`;
 	const index = tagIndex(root, prefix) + 1;
 	const name = `${prefix}${index}`;
-	tagIfNew(root, name, `merge ${prId} into update_pymc`);
+	tagIfNew(root, name, `merge ${prId} into ${baseBranch}`);
 	return name;
 }
 

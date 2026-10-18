@@ -158,6 +158,8 @@ export interface LedgerView {
 
 export interface LoopOptions {
 	requireHumanMerge: boolean;
+	/** Branch the run merges into (resolved at BOOT or from before the field existed). */
+	baseBranch?: string;
 	budgets: BudgetConfig;
 	sandbox?: string;
 	/** False when `.pi/config/hpc.json` has an empty host: WAITING_HPC is skipped. */
@@ -611,7 +613,7 @@ export function workBrief(state: LoopState, task: TaskView | null): string {
 		`Objective: complete ${task?.id ?? "the task"} (${task?.title ?? "see .pi/state/tasks/"}) to its acceptance criteria.`,
 		`Origin: ${task?.origin ?? "see the task record"}. Attempt: ${state.attempt + 1}.`,
 		"",
-		"Rules: work in the worktree at .pi/state/worktrees/<task_id>/ on branch work/<task>-<slug>;",
+		`Rules: work in the worktree at .pi/state/worktrees/<task_id>/ on branch work/<task>-<slug> branched from ${state.base_branch ?? "the run's base branch"};`,
 		"read the brief in .pi/state/tasks/<id>.md; run the narrowest test first, then the full suite;",
 		"commit atomically; then call `pr_open` with the machine-readable footer (task_id, head_sha, base_sha,",
 		"branch, summary, artifacts, tests, claims, hpc_jobs). If compute is needed, write the experiment",
@@ -669,7 +671,7 @@ export function collectorBrief(experiment: ExperimentView | null, decision?: Ret
 		"   decides from your evidence.",
 		"",
 		"Prohibitions: no code/config edits, no resubmission, no cancellation without an instruction record, no",
-		"metric interpretation, no second job. Never touch `update_pymc`.",
+		"metric interpretation, no second job. Never touch the run's base branch.",
 		"",
 		"Acceptance: one collector pass whose ledger records carry raw evidence (or one explicit heartbeat), or",
 		"BLOCKED with the smallest decision needed.",
@@ -1224,13 +1226,13 @@ export const RULES: Rule[] = [
 		id: "merge-open-gate",
 		when: (state, ledgers, options) =>
 			state.state === "MERGE" && options.requireHumanMerge && decidedGate(ledgers.gates, "merge", state.pr_id) === null,
-		action: (state, ledgers) => {
+		action: (state, ledgers, options) => {
 			const pr = state.pr_id ? ledgers.prs.find((p) => p.id === state.pr_id) : null;
 			return {
 				...baseAction(state, "gate", `gate:merge:${state.pr_id ?? "loop"}`, `open the merge gate for ${state.pr_id ?? "the PR"}`),
 				kind: "gate",
 				gate: "merge" as HumanGateKind,
-				note: `merge ${state.pr_id ?? "the PR"}${pr ? ` (${pr.branch} → update_pymc)` : ""}: approve to let the conductor merge`,
+				note: `merge ${state.pr_id ?? "the PR"}${pr ? ` (${pr.branch} → ${options.baseBranch ?? "the base branch"})` : ""}: approve to let the conductor merge`,
 			};
 		},
 	},
@@ -1261,7 +1263,7 @@ export const RULES: Rule[] = [
 	{
 		id: "post-merge",
 		when: (state) => state.state === "POST_MERGE",
-		action: (state, ledgers) => {
+		action: (state, ledgers, options) => {
 			const pr = state.pr_id ? ledgers.prs.find((p) => p.id === state.pr_id) : null;
 			const task = state.task_id ? ledgers.tasks.find((t) => t.id === state.task_id) : null;
 			const effects: BookkeepEffect[] = [];
@@ -1270,7 +1272,7 @@ export const RULES: Rule[] = [
 					type: "task_status",
 					task_id: task.id,
 					status: "merged",
-					evidence: `${pr?.id ?? "PR"} merged into update_pymc${pr?.head_sha ? ` at ${pr.head_sha}` : ""}`,
+					evidence: `${pr?.id ?? "PR"} merged into ${options.baseBranch ?? "the base branch"}${pr?.head_sha ? ` at ${pr.head_sha}` : ""}`,
 				});
 			}
 			effects.push({ type: "clear_pr" });

@@ -13,6 +13,7 @@ pi-tui), so `node --test` exercises it directly.
 | `dispatch/` | `dispatch_agent`, `dispatch_parallel` (≤4), `dispatch_chain` | S3 | spawn engine in `lib.ts`; role allowlist in `.pi/lib/agents.ts` |
 | `orchestrator/` | `merge_pr` + the `/loop:*` commands | S4 | `state-machine.ts` (pure `nextAction`), `execute.ts` (one action, pid lock, JSON-stream parse), `gates.ts` (pre-merge + human gates + HPC gate), `git.ts` (worktrees/merge/tags), `budget.ts`, `context.ts`, `commands.ts`, `sandbox.ts`, `cli.ts` |
 | `hpc/` | `hpc_config`, `hpc_status`, `hpc_submit`, `hpc_checkpoints`, `hpc_fetch`, `hpc_tail`, `hpc_cancel`, `hpc_requeue` | S5 | `handlers.ts` (pi-free behaviour), `ssh.ts` (private agent, timeouted commands), `slurm.ts` (template/sbatch/squeue/sacct), `gate.ts` (single-slot + checkpoint + remote checks), `manifest.ts` (hashes + artifact manifest), `retry.ts` (the conductor's retry table) |
+| `understand/` | the `/understand_loop` tutorial command + TUI progress status/widget | tooling | `curriculum.ts` (12 small chapters), `lib.ts` (progress transitions/prompts, pi-free), `index.ts` (delivery + question recording); progress lives in `.pi/state/UNDERSTAND_LOOP.json` |
 
 `verify/`, `rubric/`, `auditkit/`, and `paper/` arrive in S6; the tool names
 are declared in `.pi/config/tools.json` with `kind: "planned"` so agent

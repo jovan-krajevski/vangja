@@ -158,7 +158,7 @@ export function loopState(overrides: Partial<LoopState> = {}): LoopState {
 }
 
 export function loopOptions(overrides: Partial<LoopOptions> = {}): LoopOptions {
-	return { requireHumanMerge: true, budgets: { ...DEFAULT_BUDGETS }, sandbox: "/tmp/sandbox", ...overrides };
+	return { requireHumanMerge: true, baseBranch: "update_pymc", budgets: { ...DEFAULT_BUDGETS }, sandbox: "/tmp/sandbox", ...overrides };
 }
 
 export function view(overrides: Partial<LedgerView> = {}): LedgerView {

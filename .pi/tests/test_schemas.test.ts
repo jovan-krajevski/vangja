@@ -17,6 +17,7 @@ import {
 	loadProjectConfig,
 	parseBudgetConfig,
 	parseModelPin,
+	resolveBaseBranch,
 } from "../lib/config.ts";
 import { PI_DIR, readRepoConfig, REPO_ROOT, scratchRoot, writeJson } from "./helpers.ts";
 
@@ -78,7 +79,7 @@ test("project.json carries the base branch, venue, and gates", () => {
 	const project = loadProjectConfig(REPO_ROOT);
 	assert.equal(project.schema, "pi-project/1");
 	assert.equal(project.repoRoot, ".");
-	assert.equal(project.baseBranch, "update_pymc");
+	assert.equal(project.baseBranch, "@current");
 	assert.equal(project.venue, "Journal of Forecasting");
 	assert.equal(project.requireHumanMerge, true);
 	assert.equal(project.dryRun, false);
@@ -87,6 +88,13 @@ test("project.json carries the base branch, venue, and gates", () => {
 	assert.equal(project.artifactDir, ".pi/artifacts");
 	assert.equal(project.worktreeDir, ".pi/state/worktrees");
 	assert.equal(project.sandboxPath, ".pi/state/sandbox");
+});
+
+test("resolveBaseBranch follows @current and refuses a detached HEAD", () => {
+	assert.equal(resolveBaseBranch("@current", "vangja_loop_20261018"), "vangja_loop_20261018");
+	assert.equal(resolveBaseBranch("update_pymc", "somewhere-else"), "update_pymc");
+	assert.throws(() => resolveBaseBranch("@current", null), /detached HEAD/);
+	assert.throws(() => resolveBaseBranch("@current", "HEAD"), /detached HEAD/);
 });
 
 test("agents.json has the full roster from plan/03_AGENTS.md", () => {

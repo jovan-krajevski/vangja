@@ -13,13 +13,14 @@
  *   tool and the loop cannot diverge.
  */
 
-import { loadProjectConfig } from "../../lib/config.ts";
+import { loadProjectConfig, resolveBaseBranch } from "../../lib/config.ts";
 import { readJsonlFile } from "../../lib/io.ts";
 import { statePath } from "../../lib/paths.ts";
 import { loadLoopState, saveLoopState } from "../../lib/state.ts";
 import { appendRecord, checkCapability, fail, ok, requireString, type LedgerContext, type ToolTextResult } from "../ledger/store.ts";
 import { executeAction } from "./execute.ts";
 import { openGate } from "./gates.ts";
+import { currentBranch } from "./git.ts";
 import { loadLoopOptions } from "./commands.ts";
 import { refreshViews } from "./context.ts";
 import type { RunContext } from "./sandbox.ts";
@@ -72,7 +73,9 @@ export async function handleMergePr(args: MergePrArgs, ctx: LedgerContext): Prom
 			);
 		}
 		const project = loadProjectConfig(ctx.root);
-		const currentState = loadLoopState(ctx.root).state.state;
+		const loaded = loadLoopState(ctx.root);
+		const currentState = loaded.state.state;
+		const baseBranch = loaded.state.base_branch ?? resolveBaseBranch(project.baseBranch, currentBranch(ctx.root));
 		if (!["REVIEW", "PAPER_REVIEW", "MERGE"].includes(currentState)) {
 			return fail(
 				`merge refused for ${prId}: the loop is in ${currentState}, not at the merge gate. ` +
@@ -102,10 +105,10 @@ export async function handleMergePr(args: MergePrArgs, ctx: LedgerContext): Prom
 						ctx.root,
 						{
 							gate: "merge",
-							note: `merge ${prId}: approve to let the conductor land it on ${project.baseBranch}`,
+							note: `merge ${prId}: approve to let the conductor land it on ${baseBranch}`,
 							pr_id: prId,
 							task_id: typeof pr.task_id === "string" ? pr.task_id : undefined,
-							run_id: loadLoopState(ctx.root).state.run_id,
+							run_id: loaded.state.run_id,
 						},
 						ctx.actor,
 					);

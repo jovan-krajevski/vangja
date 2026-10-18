@@ -83,7 +83,7 @@ export function readStatus(root: string): StatusSnapshot {
 
 /** One line for `ctx.ui.setStatus`. */
 export function composeStatusLine(snapshot: StatusSnapshot): string {
-	if (!snapshot.initialized) return "LOOP UNINITIALIZED — orchestrator arrives in S4";
+	if (!snapshot.initialized) return "LOOP UNINITIALIZED — run /loop:start to boot a run";
 	const experiment = snapshot.experimentId ? ` exp=${snapshot.experimentId}#${snapshot.attempt}` : "";
 	const gate = snapshot.nextGate ? ` gate=${snapshot.nextGate}` : "";
 	return `LOOP ${snapshot.state}${snapshot.pausedFrom ? `(from ${snapshot.pausedFrom})` : ""} task=${snapshot.taskId ?? "none"}${experiment}${gate}${snapshot.stopFlag ? " STOP" : ""}`;
@@ -93,7 +93,7 @@ export function composeStatusLine(snapshot: StatusSnapshot): string {
 export function composeStatusLines(snapshot: StatusSnapshot): string[] {
 	if (!snapshot.initialized) {
 		return [
-			"LOOP: UNINITIALIZED — no .pi/state/LOOP_STATE.json yet (the orchestrator arrives in S4)",
+			"LOOP: UNINITIALIZED — no .pi/state/LOOP_STATE.json yet (run /loop:verify-env, then /loop:start)",
 			`tasks: ${snapshot.totalTasks} · experiments: ${snapshot.activeExperiments.length} · gates: ${snapshot.pendingGates.length}`,
 		];
 	}
@@ -106,7 +106,7 @@ export function composeStatusLines(snapshot: StatusSnapshot): string[] {
 				`$${snapshot.budget.costUsd.toFixed(2)}/${snapshot.caps.maxCostUsdPerRun}`,
 		);
 	} else {
-		lines.push("budget: no BUDGET.json yet (accounting arrives with S4)");
+		lines.push("budget: no BUDGET.json yet (no run has booted)");
 	}
 	const active = snapshot.activeExperiments.map((job) => `${job.id}(${job.status}#${job.attempt})`).join(", ");
 	lines.push(

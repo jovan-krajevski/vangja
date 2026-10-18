@@ -58,6 +58,8 @@ const TRANSITIONS: Record<LoopStateName, LoopStateName[]> = {
 export interface LoopState {
 	schema: "pi-loop-state/1";
 	run_id: string | null;
+	/** Branch this run merges into; pinned at BOOT (see resolveBaseBranch). */
+	base_branch: string | null;
 	state: LoopStateName;
 	paused_from: LoopStateName | null;
 	task_id: string | null;
@@ -74,6 +76,7 @@ export function defaultLoopState(): LoopState {
 	return {
 		schema: "pi-loop-state/1",
 		run_id: null,
+		base_branch: null,
 		state: "UNINITIALIZED",
 		paused_from: null,
 		task_id: null,

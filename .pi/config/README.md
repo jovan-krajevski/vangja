@@ -45,7 +45,7 @@ Exceeding a cap must set `PAUSED` with a human-readable reason (S4).
 |---|---|
 | `schema` | `pi-project/1`. |
 | `repoRoot` | `"."` = the directory containing `.pi/`; relative paths resolve from it. |
-| `baseBranch` | The only branch the supervisor/conductor merges into (`update_pymc`). |
+| `baseBranch` | The only branch the supervisor/conductor merges into. `"@current"` (the default) means "whatever branch the checkout is on when `/loop:start` boots": the resolved name is pinned in `LOOP_STATE.base_branch` for the whole run. A literal branch name is used as-is. |
 | `venue` | Default venue for the paper rubric (no deadline by default). |
 | `requireHumanMerge` | `true` pauses before every merge into the base branch. |
 | `dryRun` | `true` logs intended actions without side effects (sandbox runs). |

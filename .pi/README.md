@@ -26,6 +26,7 @@ implementation.
 | `extensions/rubric/` | S6 rubric trees: load/validate/autofill/score/render | yes |
 | `extensions/auditkit/` | S6 finding schema, dedupe register, report assembly, grade/decision, seeded canary, calibration scorer | yes |
 | `extensions/status/` | TUI status line/widget + ledger `renderResult` | yes |
+| `extensions/understand/` | `/understand_loop` guided tour (12 chapters, one at a time), progress in `.pi/state/UNDERSTAND_LOOP.json`, TUI progress widget | yes |
 | `loop/` | headless shims for the orchestrator (`step.sh`, `status.sh`, `collect.sh`) | yes |
 | `tests/` | offline `node --test` suite, fixtures, acceptance scripts | yes |
 | `tests/e2e/` | S7 end-to-end sandbox smoke test, resilience matrix, model-pin audit, calibration wrapper | yes |
@@ -56,7 +57,7 @@ make -C .pi audit-accept   # S6 audit acceptance transcript (offline fixtures)
 make -C .pi audit-calibrate # score the committed strong calibration fixture
 ```
 
-`verify-env` is green: 288 node tests, 163 python tests, 15/15 environment
+`verify-env` is green: 304 node tests, 163 python tests, 15/15 environment
 checks, 4/4 orchestrator checks, and 0 model-pin violations. `verify-env-strict`
 is an alias. `smoke` and `resilience` are deterministic (a stub child replaces the
 model) and never touch the real repository — they clone it under `.pi/state/`,

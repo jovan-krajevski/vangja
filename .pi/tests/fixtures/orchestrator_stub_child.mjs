@@ -81,6 +81,11 @@ emit({ type: "tool_execution_end", toolCallId: "call_1", toolName: "bash", resul
 
 async function doWork() {
 	const project = JSON.parse(fs.readFileSync(path.join(root, ".pi", "config", "project.json"), "utf8"));
+	// `project.baseBranch` may be the "@current" sentinel; the conductor pins the
+	// resolved branch in LOOP_STATE at BOOT, which is what a real child is told.
+	const loopStateFile = path.join(root, ".pi", "state", "LOOP_STATE.json");
+	const loopState = fs.existsSync(loopStateFile) ? JSON.parse(fs.readFileSync(loopStateFile, "utf8")) : {};
+	const baseBranch = loopState.base_branch ?? project.baseBranch;
 	const tasks = fs
 		.readFileSync(path.join(root, ".pi", "state", "TASKS.jsonl"), "utf8")
 		.split("\n")
@@ -93,13 +98,13 @@ async function doWork() {
 	const branch = `work/${taskId}-${slug}`;
 	fs.mkdirSync(path.dirname(worktree), { recursive: true });
 	if (!branchExists(branch)) {
-		git(["worktree", "add", "-b", branch, worktree, project.baseBranch]);
+		git(["worktree", "add", "-b", branch, worktree, baseBranch]);
 	}
 	fs.writeFileSync(path.join(worktree, "STUB_TASK.md"), `# ${taskId}\n\nImplemented by the orchestrator test stub.\n`);
 	git(["add", "-A"], worktree);
 	git(["-c", "user.name=stub", "-c", "user.email=stub@example.invalid", "commit", "-m", `${taskId}: stub implementation`], worktree);
 	const head = git(["rev-parse", "HEAD"], worktree);
-	const base = git(["rev-parse", project.baseBranch]);
+	const base = git(["rev-parse", baseBranch]);
 	const { appendRecord } = await ledger();
 	appendRecord(
 		root,

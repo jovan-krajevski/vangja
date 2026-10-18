@@ -127,7 +127,7 @@ export function renderContextMd(input: ContextInput): string {
 		.filter(([, value]) => typeof value === "number")
 		.sort(([a], [b]) => a.localeCompare(b));
 	lines.push("## Budget", "");
-	if (budgetEntries.length === 0) lines.push("- no BUDGET.json yet (accounting arrives with S4)");
+	if (budgetEntries.length === 0) lines.push("- no BUDGET.json yet (no run has booted)");
 	for (const [key, value] of budgetEntries) lines.push(`- ${key}: ${cell(value)}`);
 	lines.push("");
 

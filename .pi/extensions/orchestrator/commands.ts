@@ -9,12 +9,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { appendRecord } from "../ledger/store.ts";
-import { loadBudgetConfig, loadHpcConfig, loadProjectConfig } from "../../lib/config.ts";
+import { loadBudgetConfig, loadHpcConfig, loadProjectConfig, resolveBaseBranch } from "../../lib/config.ts";
 import { loadLoopState, saveLoopState, type LoopState } from "../../lib/state.ts";
 import { recordHpcDisabled } from "../hpc/handlers.ts";
 import { refreshViews, composeStatus, renderStatus, renderStatusLine, type StatusReport } from "./context.ts";
 import { executeAction, type ExecutionResult } from "./execute.ts";
 import { approveGate, listGates, rejectGate, runCommand, hpcGate, type HpcGateResult } from "./gates.ts";
+import { currentBranch } from "./git.ts";
 import { loadLedgerView } from "./ledgers.ts";
 import {
 	findUnfinishedExperiment,
@@ -46,6 +47,7 @@ export function loadLoopOptions(context: RunContext): LoopOptions {
 	}
 	return {
 		requireHumanMerge: project.requireHumanMerge,
+		baseBranch: resolveBaseBranch(project.baseBranch, currentBranch(context.root)),
 		budgets: loadBudgetConfig(context.root),
 		sandbox: context.sandbox ?? undefined,
 		hpcEnabled,
@@ -237,11 +239,20 @@ export function commandVerifyEnv(context: RunContext): { checks: EnvCheck[]; ok:
 	const hpc: HpcGateResult = hpcGate(context.root);
 	checks.push({ name: "hpc gate", ok: hpc.status !== "blocked", detail: `${hpc.status}: ${hpc.reason}` });
 	const project = loadProjectConfig(context.root);
-	checks.push({
-		name: "human merge gate",
-		ok: true,
-		detail: `requireHumanMerge=${project.requireHumanMerge} base=${project.baseBranch}`,
-	});
+	try {
+		const base = resolveBaseBranch(project.baseBranch, currentBranch(context.root));
+		checks.push({
+			name: "human merge gate",
+			ok: true,
+			detail: `requireHumanMerge=${project.requireHumanMerge} base=${base}`,
+		});
+	} catch (error) {
+		checks.push({
+			name: "human merge gate",
+			ok: false,
+			detail: `requireHumanMerge=${project.requireHumanMerge} base could not be resolved: ${(error as Error).message}`,
+		});
+	}
 	const pending = listGates(context.root).filter((gate) => gate.status === "pending");
 	checks.push({ name: "open human gates", ok: true, detail: `${pending.length} pending` });
 	return { checks, ok: checks.every((check) => check.ok) };

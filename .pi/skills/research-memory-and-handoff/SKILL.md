@@ -75,8 +75,8 @@ bash .pi/skills/research-memory-and-handoff/scripts/check_state_files.sh --stric
 
 It validates `LOOP_STATE.json` (schema, key set, legal state name),
 `CONTEXT.md` (≤200 lines), and every ledger JSONL (each line an object with
-`schema`/`kind`/`ts`/`actor`). Missing `LOOP_STATE.json` is a warning until
-the orchestrator (S4) exists; `--strict` makes it an error.
+`schema`/`kind`/`ts`/`actor`). Missing `LOOP_STATE.json` warns because no run
+has booted yet (the first `loop start` creates it); `--strict` makes it an error.
 
 ## Failure modes
 
