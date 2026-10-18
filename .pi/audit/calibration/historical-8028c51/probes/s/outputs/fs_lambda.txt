@@ -1,0 +1,3 @@
+PROBE fs_lambda pool=complete   period=365.25 n_per_group=40 ||old||^2=3.4879 potential(beta=10*mean)=-3153.0516 lambda_code=9.1313 doc_lambda_2p_over_n=18.2625
+PROBE fs_lambda pool=partial    period=365.25 n_per_group=40 ||old||^2=3.4879 potential(beta=10*mean)=-55248.5420 lambda_code=160.0000 doc_lambda_2p_over_n=18.2625
+PROBE fs_lambda pool=individual period=365.25 n_per_group=40 ||old||^2=3.4879 potential(beta=10*mean)=-55248.5420 lambda_code=160.0000 doc_lambda_2p_over_n=18.2625

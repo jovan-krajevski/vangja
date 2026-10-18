@@ -1,0 +1,4 @@
+PROBE mapx_predict_constants FlatTrend: mapx fit OK, predict FAILED KeyError: 'ft_0 - intercept'
+PROBE mapx_predict_constants NormalConstant: mapx fit OK, predict FAILED KeyError: 'nc_0 - c(mu=0,sd=1)'
+PROBE mapx_predict_constants UniformConstant: mapx fit OK, predict FAILED KeyError: 'uc_0 - c(l=-1,u=1)'
+PROBE mapx_predict_constants BetaConstant: mapx+predict=OK

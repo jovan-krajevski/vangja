@@ -1,0 +1,255 @@
+{
+  "schema": "pi-agents/1",
+  "pinnedModel": "opencode-go/deepseek-v4.1-flash",
+  "pinnedThinking": "max",
+  "agents": [
+    {
+      "name": "phd_candidate",
+      "file": ".pi/agents/phd_candidate.md",
+      "role": "phd_candidate",
+      "tools": [
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "grep",
+        "find",
+        "ls",
+        "codemode",
+        "dispatch",
+        "ledger",
+        "hpc",
+        "verify",
+        "task",
+        "paper"
+      ],
+      "skills": [
+        "reproducible-experiments",
+        "experiment-protocol-design",
+        "bayesian-workflow",
+        "forecasting-evaluation",
+        "scientific-integrity-and-anti-gaming",
+        "data-provenance",
+        "vangja-codebase",
+        "git-and-pr-workflow",
+        "hpc-slurm-and-checkpointing",
+        "scientific-writing-latex",
+        "research-memory-and-handoff"
+      ],
+      "effort": "large",
+      "maxParallel": 1,
+      "model": "opencode-go/deepseek-v4.1-flash"
+    },
+    {
+      "name": "collector",
+      "file": ".pi/agents/collector.md",
+      "role": "collector",
+      "tools": ["read", "bash", "hpc", "ledger", "verify"],
+      "skills": ["hpc-slurm-and-checkpointing", "data-provenance", "research-memory-and-handoff"],
+      "effort": "medium",
+      "maxParallel": 1,
+      "model": "opencode-go/deepseek-v4.1-flash"
+    },
+    {
+      "name": "supervisor",
+      "file": ".pi/agents/supervisor.md",
+      "role": "supervisor",
+      "tools": ["read", "bash", "dispatch", "verify", "ledger", "rubric", "task", "merge"],
+      "skills": [
+        "scientific-audit-and-adversarial-review",
+        "scientific-integrity-and-anti-gaming",
+        "venue-norms-and-reviewing",
+        "git-and-pr-workflow",
+        "reproducible-experiments",
+        "experiment-protocol-design",
+        "research-memory-and-handoff"
+      ],
+      "effort": "large",
+      "maxParallel": 1,
+      "model": "opencode-go/deepseek-v4.1-flash"
+    },
+    {
+      "name": "audit_finder",
+      "file": ".pi/agents/audit_finder.md",
+      "role": "audit_finder",
+      "tools": ["read", "bash", "grep", "find", "ls", "verify", "ledger", "auditkit", "dispatch"],
+      "skills": [
+        "scientific-audit-and-adversarial-review",
+        "scientific-integrity-and-anti-gaming",
+        "reproducible-experiments",
+        "data-provenance",
+        "bayesian-workflow",
+        "forecasting-evaluation",
+        "experiment-protocol-design"
+      ],
+      "effort": "large",
+      "maxParallel": 8,
+      "model": "opencode-go/deepseek-v4.1-flash"
+    },
+    {
+      "name": "audit_verifier",
+      "file": ".pi/agents/audit_verifier.md",
+      "role": "audit_verifier",
+      "tools": ["read", "bash", "verify", "ledger", "auditkit"],
+      "skills": [
+        "scientific-audit-and-adversarial-review",
+        "reproducible-experiments",
+        "experiment-protocol-design",
+        "data-provenance"
+      ],
+      "effort": "large",
+      "maxParallel": 4,
+      "model": "opencode-go/deepseek-v4.1-flash"
+    },
+    {
+      "name": "audit_synthesizer",
+      "file": ".pi/agents/audit_synthesizer.md",
+      "role": "audit_synthesizer",
+      "tools": ["read", "ledger", "rubric", "auditkit", "dispatch"],
+      "skills": [
+        "scientific-audit-and-adversarial-review",
+        "venue-norms-and-reviewing",
+        "scientific-writing-latex",
+        "research-memory-and-handoff"
+      ],
+      "effort": "large",
+      "maxParallel": 1,
+      "model": "opencode-go/deepseek-v4.1-flash"
+    },
+    {
+      "name": "audit_adjudicator",
+      "file": ".pi/agents/audit_adjudicator.md",
+      "role": "audit_adjudicator",
+      "tools": ["read", "ledger", "rubric", "auditkit", "verify"],
+      "skills": [
+        "scientific-audit-and-adversarial-review",
+        "venue-norms-and-reviewing",
+        "scientific-integrity-and-anti-gaming",
+        "research-memory-and-handoff"
+      ],
+      "effort": "large",
+      "maxParallel": 1,
+      "model": "opencode-go/deepseek-v4.1-flash"
+    },
+    {
+      "name": "scout",
+      "file": ".pi/agents/scout.md",
+      "role": "scout",
+      "tools": ["read", "grep", "find", "ls"],
+      "skills": ["vangja-codebase", "research-memory-and-handoff"],
+      "effort": "small",
+      "maxParallel": 4,
+      "model": "opencode-go/deepseek-v4.1-flash"
+    },
+    {
+      "name": "planner",
+      "file": ".pi/agents/planner.md",
+      "role": "planner",
+      "tools": ["read", "grep", "find", "ls"],
+      "skills": ["research-memory-and-handoff", "experiment-protocol-design"],
+      "effort": "medium",
+      "maxParallel": 2,
+      "model": "opencode-go/deepseek-v4.1-flash"
+    },
+    {
+      "name": "methodologist",
+      "file": ".pi/agents/methodologist.md",
+      "role": "methodologist",
+      "tools": ["read", "grep", "find", "ls", "verify"],
+      "skills": [
+        "bayesian-workflow",
+        "forecasting-evaluation",
+        "experiment-protocol-design",
+        "scientific-integrity-and-anti-gaming"
+      ],
+      "effort": "medium",
+      "maxParallel": 2,
+      "model": "opencode-go/deepseek-v4.1-flash"
+    },
+    {
+      "name": "experimenter",
+      "file": ".pi/agents/experimenter.md",
+      "role": "experimenter",
+      "tools": ["read", "bash", "edit", "write", "dispatch", "verify", "hpc"],
+      "skills": [
+        "reproducible-experiments",
+        "hpc-slurm-and-checkpointing",
+        "vangja-codebase",
+        "data-provenance",
+        "bayesian-workflow",
+        "forecasting-evaluation"
+      ],
+      "effort": "large",
+      "maxParallel": 2,
+      "model": "opencode-go/deepseek-v4.1-flash"
+    },
+    {
+      "name": "repro_engineer",
+      "file": ".pi/agents/repro_engineer.md",
+      "role": "repro_engineer",
+      "tools": ["read", "bash", "edit", "write", "verify"],
+      "skills": [
+        "reproducible-experiments",
+        "python-packaging-and-environments",
+        "data-provenance",
+        "git-and-pr-workflow"
+      ],
+      "effort": "medium",
+      "maxParallel": 2,
+      "model": "opencode-go/deepseek-v4.1-flash"
+    },
+    {
+      "name": "literature_scout",
+      "file": ".pi/agents/literature_scout.md",
+      "role": "literature_scout",
+      "tools": ["read", "bash", "source_check", "fetch_content"],
+      "skills": [
+        "literature-review-and-verification",
+        "scientific-writing-latex",
+        "venue-norms-and-reviewing"
+      ],
+      "effort": "medium",
+      "maxParallel": 3,
+      "model": "opencode-go/deepseek-v4.1-flash"
+    },
+    {
+      "name": "paper_writer",
+      "file": ".pi/agents/paper_writer.md",
+      "role": "paper_writer",
+      "tools": ["read", "write", "edit", "grep", "find", "paper"],
+      "skills": [
+        "scientific-writing-latex",
+        "literature-review-and-verification",
+        "forecasting-evaluation",
+        "research-memory-and-handoff"
+      ],
+      "effort": "large",
+      "maxParallel": 2,
+      "model": "opencode-go/deepseek-v4.1-flash"
+    },
+    {
+      "name": "critic",
+      "file": ".pi/agents/critic.md",
+      "role": "critic",
+      "tools": ["read", "grep", "find", "ls", "bash", "verify"],
+      "skills": [
+        "scientific-integrity-and-anti-gaming",
+        "scientific-audit-and-adversarial-review",
+        "bayesian-workflow"
+      ],
+      "effort": "small",
+      "maxParallel": 4,
+      "model": "opencode-go/deepseek-v4.1-flash"
+    },
+    {
+      "name": "meta_review",
+      "file": ".pi/agents/meta_review.md",
+      "role": "meta_review",
+      "tools": ["read", "grep", "find", "ls", "ledger", "auditkit"],
+      "skills": ["scientific-audit-and-adversarial-review", "research-memory-and-handoff"],
+      "effort": "medium",
+      "maxParallel": 1,
+      "model": "opencode-go/deepseek-v4.1-flash"
+    }
+  ]
+}

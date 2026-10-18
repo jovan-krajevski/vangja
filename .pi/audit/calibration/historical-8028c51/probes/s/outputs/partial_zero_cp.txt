@@ -1,0 +1,3 @@
+PROBE partial_zero_cp non-tuned: fit=OK, 'lt_0 - delta' in free_RVs=True, logp(delta)=0.000
+PROBE partial_zero_cp tune=parametric       : fit=FAILED ValueError: Alloc static input type and target shape are incompatible: Vector(float64, shape=(2,)) vs (0,)
+PROBE partial_zero_cp tune=prior_from_idata : fit=FAILED KeyError: 'prior_lt_0 - delta'

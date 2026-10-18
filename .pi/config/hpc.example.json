@@ -1,0 +1,20 @@
+{
+  "host": "",
+  "user": "",
+  "port": 22,
+  "remoteRepoDir": "",
+  "remoteScratchDir": "",
+  "hpcKey": "~/.ssh/id_ed25519",
+  "gitKey": "~/.ssh/vangja_github",
+  "forwardGitAgent": true,
+  "container": "",
+  "partition": "",
+  "cpus": 8,
+  "memGb": 32,
+  "gpus": 0,
+  "wallClockHours": 24,
+  "pollSeconds": 60,
+  "maxPolls": 40,
+  "maxAttemptsPerExperiment": 6,
+  "maxParallelJobs": 1
+}

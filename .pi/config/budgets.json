@@ -1,0 +1,11 @@
+{
+  "maxSessionsPerDay": 120,
+  "maxParallelWorkers": 4,
+  "maxParallelHpcJobs": 1,
+  "maxTaskWallClockMinutes": 360,
+  "maxHpcWallClockHours": 48,
+  "maxConsecutiveFailures": 3,
+  "maxNoProgressCycles": 2,
+  "maxAuditCycles": 5,
+  "maxCostUsdPerRun": 250
+}

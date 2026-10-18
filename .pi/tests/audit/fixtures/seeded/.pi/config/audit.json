@@ -1,0 +1,41 @@
+{
+  "schema": "pi-audit/1",
+  "testsCommand": [
+    "python3",
+    "-c",
+    "print('2 passed in 0.01s')"
+  ],
+  "protocolPaths": [
+    "data"
+  ],
+  "originsFile": "data/CONFIRMATION_ORIGINS.csv",
+  "selectionScan": [
+    "runners",
+    "src"
+  ],
+  "testBaselineDir": "tests_baseline",
+  "resultsReport": "results/summary.json",
+  "failuresFile": "results/failures.json",
+  "contextSeries": [
+    "Boston"
+  ],
+  "aggregateGlobs": [
+    "results/aggregate.csv"
+  ],
+  "artifactPaths": [
+    "artifacts"
+  ],
+  "requiredArtifacts": [
+    "manifest.json",
+    "metrics.csv"
+  ],
+  "traceability": {
+    "claimsPath": "paper/CLAIMS.json",
+    "paperDir": "paper",
+    "ref": "HEAD",
+    "requireAncestor": false
+  },
+  "canaryFixture": ".",
+  "canaryRecallThreshold": 0.8,
+  "reproduceTopN": 2
+}

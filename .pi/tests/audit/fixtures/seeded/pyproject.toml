@@ -1,0 +1,10 @@
+[project]
+name = "seeded-fixture"
+version = "0.1.0"
+description = "Synthetic audit fixture with deliberate defects"
+requires-python = ">=3.11"
+dependencies = [
+  "pymc[nutpie]~=6.2",
+  "numpy>=2.0,<2.5",
+  "numba>=0.66",
+]

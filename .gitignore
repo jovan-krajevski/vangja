@@ -174,3 +174,38 @@ cython_debug/
 *.sif
 
 data/
+
+# Fixed case-study outputs (reproducible artifacts, not sources)
+fixed_case_studies/**/results/
+fixed_case_studies/**/results_hyperparams/
+fixed_case_studies/**/data/
+
+# paper/ is DELIBERATELY untracked until the manuscript is published: human
+# decision D-001 in .pi/state/DECISIONS.md (2026-10-16, recorded during the
+# independent S0 verification). paper/** is expected to be invisible to
+# `git status`/`git diff`; verifiers must not treat that as a finding. Remove
+# this block only when committing the manuscript, then re-run the S7 fresh-clone
+# check and re-verify paper claims traceability.
+paper/
+
+# pi research-agent runtime (see .pi/README.md) — manifests/hashes are committed, bodies are not
+.pi/state/
+.pi/artifacts/*/
+.pi/config/hpc.json
+.pi/**/node_modules/
+.pi/loop/worktrees/
+.pi/sessions/
+.pi/audit/cycle-*/
+.pi/audit/calibration/20*/
+.pi/audit/calibration/latest/
+.pi/audit/calibration/test-*/
+
+# Paper and container artifacts
+# (no !paper/** re-inclusions: they cannot take effect while paper/ is ignored)
+*.sif
+*.pdf
+
+# .pi/lib is hand-written TypeScript (the S0 shared library), not a Python
+# build output: the generic lib/ rule above must not swallow it.
+!.pi/lib/
+!.pi/lib/**

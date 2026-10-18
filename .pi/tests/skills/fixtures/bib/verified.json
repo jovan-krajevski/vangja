@@ -1,0 +1,11 @@
+{
+  "records": {
+    "good2023": {
+      "checked": true,
+      "doi": "10.1000/xyz",
+      "level": "primary",
+      "quote": "hierarchical pooling improves short-series forecasts",
+      "checked_date": "2026-01-01"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+diff --git a/src/vangja/utils.py b/src/vangja/utils.py
+--- a/src/vangja/utils.py
++++ b/src/vangja/utils.py
+@@ -320,6 +320,7 @@ def relative_mae(y_true, y_pred, y_persistence, epsilon=None):
+     """Relative MAE of a forecast against the persistence forecast."""
++    # diff_scan clean fixture: no behavioural change
+     y_true = np.asarray(y_true, dtype=float)
+     denom = mean_absolute_error(y_true, y_persistence)
+     return float(mean_absolute_error(y_true, y_pred) / denom)

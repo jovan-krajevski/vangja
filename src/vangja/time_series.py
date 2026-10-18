@@ -302,6 +302,10 @@ class TimeSeriesModel:
         nuts_sampler: NutsSampler = "pymc",
         progressbar: bool = True,
         idata: az.InferenceData | None = None,
+        random_seed: int | np.random.Generator | None = None,
+        target_accept: float | None = None,
+        include_source_in_target: bool = False,
+        source_data: pd.DataFrame | None = None,
     ):
         """
         Create and fit the model to the data.
@@ -352,8 +356,73 @@ class TimeSeriesModel:
             parameters' priors in the model. If idata is not None, each component from
             the model should specify how idata should be used to set its parameters'
             priors.
+        random_seed: int | np.random.Generator | None
+            Seed (or generator) for all stochastic inference steps: MAP jitter,
+            variational inference, MCMC sampling, posterior/prior predictive
+            sampling, and the MCMC uncertainty sub-sampling in
+            :meth:`predict_uncertainty`. Passing the same seed reproduces the
+            same fit to numerical tolerance.
+        target_accept: float | None
+            Target acceptance rate for NUTS (e.g. 0.9). Only used when
+            ``method="nuts"``; forwarded to the NUTS sampler through
+            ``nuts_sampler_kwargs``. ``None`` keeps the backend default.
+        include_source_in_target: bool
+            If True and ``source_data`` is provided, the source series is
+            appended to the training data as an additional group (named
+            ``"source"``) before scaling and fitting. This turns transfer
+            learning into a hierarchical co-learning ablation arm. Only
+            meaningful with ``pool_type="partial"`` components, since with
+            individual pooling the source group does not share parameters
+            with the targets.
+        source_data: pd.DataFrame | None
+            Long context series used for the transfer (columns ``ds``,
+            ``y``). Required when ``include_source_in_target=True``.
         """
+        if include_source_in_target:
+            if source_data is None:
+                raise ValueError(
+                    "include_source_in_target=True requires source_data "
+                    "(the long context series with columns 'ds' and 'y')."
+                )
+            source_df = source_data[["ds", "y"]].dropna().copy()
+            source_df["series"] = "source"
+            # Append the source series before data processing so it shares
+            # the target model's scaling, time index and group definitions.
+            if "series" in data.columns:
+                data = pd.concat(
+                    [data[["ds", "y", "series"]], source_df], ignore_index=True
+                )
+            else:
+                target_df = data[["ds", "y"]].copy()
+                target_df["series"] = "series"
+                data = pd.concat([target_df, source_df], ignore_index=True)
+
         self._process_data(data, scaler, scale_mode, t_scale_params)
+
+        self.random_seed = random_seed
+        self.target_accept = target_accept
+        self.fit_info: dict = {
+            "method": method,
+            "random_seed": (
+                random_seed.integers(0, 2**32 - 1)
+                if isinstance(random_seed, np.random.Generator)
+                else random_seed
+            ),
+            "target_accept": target_accept,
+            "include_source_in_target": include_source_in_target,
+        }
+        try:
+            import importlib.metadata as _im
+            from datetime import datetime as _dt
+
+            for _pkg in ("vangja", "pymc", "arviz", "numpy", "pandas", "pytensor"):
+                try:
+                    self.fit_info[f"{_pkg}_version"] = _im.version(_pkg)
+                except _im.PackageNotFoundError:
+                    self.fit_info[f"{_pkg}_version"] = None
+            self.fit_info["fit_started_at"] = _dt.now().isoformat()
+        except Exception:  # pragma: no cover - provenance must never break a fit
+            pass
 
         self.model = pm.Model()
         self.model_idxs = {}
@@ -414,6 +483,7 @@ class TimeSeriesModel:
                     use_grad=True,
                     initvals=initval_dict,
                     progressbar=progressbar,
+                    random_seed=random_seed,
                     gradient_backend="jax",
                     compile_kwargs={"mode": "JAX"},
                     options={"maxiter": maxiter},
@@ -423,6 +493,24 @@ class TimeSeriesModel:
                     var: map_result.posterior[var].values.squeeze()
                     for var in map_result.posterior.data_vars
                 }
+                # Keep the raw optimizer result for MAP diagnostics
+                # (termination status, objective, gradient norm, ...).
+                try:
+                    diag: dict = {}
+                    for key in map_result["optimizer_result"].data_vars:
+                        val = map_result["optimizer_result"][key]
+                        if val.ndim == 0:
+                            try:
+                                diag[key] = float(val)
+                            except (TypeError, ValueError):
+                                diag[key] = str(val.values)
+                        else:
+                            arr = np.asarray(val)
+                            diag[f"{key}_l2"] = float(np.linalg.norm(arr))
+                            diag[f"{key}_shape"] = list(arr.shape)
+                    self.fit_info["map_diagnostics"] = diag
+                except Exception:  # pragma: no cover
+                    self.fit_info["map_diagnostics"] = None
             elif self.method == "map":
                 self.map_approx = pm.find_MAP(
                     start=initval_dict,
@@ -435,27 +523,45 @@ class TimeSeriesModel:
                     n,
                     method=self.method,
                     start=initval_dict if self.method != "asvgd" else None,
+                    random_seed=random_seed,
                     progressbar=progressbar,
                 )
                 self.trace = approx.sample(draws=self.samples)
             elif self.method in ["nuts", "metropolis", "demetropolisz"]:
-                step = pm.NUTS()
-                if self.method == "metropolis":
-                    step = pm.Metropolis()
-
-                if self.method == "demetropolisz":
-                    step = pm.DEMetropolisZ()
-
-                self.trace = pm.sample(
-                    self.samples,
-                    tune=tune,
-                    chains=chains,
-                    cores=cores,
-                    nuts_sampler=nuts_sampler,
-                    initvals=initval_dict,
-                    step=step,
-                    progressbar=progressbar,
-                )
+                if self.method == "nuts":
+                    # Use the backend NUTS sampler; never pass an explicit
+                    # step alongside nuts_sampler (the step silently overrides
+                    # the advertised backend).
+                    nuts_sampler_kwargs = None
+                    if target_accept is not None:
+                        nuts_sampler_kwargs = {"target_accept": target_accept}
+                    self.trace = pm.sample(
+                        self.samples,
+                        tune=tune,
+                        chains=chains,
+                        cores=cores,
+                        nuts_sampler=nuts_sampler,
+                        nuts_sampler_kwargs=nuts_sampler_kwargs,
+                        initvals=initval_dict,
+                        random_seed=random_seed,
+                        progressbar=progressbar,
+                    )
+                else:
+                    step = (
+                        pm.Metropolis()
+                        if self.method == "metropolis"
+                        else pm.DEMetropolisZ()
+                    )
+                    self.trace = pm.sample(
+                        self.samples,
+                        tune=tune,
+                        chains=chains,
+                        cores=cores,
+                        step=step,
+                        initvals=initval_dict,
+                        random_seed=random_seed,
+                        progressbar=progressbar,
+                    )
             else:
                 raise NotImplementedError(
                     f"Method {self.method} is not supported at the moment!"
@@ -909,7 +1015,9 @@ class TimeSeriesModel:
         else:
             plt.show()
 
-    def sample_prior_predictive(self, samples: int = 500) -> az.InferenceData:
+    def sample_prior_predictive(
+        self, samples: int = 500, random_seed: int | None = None
+    ) -> az.InferenceData:
         """Sample from the prior predictive distribution.
 
         Generates simulated observations from the model's priors *before*
@@ -920,6 +1028,8 @@ class TimeSeriesModel:
         ----------
         samples : int, default 500
             Number of samples to draw from the prior predictive.
+        random_seed : int or None, default None
+            Seed for the prior-predictive draw.
 
         Returns
         -------
@@ -945,14 +1055,22 @@ class TimeSeriesModel:
         if not hasattr(self, "model"):
             raise RuntimeError("Model must be fit before sampling prior predictive.")
         with self.model:
-            return pm.sample_prior_predictive(samples=samples)
+            return pm.sample_prior_predictive(draws=samples, random_seed=random_seed)
 
-    def sample_posterior_predictive(self) -> az.InferenceData:
+    def sample_posterior_predictive(
+        self, random_seed: int | None = None
+    ) -> az.InferenceData:
         """Sample from the posterior predictive distribution.
 
         Generates replicated datasets from the posterior to assess goodness of
         fit.  Requires the model to have been fitted with an MCMC or VI
         method so that ``self.trace`` is available.
+
+        Parameters
+        ----------
+        random_seed : int or None, default None
+            Seed for the posterior-predictive draw. Defaults to the seed used
+            during :meth:`fit` when ``None``.
 
         Returns
         -------
@@ -980,8 +1098,9 @@ class TimeSeriesModel:
                 "Posterior predictive checks require posterior samples. "
                 "Fit the model with an MCMC or VI method (e.g., method='nuts')."
             )
+        seed = random_seed if random_seed is not None else self.random_seed
         with self.model:
-            return pm.sample_posterior_predictive(self.trace)
+            return pm.sample_posterior_predictive(self.trace, random_seed=seed)
 
     def convergence_summary(self, var_names: list[str] | None = None) -> pd.DataFrame:
         """Return an ArviZ convergence summary table.
@@ -1127,13 +1246,19 @@ class TimeSeriesModel:
             with self.model:
                 pm.compute_log_likelihood(self.trace)
 
-    def waic(self) -> az.ELPDData:
+    def waic(self):
         """Compute the Widely Applicable Information Criterion.
+
+        Requires pointwise log-likelihood; call :meth:`compute_log_likelihood`
+        first if the trace does not contain it.  ArviZ 1.x removed
+        ``az.waic``, so WAIC is computed directly from the pointwise
+        log-likelihood group.
 
         Returns
         -------
-        az.ELPDData
-            WAIC result object.
+        collections.namedtuple
+            Result with fields ``waic``, ``elpd_waic``, ``p_waic``, ``se``
+            (standard error) and ``waic_i`` (pointwise contributions).
 
         Raises
         ------
@@ -1144,15 +1269,44 @@ class TimeSeriesModel:
             raise ValueError("WAIC requires posterior samples.")
 
         self.compute_log_likelihood()
-        return az.waic(self.trace)
 
-    def loo(self) -> az.ELPDData:
+        if hasattr(az, "waic"):
+            result = az.waic(self.trace)
+            return result
+
+        ll_group = self.trace.log_likelihood
+        if not ll_group.data_vars:
+            raise ValueError(
+                "WAIC requires the log_likelihood group; "
+                "call model.compute_log_likelihood() first."
+            )
+        ll = ll_group[list(ll_group.data_vars)[0]].values
+        pointwise = ll.reshape(-1, ll.shape[-1])
+        with np.errstate(divide="ignore", invalid="ignore"):
+            lppd_i = np.log(np.nanmean(np.exp(pointwise), axis=0))
+        p_waic_i = np.nanvar(pointwise, axis=0, ddof=1)
+        waic_i = -2.0 * lppd_i + 2.0 * p_waic_i
+        waic = float(np.nansum(waic_i))
+        elpd_waic = float(np.nansum(lppd_i - p_waic_i))
+        p_waic = float(np.nansum(p_waic_i))
+        se = float(np.sqrt(len(waic_i)) * np.nanstd(waic_i))
+
+        from collections import namedtuple
+
+        WaicResult = namedtuple(
+            "WaicResult", ["waic", "elpd_waic", "p_waic", "se", "waic_i"]
+        )
+        return WaicResult(
+            waic=waic, elpd_waic=elpd_waic, p_waic=p_waic, se=se, waic_i=waic_i
+        )
+
+    def loo(self):
         """Compute LOO-CV via Pareto-Smoothed Importance Sampling.
 
         Returns
         -------
-        az.ELPDData
-            LOO result object.
+        object
+            LOO result object (``ELPDData`` from ``arviz.loo``).
 
         Raises
         ------
@@ -1334,7 +1488,7 @@ class AdditiveTimeSeries(CombinedTimeSeries):
     >>> # Create an additive model with trend + seasonality
     >>> model = LinearTrend() + FourierSeasonality(period=365.25, series_order=10)
     >>> print(model)
-    LT(n=25,r=0.8,tm=None) + FS(p=365.25,n=10,tm=None)
+    LinearTrend(n_changepoints=25, changepoint_range=0.8, pool=complete, tune=None) + FourierSeasonality(period=365.25, series_order=10, pool=complete, tune=None)
     """
 
     def definition(self, *args, **kwargs):
@@ -1386,7 +1540,7 @@ class MultiplicativeTimeSeries(CombinedTimeSeries):
     >>> # Create a model with multiplicative seasonality
     >>> model = LinearTrend() ** FourierSeasonality(period=365.25, series_order=10)
     >>> print(model)
-    LT(n=25,r=0.8,tm=None) * (1 + FS(p=365.25,n=10,tm=None))
+    LinearTrend(n_changepoints=25, changepoint_range=0.8, pool=complete, tune=None) * (1 + FourierSeasonality(period=365.25, series_order=10, pool=complete, tune=None))
 
     Notes
     -----
@@ -1447,7 +1601,7 @@ class SimpleMultiplicativeTimeSeries(CombinedTimeSeries):
     >>> # Create a model with a scaling factor
     >>> model = LinearTrend() * UniformConstant(lower=0.8, upper=1.2)
     >>> print(model)
-    LT(n=25,r=0.8,tm=None) * UC(l=0.8,u=1.2,tm=None)
+    LinearTrend(n_changepoints=25, changepoint_range=0.8, pool=complete, tune=None) * UniformConstant(lower=0.8, upper=1.2, pool=complete, tune=None)
     """
 
     def definition(self, *args, **kwargs):

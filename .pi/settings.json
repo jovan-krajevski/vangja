@@ -1,0 +1,15 @@
+{
+  "$schema": "https://pi.dev/schemas/settings.schema.json",
+  "defaultProvider": "opencode-go",
+  "defaultModel": "deepseek-v4.1-flash",
+  "defaultThinkingLevel": "max",
+  "enabledModels": ["opencode-go/deepseek-v4.1-flash"],
+  "modelThinkingLevels": {
+    "opencode-go/deepseek-v4.1-flash": "max"
+  },
+  "defaultTools": ["+codemode"],
+  "compaction": {
+    "reserveTokens": 32768,
+    "keepRecentTokens": 120000
+  }
+}

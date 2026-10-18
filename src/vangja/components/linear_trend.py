@@ -84,8 +84,11 @@ class LinearTrend(TimeSeriesModel):
         Controls hierarchical shrinkage. Higher values pull individual
         series parameters more strongly toward the shared mean.
     loss_factor_for_tune : float, default=0
-        Regularization factor for transfer learning. Adds a penalty to
-        keep transferred parameters close to original values.
+        Regularization factor for transfer learning. Adds a negative
+        quadratic potential ``-loss_factor * (slope - slope_transferred)^2``
+        (summed over groups in the multi-series pooling modes) that pulls
+        the slope toward the transferred end-of-history slope from the
+        source model. ``0`` disables regularization.
 
     Attributes
     ----------
@@ -166,6 +169,16 @@ class LinearTrend(TimeSeriesModel):
         See the class docstring for full parameter descriptions.
         """
         self.n_changepoints = n_changepoints
+        # ``n_changepoints`` is a count (shape/``np.linspace`` argument):
+        # coerce integral floats, reject genuinely fractional values.
+        if (
+            isinstance(n_changepoints, (float, np.floating))
+            and not float(n_changepoints).is_integer()
+        ):
+            raise ValueError(
+                f"n_changepoints must be an integer, got {n_changepoints!r}"
+            )
+        self.n_changepoints = int(n_changepoints)
         self.changepoint_range = changepoint_range
         self.slope_mean = slope_mean
         self.slope_sd = slope_sd
@@ -191,6 +204,18 @@ class LinearTrend(TimeSeriesModel):
         Calculate the mean and the standard deviation of the Normal prior for the slope
         parameter from a provided posterior sample.
 
+        The transferred slope quantity is the **end-of-history slope** of the
+        source model — the slope of the trend at the end of the source's
+        training range, which is the value that extrapolation continues from.
+        With ``delta_side="right"`` (``A = (t <= s)``) the ``slope`` parameter
+        already equals the end-of-history slope, so the raw posterior is used.
+        With ``delta_side="left"`` (``A = (t > s)``) every changepoint precedes
+        the end of history, so the end-of-history slope is ``slope + sum(delta)``
+        and the cumulative changepoint deltas are added to the posterior before
+        computing the prior parameters.  This assumes the source and target
+        models share the same ``delta_side`` convention, as they do throughout
+        the transfer-learning workflow.
+
         Parameters
         ----------
         idata: az.InferenceData
@@ -198,15 +223,23 @@ class LinearTrend(TimeSeriesModel):
         """
         slope_key = f"lt_{self.model_idx} - slope"
 
+        slope_samples = idata["posterior"][slope_key].to_numpy()
+
+        if self.n_changepoints > 0 and self.delta_side == "left":
+            delta_key = f"lt_{self.model_idx} - delta"
+            if delta_key in idata["posterior"]:
+                delta = idata["posterior"][delta_key].to_numpy()
+                slope_samples = slope_samples + delta.sum(axis=-1)
+
         if self.override_slope_mean_for_tune is not None:
             slope_mean = self.override_slope_mean_for_tune
         else:
-            slope_mean = (idata["posterior"][slope_key].to_numpy()).mean()
+            slope_mean = slope_samples.mean()
 
         if self.override_slope_sd_for_tune is not None:
             slope_sd = self.override_slope_sd_for_tune
         else:
-            slope_sd = (idata["posterior"][slope_key].to_numpy()).std()
+            slope_sd = slope_samples.std()
 
         return slope_mean, slope_sd
 
@@ -320,7 +353,9 @@ class LinearTrend(TimeSeriesModel):
                     delta = pm.Laplace(
                         delta_key, delta_loc, delta_scale, shape=self.n_changepoints
                     )
-                elif priors is not None and self.tune_method == "prior_from_idata":
+                elif (
+                    priors is not None and self.delta_tune_method == "prior_from_idata"
+                ):
                     delta_loc, delta_scale = self._get_delta_params_from_idata(idata)
                     delta = pm.Deterministic(delta_key, priors[f"prior_{delta_key}"])
                 else:
@@ -355,9 +390,11 @@ class LinearTrend(TimeSeriesModel):
                 trend = slope * t + intercept
 
             if idata is not None and self.tune_method is not None:
+                # Negative quadratic regularization toward the transferred slope
+                # (manuscript: -phi * (w - w_MAP)^2).
                 pm.Potential(
                     f"{slope_key} - loss",
-                    self.loss_factor_for_tune * pm.math.abs(slope - slope_mean),
+                    -self.loss_factor_for_tune * pm.math.sqr(slope - slope_mean),
                 )
 
             return trend
@@ -613,9 +650,11 @@ class LinearTrend(TimeSeriesModel):
             )
 
             if idata is not None and self.tune_method is not None:
+                # Negative quadratic regularization toward the transferred slope
+                # (manuscript: -phi * (w - w_MAP)^2).
                 pm.Potential(
                     f"{slope_key} - loss",
-                    self.loss_factor_for_tune
+                    -self.loss_factor_for_tune
                     * pm.math.sum(pm.math.sqr(slope - slope_mu)),
                 )
 
@@ -629,7 +668,9 @@ class LinearTrend(TimeSeriesModel):
                         delta_scale,
                         shape=(self.n_groups, self.n_changepoints),
                     )
-                elif priors is not None and self.tune_method == "prior_from_idata":
+                elif (
+                    priors is not None and self.delta_tune_method == "prior_from_idata"
+                ):
                     delta_loc, delta_scale = self._get_delta_params_from_idata(idata)
                     delta = pm.Laplace(
                         delta_key,
@@ -711,7 +752,9 @@ class LinearTrend(TimeSeriesModel):
         if self.tune_method != "prior_from_idata":
             return []
         names = [f"lt_{self.model_idx} - slope"]
-        if self.n_changepoints > 0:
+        # Changepoint deltas are transferred only when delta_tune_method
+        # requests it, independently of the slope's tune_method.
+        if self.n_changepoints > 0 and self.delta_tune_method == "prior_from_idata":
             names.append(f"lt_{self.model_idx} - delta")
         return names
 
@@ -737,13 +780,17 @@ class LinearTrend(TimeSeriesModel):
 
         # Only set initvals for free RVs (skip Deterministic from prior_from_idata)
         if slope_var in model.free_RVs:
-            if self.pool_type == "complete" or self.n_groups == 1:
+            # Complete pooling creates a scalar variable; individual (and
+            # partial-free) pooling creates a shape-(n_groups,) variable, so
+            # the initval must be an array even when n_groups == 1 (a scalar
+            # initval for a vector variable breaks ADVI's start handling).
+            if self.pool_type == "complete":
                 result[slope_var] = slopes[0]
             else:
                 result[slope_var] = np.array(slopes)
 
         if intercept_var in model.free_RVs:
-            if self.pool_type == "complete" or self.n_groups == 1:
+            if self.pool_type == "complete":
                 result[intercept_var] = intercepts[0]
             else:
                 result[intercept_var] = np.array(intercepts)
@@ -770,13 +817,10 @@ class LinearTrend(TimeSeriesModel):
                 else:
                     delta = map_approx[f"prior_{delta_key}"]
 
-                if (
-                    self.pool_type == "individual"
-                    or (
-                        self.pool_type == "partial"
-                        and self.delta_pool_type in ["partial", "individual"]
-                    )
-                ) and self.n_groups > 1:
+                if self.pool_type == "individual" or (
+                    self.pool_type == "partial"
+                    and self.delta_pool_type in ["partial", "individual"]
+                ):
                     delta = delta[group_code]
 
                 slope_correction = new_A @ delta
@@ -792,7 +836,7 @@ class LinearTrend(TimeSeriesModel):
             else:
                 intercept = map_approx[f"prior_{intercept_key}"]
 
-            if self.pool_type != "complete" and self.n_groups > 1:
+            if self.pool_type != "complete":
                 slope = slope[group_code]
                 intercept = intercept[group_code]
 
@@ -832,7 +876,7 @@ class LinearTrend(TimeSeriesModel):
                 )
 
             # Handle per-group parameters
-            if self.pool_type != "complete" and self.n_groups > 1:
+            if self.pool_type != "complete":
                 slope = slope[group_code] if slope.ndim > 0 else slope
                 intercept = intercept[group_code] if intercept.ndim > 0 else intercept
 
@@ -851,13 +895,10 @@ class LinearTrend(TimeSeriesModel):
                 delta = trace["posterior"][delta_key].to_numpy().mean(axis=(0, 1))
 
                 # Handle per-group delta parameters
-                if (
-                    self.pool_type == "individual"
-                    or (
-                        self.pool_type == "partial"
-                        and self.delta_pool_type in ["partial", "individual"]
-                    )
-                ) and self.n_groups > 1:
+                if self.pool_type == "individual" or (
+                    self.pool_type == "partial"
+                    and self.delta_pool_type in ["partial", "individual"]
+                ):
                     delta = delta[group_code]
 
                 slope_correction = new_A @ delta
@@ -898,4 +939,8 @@ class LinearTrend(TimeSeriesModel):
         return self.pool_type == "individual"
 
     def __str__(self):
-        return f"LT(n={self.n_changepoints},r={self.changepoint_range},pt={self.pool_type},tm={self.tune_method})"
+        return (
+            f"LinearTrend(n_changepoints={self.n_changepoints}, "
+            f"changepoint_range={self.changepoint_range}, "
+            f"pool={self.pool_type}, tune={self.tune_method})"
+        )

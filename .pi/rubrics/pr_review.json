@@ -1,0 +1,200 @@
+{
+  "schema": "vangja-rubric/1",
+  "id": "pr_review",
+  "title": "PR review rubric",
+  "kind": "rubric",
+  "scale": [
+    "0",
+    "0.5",
+    "1"
+  ],
+  "branches": [
+    {
+      "id": "code_quality",
+      "title": "Code quality",
+      "weight": 0.12,
+      "children": [
+        {
+          "id": "cq_correctness",
+          "text": "Public behaviour is correct and typed",
+          "criterion": "1 only when the diff's public API is typed and the claimed behaviour is exercised by a test.",
+          "type": "binary",
+          "weight": 0.5
+        },
+        {
+          "id": "cq_style",
+          "text": "Formatting, lint, and structure are clean",
+          "criterion": "1 only when black/ruff (or the repo equivalent) pass on the changed files.",
+          "type": "binary",
+          "weight": 0.5
+        }
+      ]
+    },
+    {
+      "id": "tests",
+      "title": "Tests",
+      "weight": 0.15,
+      "children": [
+        {
+          "id": "tests_added",
+          "text": "Every code change adds or updates a test",
+          "criterion": "1 only when a failing-before/passing-after test covers the change; no test weakened.",
+          "type": "binary",
+          "weight": 0.5
+        },
+        {
+          "id": "tests_pass",
+          "text": "The suite passes at the head SHA",
+          "criterion": "Autofilled from the pre-merge tests gate; 1 only when the suite is green or a recorded waiver exists.",
+          "type": "auto",
+          "weight": 0.5,
+          "auto": "tests_pass"
+        }
+      ]
+    },
+    {
+      "id": "evidence",
+      "title": "Evidence",
+      "weight": 0.15,
+      "children": [
+        {
+          "id": "evidence_commands",
+          "text": "Acceptance commands were run and their output recorded",
+          "criterion": "1 only when the PR body carries the exact command and observed output the reviewer can re-run.",
+          "type": "binary",
+          "weight": 0.5
+        },
+        {
+          "id": "evidence_artifacts",
+          "text": "Reported numbers name an artifact and its manifest SHA",
+          "criterion": "1 only when every number in the PR cites an artifact path plus manifest SHA.",
+          "type": "binary",
+          "weight": 0.5
+        }
+      ]
+    },
+    {
+      "id": "protocol_compliance",
+      "title": "Protocol compliance",
+      "weight": 0.15,
+      "children": [
+        {
+          "id": "protocol_no_frozen_edit",
+          "text": "Frozen protocol/config files are untouched or amended",
+          "criterion": "1 only when the diff touches no frozen file, or a supervisor amendment names the change.",
+          "type": "binary",
+          "weight": 0.3
+        },
+        {
+          "id": "protocol_no_test_selection",
+          "text": "No selection on the test horizon",
+          "criterion": "Autofilled from the no-test-selection gate.",
+          "type": "auto",
+          "auto": "no_test_selection",
+          "weight": 0.25
+        },
+        {
+          "id": "test_diff_clean",
+          "text": "Tests were only strengthened across the cycle",
+          "criterion": "Autofilled from the test-diff gate.",
+          "type": "auto",
+          "auto": "test_diff_clean",
+          "weight": 0.25
+        },
+        {
+          "id": "protocol_amendments",
+          "text": "Any protocol change has an amendment record",
+          "criterion": "1 only when a protocol-affecting change is accompanied by an amendment record with justification.",
+          "type": "binary",
+          "weight": 0.2
+        }
+      ]
+    },
+    {
+      "id": "provenance",
+      "title": "Provenance",
+      "weight": 0.13,
+      "children": [
+        {
+          "id": "provenance_manifest",
+          "text": "New artifacts carry a manifest with SHA, seeds, and data hashes",
+          "criterion": "1 only when every new artifact has a manifest recording commit SHA, seeds, versions, and data hashes.",
+          "type": "binary",
+          "weight": 0.5
+        },
+        {
+          "id": "hash_ok",
+          "text": "Artifact hashes match their manifests",
+          "criterion": "Autofilled from the artifacts-complete gate; 1 only when every declared file hash matches.",
+          "type": "auto",
+          "weight": 0.5,
+          "auto": "hash_ok"
+        }
+      ]
+    },
+    {
+      "id": "claims",
+      "title": "Claims",
+      "weight": 0.1,
+      "children": [
+        {
+          "id": "claims_registered",
+          "text": "Every new number has a CLAIMS.json entry",
+          "criterion": "1 only when each new number in prose/paper maps to a claims entry and an artifact.",
+          "type": "binary",
+          "weight": 0.5
+        },
+        {
+          "id": "traceability_ok",
+          "text": "The claims registry is traceable to the audited tag",
+          "criterion": "Autofilled from the traceability gate.",
+          "type": "auto",
+          "weight": 0.5,
+          "auto": "traceability_ok"
+        }
+      ]
+    },
+    {
+      "id": "scope_discipline",
+      "title": "Scope discipline",
+      "weight": 0.1,
+      "children": [
+        {
+          "id": "scope_paths",
+          "text": "Only paths in the task brief's scope changed",
+          "criterion": "1 only when no protected path or out-of-scope file is modified.",
+          "type": "binary",
+          "weight": 0.5
+        },
+        {
+          "id": "scope_size",
+          "text": "The change is one reviewable unit",
+          "criterion": "1 only when the diff is a single coherent change with no drive-by edits.",
+          "type": "binary",
+          "weight": 0.5
+        }
+      ]
+    },
+    {
+      "id": "risk",
+      "title": "Risk",
+      "weight": 0.1,
+      "children": [
+        {
+          "id": "risk_disclosed",
+          "text": "Residual risk and uncertainty are stated",
+          "criterion": "1 only when the PR names the residual risk and what was not verified.",
+          "type": "binary",
+          "weight": 0.5
+        },
+        {
+          "id": "risk_no_untested_path",
+          "text": "No untested code path is claimed as working",
+          "criterion": "1 only when every claimed behaviour has an exercised path or an explicit untested caveat.",
+          "type": "binary",
+          "weight": 0.5
+        }
+      ]
+    }
+  ]
+}

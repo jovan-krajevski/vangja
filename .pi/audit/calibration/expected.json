@@ -1,0 +1,107 @@
+{
+  "schema": "vangja-calibration/1",
+  "snapshot": "8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+  "threshold": 0.6,
+  "workstreams": [
+    "S",
+    "M",
+    "R"
+  ],
+  "cases": [
+    {
+      "id": "WS-S-001",
+      "workstream": "S",
+      "severity": "S1",
+      "title": "\"Parametric\" transfer uses the posterior mean, not the MAP the paper argues for",
+      "location": "linear_trend\\.py|fourier_seasonality\\.py|flat_trend\\.py",
+      "claim": "posterior (mean|MEAN)|\\bmean\\(\\)|\\.mean\\(|mean, not (the )?map|not the mode",
+      "also": "\\bmap\\b|\\bmode\\b",
+      "historical_file": "src/vangja/components/linear_trend.py:204"
+    },
+    {
+      "id": "WS-S-002",
+      "workstream": "S",
+      "severity": "S1",
+      "title": "LinearTrend transfer potential has the wrong sign/form in 2 of 3 pooling modes",
+      "location": "linear_trend\\.py",
+      "claim": "sign|anti-?regulari[sz]|rewards? deviation|\\+\\s*abs|\\+\\s*sqr|wrong (sign|form)",
+      "historical_file": "src/vangja/components/linear_trend.py complete/individual definition"
+    },
+    {
+      "id": "WS-S-003",
+      "workstream": "S",
+      "severity": "S1",
+      "title": "FourierSeasonality regularization scale lam is inconsistent across pooling modes",
+      "location": "fourier_seasonality\\.py",
+      "claim": "\\blam\\b|\\blambda\\b|regularization (scale|strength)|22\\s*[×x]|inconsistent|instead of the documented",
+      "historical_file": "src/vangja/components/fourier_seasonality.py:261-263 vs :356-363"
+    },
+    {
+      "id": "WS-M-001",
+      "workstream": "M",
+      "severity": "S1",
+      "title": "Test-set configuration selection with no validation split",
+      "location": "run_vangja\\.py|metrics\\.csv|case_studies|generate_tables\\.py",
+      "claim": "test[- ]set|test horizon|selection|selected|grid|lowest mape",
+      "historical_file": "my_paper.tex:659; metrics.csv 2,592 vs 2 configs"
+    },
+    {
+      "id": "WS-M-002",
+      "workstream": "M",
+      "severity": "S1",
+      "title": "The \"Prophet\"/\"TimeSeers\" baselines are Vangja components, not the packages",
+      "location": "case_studies|baselines|pyproject\\.toml|runner",
+      "claim": "not prophet|is vangja|vangja (component|ablation)|never imports? prophet|no prophet (import|dependency)|mislabell?ed|baselines? (are )?absent|no (runner )?imports? (either|prophet|timeseers)|(prophet|timeseers).{0,40}(absent|not imported)",
+      "historical_file": "case_studies baseline runners; pyproject.toml has no prophet dependency"
+    },
+    {
+      "id": "WS-R-001",
+      "workstream": "R",
+      "severity": "S1",
+      "title": "PyMC is not a declared dependency; the sampler stack floats",
+      "location": "pyproject\\.toml|requirements|environment|uv\\.lock",
+      "claim": "pymc.*(not|missing|unpinned|undeclared|transitive)|declared dependency|floats",
+      "historical_file": "pyproject.toml"
+    },
+    {
+      "id": "WS-R-004",
+      "workstream": "R",
+      "severity": "S1",
+      "title": "No random seed anywhere in fit(), runners, SLURM, or the container",
+      "location": "src|case_studies|pyproject\\.toml|slurm|singularity",
+      "claim": "seed|random_seed|unseeded|reproducib",
+      "historical_file": "git grep seed -> only synthetic generators; pm.sample has no random_seed"
+    }
+  ],
+  "rejected_leads": [
+    {
+      "id": "F-012",
+      "workstream": "I",
+      "title": "mapx vs map/nuts naming inconsistency",
+      "claim": "mapx.*(inconsisten|mismatch|wrong|does not exist|not a real|typo)|(inconsisten|mismatch).*mapx",
+      "historical_note": "Refuted on main: mapx is a real dispatched method and the README uses it consistently."
+    },
+    {
+      "id": "F-014",
+      "workstream": "D",
+      "title": "Temperature context: paper says Boston, code says NYC",
+      "claim": "boston.{0,120}nyc|nyc.{0,120}boston|(paper|manuscript).{0,120}(boston|nyc).{0,120}(code|runner|loader|data).{0,120}(nyc|boston)|(temperature|context).{0,80}(paper|code).{0,80}(mismatch|disagree|discrepan|instead of)",
+      "historical_note": "Refuted: paper and code agree on Boston/Kaggle."
+    },
+    {
+      "id": "F-015",
+      "workstream": "M",
+      "title": "Prophet baseline default vs Vangja heavily tuned (fairness framing)",
+      "claim": "(prophet.*(under-?tuned|default|untuned).*(vangja|tuned))|(unfair.*(tuned|baseline))|(heavily tuned.*prophet)|(prophet baseline.*tuned)",
+      "unless": "not prophet|is vangja|vangja (component|ablation)|never imports? prophet|no prophet (import|dependency)",
+      "historical_note": "Superseded by WS-M-002: the baseline is not Prophet at all; the fairness framing is the wrong claim."
+    },
+    {
+      "id": "F-016",
+      "workstream": "M",
+      "title": "TimeSeers baseline on unmaintained PyMC3",
+      "claim": "timeseers.*pymc3|pymc3.*timeseers|timeseers.*(unmaintained|outdated)",
+      "historical_note": "Moot: TimeSeers is never imported or run; the TimeSeers baseline is a Vangja ablation."
+    }
+  ]
+}

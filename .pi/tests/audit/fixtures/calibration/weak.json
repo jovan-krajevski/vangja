@@ -1,0 +1,47 @@
+{
+  "schema": "vangja-findings/1",
+  "findings": [
+    {
+      "id": "S-001",
+      "title": "Parametric transfer uses the posterior mean, not the MAP mode argued for in the paper",
+      "location": "src/vangja/components/linear_trend.py:204",
+      "snapshot": "8028c51@calibration",
+      "command": "grep -n \"Parametric\" src/vangja/components/linear_trend.py",
+      "expected": "the claim in the paper holds",
+      "observed": "line 204 calls .mean() on the posterior; the paper argues for the MAP mode",
+      "consequence": "a claim is unsupported",
+      "severity": "S1",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes — static read of the cited lines",
+      "evidence": [
+        "src/vangja/components/linear_trend.py:204"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 0,
+      "phase": "finder"
+    },
+    {
+      "id": "M-001",
+      "title": "Test-set configuration selection with no validation split",
+      "location": "case_studies/smart_home/run_vangja.py:226",
+      "snapshot": "8028c51@calibration",
+      "command": "grep -n \"Test-set\" case_studies/smart_home/run_vangja.py",
+      "expected": "the claim in the paper holds",
+      "observed": "the lowest MAPE on the test horizon is selected over a 2592-config grid; no validation split exists",
+      "consequence": "a claim is unsupported",
+      "severity": "S1",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes — static read of the cited lines",
+      "evidence": [
+        "case_studies/smart_home/run_vangja.py:226"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 0,
+      "phase": "finder"
+    }
+  ]
+}

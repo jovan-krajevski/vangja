@@ -1,0 +1,152 @@
+{
+  "schema": "vangja-findings/1",
+  "findings": [
+    {
+      "id": "S-001",
+      "title": "Parametric transfer uses the posterior mean, not the MAP mode argued for in the paper",
+      "location": "src/vangja/components/linear_trend.py:204",
+      "snapshot": "8028c51@calibration",
+      "command": "grep -n \"Parametric\" src/vangja/components/linear_trend.py",
+      "expected": "the claim in the paper holds",
+      "observed": "line 204 calls .mean() on the posterior; the paper argues for the MAP mode",
+      "consequence": "a claim is unsupported",
+      "severity": "S1",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes — static read of the cited lines",
+      "evidence": [
+        "src/vangja/components/linear_trend.py:204"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 0,
+      "phase": "finder"
+    },
+    {
+      "id": "S-002",
+      "title": "Transfer potential has the wrong sign in complete and individual pooling (anti-regularizer)",
+      "location": "src/vangja/components/linear_trend.py:410",
+      "snapshot": "8028c51@calibration",
+      "command": "grep -n \"Transfer\" src/vangja/components/linear_trend.py",
+      "expected": "the claim in the paper holds",
+      "observed": "the complete branch adds +abs(slope - transferred); a regularizer needs the negative sign",
+      "consequence": "a claim is unsupported",
+      "severity": "S1",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes — static read of the cited lines",
+      "evidence": [
+        "src/vangja/components/linear_trend.py:410"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 0,
+      "phase": "finder"
+    },
+    {
+      "id": "S-003",
+      "title": "FourierSeasonality regularization scale lam is inconsistent across pooling modes (~22x)",
+      "location": "src/vangja/components/fourier_seasonality.py:261",
+      "snapshot": "8028c51@calibration",
+      "command": "grep -n \"FourierSeasonality\" src/vangja/components/fourier_seasonality.py",
+      "expected": "the claim in the paper holds",
+      "observed": "complete uses lam=2*period/n while partial uses lam=2*n_group, a 22x ratio, and the paper documents no lam",
+      "consequence": "a claim is unsupported",
+      "severity": "S1",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes — static read of the cited lines",
+      "evidence": [
+        "src/vangja/components/fourier_seasonality.py:261"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 0,
+      "phase": "finder"
+    },
+    {
+      "id": "M-001",
+      "title": "Test-set configuration selection with no validation split",
+      "location": "case_studies/smart_home/run_vangja.py:226",
+      "snapshot": "8028c51@calibration",
+      "command": "grep -n \"Test-set\" case_studies/smart_home/run_vangja.py",
+      "expected": "the claim in the paper holds",
+      "observed": "the lowest MAPE on the test horizon is selected over a 2592-config grid; no validation split exists",
+      "consequence": "a claim is unsupported",
+      "severity": "S1",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes — static read of the cited lines",
+      "evidence": [
+        "case_studies/smart_home/run_vangja.py:226"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 0,
+      "phase": "finder"
+    },
+    {
+      "id": "M-002",
+      "title": "The Prophet baseline is a Vangja ablation: no prophet import anywhere in the runners",
+      "location": "case_studies/smart_home/run_baselines.py:10",
+      "snapshot": "8028c51@calibration",
+      "command": "grep -n \"The\" case_studies/smart_home/run_baselines.py",
+      "expected": "the claim in the paper holds",
+      "observed": "the baseline is labelled Prophet but imports only vangja; pyproject.toml has no prophet dependency",
+      "consequence": "a claim is unsupported",
+      "severity": "S1",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes — static read of the cited lines",
+      "evidence": [
+        "case_studies/smart_home/run_baselines.py:10"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 0,
+      "phase": "finder"
+    },
+    {
+      "id": "R-001",
+      "title": "PyMC is not a declared dependency; the sampler stack floats on every install",
+      "location": "pyproject.toml:24",
+      "snapshot": "8028c51@calibration",
+      "command": "grep -n \"PyMC\" pyproject.toml",
+      "expected": "the claim in the paper holds",
+      "observed": "pyproject dependencies omit pymc; it enters transitively unpinned",
+      "consequence": "a claim is unsupported",
+      "severity": "S1",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes — static read of the cited lines",
+      "evidence": [
+        "pyproject.toml:24"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 0,
+      "phase": "finder"
+    },
+    {
+      "id": "R-004",
+      "title": "No random seed anywhere in fit(), the runners, SLURM, or the container",
+      "location": "src/vangja/time_series.py:441",
+      "snapshot": "8028c51@calibration",
+      "command": "grep -n \"No\" src/vangja/time_series.py",
+      "expected": "the claim in the paper holds",
+      "observed": "pm.sample has no random_seed argument and no runner records a seed",
+      "consequence": "a claim is unsupported",
+      "severity": "S1",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes — static read of the cited lines",
+      "evidence": [
+        "src/vangja/time_series.py:441"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 0,
+      "phase": "finder"
+    }
+  ]
+}

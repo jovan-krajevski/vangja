@@ -1,0 +1,13 @@
+{
+  "schema": "pi-project/1",
+  "repoRoot": ".",
+  "baseBranch": "update_pymc",
+  "venue": "Journal of Forecasting",
+  "requireHumanMerge": true,
+  "dryRun": false,
+  "sandboxPath": ".pi/state/sandbox",
+  "sessionDir": ".pi/state/sessions",
+  "artifactDir": ".pi/artifacts",
+  "stateDir": ".pi/state",
+  "worktreeDir": ".pi/state/worktrees"
+}

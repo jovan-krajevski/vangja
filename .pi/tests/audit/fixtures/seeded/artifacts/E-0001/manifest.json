@@ -1,0 +1,22 @@
+{
+  "schema": "vangja-artifact/1",
+  "experiment_id": "E-0001",
+  "commit_sha": "fixture",
+  "repro_command": "cat $PI_ARTIFACT_DIR/numbers.json",
+  "numbers": {
+    "rel_mae": 0.0607
+  },
+  "tolerance": 1e-9,
+  "files": [
+    {
+      "path": "numbers.json",
+      "sha256": "5f69c4c7ea8824d19c9eb6dac6bc9431c9629edd6ec1952c135b94760e81aeba"
+    },
+    {
+      "path": "metrics.csv",
+      "sha256": "65c2fece65c7b960434a68e5d869592759bb6d12f8019d27d2eda3e6d5d2215c"
+    }
+  ],
+  "missing": [],
+  "manifest_sha256": "9d3f8a6b025996f54a69627f23b08d48eea2d660c51537e2f1872d1300f19508"
+}

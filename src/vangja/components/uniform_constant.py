@@ -114,7 +114,7 @@ class UniformConstant(TimeSeriesModel):
         tuple[float, float]
             The mean and standard deviation derived from the posterior.
         """
-        c_key = f"uc_{self.model_idx} - c(l={self.lower},u={self.upper})"
+        c_key = f"uc_{self.model_idx} - c"
 
         mu = float(idata["posterior"][c_key].to_numpy().mean())
         sd = float(idata["posterior"][c_key].to_numpy().std())
@@ -149,7 +149,7 @@ class UniformConstant(TimeSeriesModel):
             The constant term to add to the model.
         """
         with model:
-            c_key = f"uc_{self.model_idx} - c(l={self.lower},u={self.upper})"
+            c_key = f"uc_{self.model_idx} - c"
 
             if idata is not None and self.tune_method == "parametric":
                 mu, sd = self._get_params_from_idata(idata)
@@ -192,7 +192,7 @@ class UniformConstant(TimeSeriesModel):
             The constant terms indexed by group.
         """
         with model:
-            c_key = f"uc_{self.model_idx} - c(l={self.lower},u={self.upper})"
+            c_key = f"uc_{self.model_idx} - c"
 
             if idata is not None and self.tune_method == "parametric":
                 mu, sd = self._get_params_from_idata(idata)
@@ -263,7 +263,7 @@ class UniformConstant(TimeSeriesModel):
             The constant terms indexed by group.
         """
         with model:
-            c_key = f"uc_{self.model_idx} - c(l={self.lower},u={self.upper})"
+            c_key = f"uc_{self.model_idx} - c"
 
             if idata is not None and self.tune_method == "parametric":
                 mu, sd = self._get_params_from_idata(idata)
@@ -379,7 +379,7 @@ class UniformConstant(TimeSeriesModel):
         """
         forecasts = []
         self._predict_columns = {}
-        c_key = f"uc_{self.model_idx} - c(l={self.lower},u={self.upper})"
+        c_key = f"uc_{self.model_idx} - c"
 
         for group_code in self.groups_.keys():
             c_value = map_approx[c_key]
@@ -412,7 +412,7 @@ class UniformConstant(TimeSeriesModel):
         """
         forecasts = []
         self._predict_columns = {}
-        c_key = f"uc_{self.model_idx} - c(l={self.lower},u={self.upper})"
+        c_key = f"uc_{self.model_idx} - c"
 
         for group_code in self.groups_.keys():
             c_samples = trace["posterior"][c_key].to_numpy()
@@ -484,7 +484,7 @@ class UniformConstant(TimeSeriesModel):
     def _get_prior_var_names(self) -> list[str]:
         if self.tune_method != "prior_from_idata":
             return []
-        return [f"uc_{self.model_idx} - c(l={self.lower},u={self.upper})"]
+        return [f"uc_{self.model_idx} - c"]
 
     def needs_priors(self, *args, **kwargs) -> bool:
         """Check if this component needs priors from idata.
@@ -504,4 +504,7 @@ class UniformConstant(TimeSeriesModel):
         str
             String representation.
         """
-        return f"UC(l={self.lower},u={self.upper},pt={self.pool_type},tm={self.tune_method})"
+        return (
+            f"UniformConstant(lower={self.lower}, upper={self.upper}, "
+            f"pool={self.pool_type}, tune={self.tune_method})"
+        )

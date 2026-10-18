@@ -32,8 +32,16 @@ from vangja.utils import (
 # ---------------------------------------------------------------------------
 
 
-def _make_predictive_idata(n_obs: int = 50, n_chains: int = 1, n_draws: int = 100, group: str = "prior_predictive"):
-    """Create a mock InferenceData with prior or posterior predictive samples."""
+def _make_predictive_idata(
+    n_obs: int = 50,
+    n_chains: int = 1,
+    n_draws: int = 100,
+    group: str = "prior_predictive",
+):
+    """Create a mock InferenceData with prior or posterior predictive samples.
+
+    Uses the DataTree-based constructor required by arviz >= 1.x.
+    """
     obs = np.random.randn(n_chains, n_draws, n_obs)
     dataset = xr.Dataset(
         {"obs": (["chain", "draw", "obs_dim_0"], obs)},
@@ -43,11 +51,14 @@ def _make_predictive_idata(n_obs: int = 50, n_chains: int = 1, n_draws: int = 10
             "obs_dim_0": np.arange(n_obs),
         },
     )
-    return az.InferenceData(**{group: dataset})
+    return az.InferenceData(xr.Dataset(), children={group: xr.DataTree(dataset)})
 
 
 def _make_trace_idata(var_dict: dict | None = None):
-    """Create a mock InferenceData with posterior samples."""
+    """Create a mock InferenceData with posterior samples.
+
+    Uses the DataTree-based constructor required by arviz >= 1.x.
+    """
     if var_dict is None:
         var_dict = {"slope": np.random.randn(1, 500)}
 
@@ -63,7 +74,33 @@ def _make_trace_idata(var_dict: dict | None = None):
             "draw": np.arange(n_draws),
         },
     )
-    return az.InferenceData(posterior=posterior)
+    return az.InferenceData(
+        xr.Dataset(), children={"posterior": xr.DataTree(posterior)}
+    )
+
+
+def _make_idata_with_log_likelihood():
+    """Create a mock InferenceData with posterior and log_likelihood groups."""
+    ll = np.random.randn(1, 100, 50)
+    log_lik = xr.Dataset(
+        {"obs": (["chain", "draw", "obs_dim_0"], ll)},
+        coords={
+            "chain": [0],
+            "draw": np.arange(100),
+            "obs_dim_0": np.arange(50),
+        },
+    )
+    posterior = xr.Dataset(
+        {"mu": (["chain", "draw"], np.random.randn(1, 100))},
+        coords={"chain": [0], "draw": np.arange(100)},
+    )
+    return az.InferenceData(
+        xr.Dataset(),
+        children={
+            "posterior": xr.DataTree(posterior),
+            "log_likelihood": xr.DataTree(log_lik),
+        },
+    )
 
 
 @pytest.fixture
@@ -79,7 +116,10 @@ def posterior_idata():
 @pytest.fixture
 def sample_data_50():
     return pd.DataFrame(
-        {"ds": pd.date_range("2020-01-01", periods=50), "y": np.random.randn(50) * 10 + 50}
+        {
+            "ds": pd.date_range("2020-01-01", periods=50),
+            "y": np.random.randn(50) * 10 + 50,
+        }
     )
 
 
@@ -136,7 +176,9 @@ class TestPlotPriorPredictive:
         ax = plot_prior_predictive(prior_idata, show_hdi=True, hdi_prob=0.9)
         # fill_between creates a PolyCollection
         poly_collections = [
-            c for c in ax.collections if isinstance(c, matplotlib.collections.PolyCollection)
+            c
+            for c in ax.collections
+            if isinstance(c, matplotlib.collections.PolyCollection)
         ]
         assert len(poly_collections) >= 1
         plt.close("all")
@@ -146,7 +188,8 @@ class TestPlotPriorPredictive:
         ax = plot_prior_predictive(prior_idata, show_ref_lines=True, ref_values=(-1, 1))
         # axhline adds Line2D objects; look for dashed red lines
         ref_lines = [
-            line for line in ax.get_lines()
+            line
+            for line in ax.get_lines()
             if line.get_linestyle() == "--" and line.get_color() == "red"
         ]
         assert len(ref_lines) == 2
@@ -186,7 +229,8 @@ class TestPlotPriorPredictive:
             prior_idata, show_ref_lines=True, ref_values=(-3.0, 3.0)
         )
         ref_lines = [
-            line for line in ax.get_lines()
+            line
+            for line in ax.get_lines()
             if line.get_linestyle() == "--" and line.get_color() == "red"
         ]
         assert len(ref_lines) == 2
@@ -229,7 +273,9 @@ class TestPlotPosteriorPredictive:
     def test_show_hdi(self, posterior_idata):
         ax = plot_posterior_predictive(posterior_idata, show_hdi=True)
         poly_collections = [
-            c for c in ax.collections if isinstance(c, matplotlib.collections.PolyCollection)
+            c
+            for c in ax.collections
+            if isinstance(c, matplotlib.collections.PolyCollection)
         ]
         assert len(poly_collections) >= 1
         plt.close("all")
@@ -237,7 +283,8 @@ class TestPlotPosteriorPredictive:
     def test_show_ref_lines(self, posterior_idata):
         ax = plot_posterior_predictive(posterior_idata, show_ref_lines=True)
         ref_lines = [
-            line for line in ax.get_lines()
+            line
+            for line in ax.get_lines()
             if line.get_linestyle() == "--" and line.get_color() == "red"
         ]
         assert len(ref_lines) == 2
@@ -289,7 +336,10 @@ class TestPriorPredictiveCoverage:
                 "obs_dim_0": np.arange(30),
             },
         )
-        idata = az.InferenceData(prior_predictive=dataset)
+        idata = az.InferenceData(
+            xr.Dataset(),
+            children={"prior_predictive": xr.DataTree(dataset)},
+        )
         assert prior_predictive_coverage(idata, low=-1, high=1) == 1.0
 
     def test_none_within_range(self):
@@ -303,7 +353,10 @@ class TestPriorPredictiveCoverage:
                 "obs_dim_0": np.arange(30),
             },
         )
-        idata = az.InferenceData(prior_predictive=dataset)
+        idata = az.InferenceData(
+            xr.Dataset(),
+            children={"prior_predictive": xr.DataTree(dataset)},
+        )
         assert prior_predictive_coverage(idata, low=-1, high=1) == 0.0
 
     def test_custom_range(self, prior_idata):
@@ -409,23 +462,8 @@ class TestCompareModels:
         The actual az.compare may fail without proper log_likelihood group,
         so we just verify the ValueError about missing traces is NOT raised.
         """
-        # Create a minimal InferenceData with log_likelihood
-        obs = np.random.randn(50)
-        ll = np.random.randn(1, 100, 50)
-        log_lik = xr.Dataset(
-            {"obs": (["chain", "draw", "obs_dim_0"], ll)},
-            coords={
-                "chain": [0],
-                "draw": np.arange(100),
-                "obs_dim_0": np.arange(50),
-            },
-        )
-        posterior = xr.Dataset(
-            {"mu": (["chain", "draw"], np.random.randn(1, 100))},
-            coords={"chain": [0], "draw": np.arange(100)},
-        )
-        idata1 = az.InferenceData(posterior=posterior, log_likelihood=log_lik)
-        idata2 = az.InferenceData(posterior=posterior, log_likelihood=log_lik)
+        idata1 = _make_idata_with_log_likelihood()
+        idata2 = _make_idata_with_log_likelihood()
 
         # Should not raise ValueError about missing traces
         try:
@@ -437,21 +475,7 @@ class TestCompareModels:
 
     def test_accepts_model_with_trace_attribute(self):
         """compare_models should resolve objects via .trace attribute."""
-        obs = np.random.randn(50)
-        ll = np.random.randn(1, 100, 50)
-        log_lik = xr.Dataset(
-            {"obs": (["chain", "draw", "obs_dim_0"], ll)},
-            coords={
-                "chain": [0],
-                "draw": np.arange(100),
-                "obs_dim_0": np.arange(50),
-            },
-        )
-        posterior = xr.Dataset(
-            {"mu": (["chain", "draw"], np.random.randn(1, 100))},
-            coords={"chain": [0], "draw": np.arange(100)},
-        )
-        idata = az.InferenceData(posterior=posterior, log_likelihood=log_lik)
+        idata = _make_idata_with_log_likelihood()
 
         class FakeModel:
             trace = idata

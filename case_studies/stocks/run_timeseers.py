@@ -145,7 +145,7 @@ for start_date in start_dates:
     smp_models: dict[tuple[int, float, float, float, str], TimeSeriesModel] = {}
 
     for i, experiment in enumerate(sorted_experiments):
-        print(f"\n=== Running Experiment {i+1}/{len(sorted_experiments)} ===")
+        print(f"\n=== Running Experiment {i + 1}/{len(sorted_experiments)} ===")
         if experiment in processed_experiments:
             print(f"Skipping already processed experiment: {experiment}")
             continue

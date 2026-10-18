@@ -1,0 +1,207 @@
+{
+  "schema": "vangja-findings/1",
+  "cycle": 900,
+  "workstream": "R",
+  "summary": {
+    "count": 7,
+    "bySeverity": {
+      "S0": 0,
+      "S1": 3,
+      "S2": 4,
+      "S3": 0
+    },
+    "byStatus": {
+      "verified": 7,
+      "to-verify": 0,
+      "refuted": 0,
+      "unresolved": 0
+    },
+    "byWorkstream": {
+      "R": 7
+    }
+  },
+  "findings": [
+    {
+      "id": "R-001",
+      "title": "PyMC is a direct runtime dependency but is not declared in pyproject.toml",
+      "location": "pyproject.toml:21-25 (project.dependencies); src/vangja/time_series.py:24",
+      "snapshot": "cycle-900@8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+      "command": "python3 -c \"import tomllib; d=tomllib.load(open('pyproject.toml','rb')); print(d['project']['dependencies'])\" && grep -rln '^import pymc' src/ | wc -l",
+      "expected": "PyMC (the library that performs every fit: pm.fit, pm.sample, pm.find_MAP, prior/posterior predictive) is declared in [project.dependencies] with a version bound, as are the other directly imported runtime packages (numpy, pandas, arviz).",
+      "observed": "Declared dependencies = ['scikit-learn~=1.8.0', 'pymc-extras==0.7.0', 'blackjax==1.3']; no 'pymc' entry. 8 source files import pymc directly (grep -rln '^import pymc' src/ | wc -l -> 8), including src/vangja/time_series.py:24. PyMC can only arrive transitively via pymc-extras/blackjax, whose resolved version is not declared.",
+      "consequence": "The environment that produces every sampled result is not reconstructible from the package metadata: `pip install vangja` may resolve a different PyMC than the one used for reported numbers, and the README/container separately mandate an unpinned `pymc>=5.27.1`. Results cannot be attributed to a declared PyMC version.",
+      "severity": "S1",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes",
+      "evidence": [
+        "command output: declared deps ['scikit-learn~=1.8.0', 'pymc-extras==0.7.0', 'blackjax==1.3']",
+        "command output: 8",
+        "src/vangja/time_series.py:24 'import pymc as pm'"
+      ],
+      "cross_refs": [],
+      "owner": "env",
+      "found_in_cycle": 900,
+      "phase": "finder",
+      "author_agent": "calibration__R",
+      "fixed": false,
+      "dedupe_key": "4a1ebc4e7a433002"
+    },
+    {
+      "id": "R-002",
+      "title": "No lockfile; container and CI install floating PyMC while docs claim 'bit-for-bit reproducibility'",
+      "location": "case_studies/singularity.def:37 (`conda create ... \"pymc>=5.27.1\"`); case_studies/README.md:3",
+      "snapshot": "cycle-900@8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+      "command": "find . -not -path './.git/*' \\( -iname '*lock*' -o -iname 'requirements*.txt' -o -iname 'environment*.yml' \\) | grep -v __pycache__; grep -n 'pymc>=\\|pip install' case_studies/singularity.def; grep -n 'bit-for-bit' case_studies/README.md",
+      "expected": "An exact-pinned lock/manifest (with hashes) for the environment that produced the reported experiments; the image installs that locked set or records `conda list --explicit`/`pip freeze`; any 'bit-for-bit' claim is backed by it.",
+      "observed": "No lockfile, requirements file or environment file exists at the snapshot (find output empty). singularity.def:37 installs `python=3.13 \"pymc>=5.27.1\"` and then an unpinned `pip install --no-cache-dir --retries 5 --timeout 120 '/vangja[reproducibility]'` (lower bound only). case_studies/README.md:3 asserts the setup ensures **bit-for-bit reproducibility** of all experiments reported in the accompanying paper. .github/workflows/docs.yml likewise runs `pip install pymc>=5.27.1`.",
+      "consequence": "Two image builds on different dates can resolve different PyMC/NumPy/Numba/statsmodels versions, changing sampler and optimizer numerics. The documented 'bit-for-bit reproducibility' claim is unsupported, and reported metrics cannot be exactly regenerated.",
+      "severity": "S1",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes",
+      "evidence": [
+        "find lockfiles -> (no output)",
+        "singularity.def:37 'conda create -y -c conda-forge -n pymc_env python=3.13 \"pymc>=5.27.1\"'",
+        "case_studies/README.md:3 '... ensures **bit-for-bit reproducibility** of all experiments reported in the accompanying paper.'"
+      ],
+      "cross_refs": [],
+      "owner": "env",
+      "found_in_cycle": 900,
+      "phase": "finder",
+      "author_agent": "calibration__R",
+      "fixed": false,
+      "dedupe_key": "a48d535ea51875f9"
+    },
+    {
+      "id": "R-003",
+      "title": "fit() exposes no random_seed and passes none to pm.sample/pm.fit/find_MAP; no seed recorded in runners, SLURM or container",
+      "location": "src/vangja/time_series.py:280 (fit signature), :425 (pm.fit), :440 (pm.sample); case_studies/smart_home/run.py:76 (NUTS base models)",
+      "snapshot": "cycle-900@8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+      "command": "grep -rn 'random_seed' src/ case_studies/ .github/ || echo NO_RANDOM_SEED; sed -n '440,451p' src/vangja/time_series.py",
+      "expected": "fit() takes a random_seed argument (and/or the runners set and log one); every sampler call (pm.sample, pm.fit, find_MAP, sample_prior_predictive, sample_posterior_predictive) receives and records it so NUTS/VI draws are repeatable and auditable.",
+      "observed": "'NO_RANDOM_SEED' (grep finds zero occurrences in src/, case_studies/, .github/). fit() signature (line 280-297) has no seed parameter. pm.sample is called with samples/chains/cores/nuts_sampler/initvals/step/progressbar only (lines 440-450) and pm.fit with n/method/start/progressbar only (line 425); neither receives random_seed. The smart-home runner trains its NUTS base models with `temp_model.fit(train_temp_df, scaler=scaler, method=\"nuts\", samples=1000)` (run.py:76) with no seed, and submit_ablation.slurm defines no SEED variable.",
+      "consequence": "Every NUTS-based number in the reported case studies (including metrics.csv, whose transfer-learning target models condition on the NUTS base-model posterior) is non-deterministic and cannot be reproduced or attributed to a seed. No run record allows replay.",
+      "severity": "S1",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes",
+      "evidence": [
+        "grep -rn random_seed src/ case_studies/ .github/ -> NO_RANDOM_SEED",
+        "src/vangja/time_series.py:440-450 pm.sample(...) without random_seed",
+        "case_studies/smart_home/run.py:76 model.fit(..., method='nuts', samples=1000)"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 900,
+      "phase": "finder",
+      "author_agent": "calibration__R",
+      "fixed": false,
+      "dedupe_key": "f6d4cb951521701e"
+    },
+    {
+      "id": "R-005",
+      "title": "Case-study results are appended without any run provenance and silently merged across environments",
+      "location": "case_studies/smart_home/run.py:118-135 (resume skip set), :210-217 (to_csv append); case_studies/smart_home/metrics.csv:1",
+      "snapshot": "cycle-900@8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+      "command": "grep -n 'version\\|rev-parse\\|sha\\|seed\\|timestamp\\|git' case_studies/smart_home/run.py || echo NONE; head -1 case_studies/smart_home/metrics.csv",
+      "expected": "Each result row (or a sidecar manifest) records the code revision (git SHA), vangja/PyMC versions, seed and command, so every metric is attributable to the environment that produced it.",
+      "observed": "grep -> NONE: run.py writes no version, commit, seed or timestamp. metrics.csv header = timeseries,start_date,use_temp_df,hierarchical,uniform_constant,tune_method,tune_loss_factor,shrinkage_strength,intercept_sd,beta_sd,scaler,mse,rmse,mae,mape. On restart, rows are skipped purely on a hyperparameter tuple match (processed_experiments set, lines 105-135) and new rows are appended.",
+      "consequence": "metrics.csv is not provenance-tracked; a resumed run after code/env changes silently mixes results from different software in one file, and no row can be tied to the code that produced the headline numbers.",
+      "severity": "S2",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes",
+      "evidence": [
+        "grep provenance markers -> NONE",
+        "metrics.csv header contains only experiment parameters and metrics",
+        "run.py:105-135 resume skip set keyed on hyperparameters only"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 900,
+      "phase": "finder",
+      "author_agent": "calibration__R",
+      "fixed": false,
+      "dedupe_key": "95b538d8b49ca0e4"
+    },
+    {
+      "id": "R-006",
+      "title": "Both case-study datasets are downloaded from mutable Kaggle datasets with no revision or hash pinning",
+      "location": "src/vangja/datasets/loaders.py:482-484 (temperature), :611-613 (smart home)",
+      "snapshot": "cycle-900@8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+      "command": "grep -n 'dataset_download' -A2 src/vangja/datasets/loaders.py; grep -rn 'sha256\\|md5\\|hash' src/vangja/datasets/loaders.py || echo NO_HASH_CHECK",
+      "expected": "The exact dataset revision is pinned (kagglehub revision) and/or a content hash is verified and recorded for the reported runs, so changed upstream data cannot silently change results.",
+      "observed": "kagglehub.dataset_download('selfishgene/historical-hourly-weather-data') and kagglehub.dataset_download('taranvee/smart-home-dataset-with-weather-information') are called with the dataset handle only -- no revision, no hash. grep for sha256/md5/hash in loaders.py -> NO_HASH_CHECK.",
+      "consequence": "Both case-study inputs (temperature base series and smart-home target series) are fetched unpinned from mutable upstream datasets; a re-download can change train/test values and all reported metrics with no detection or audit trail.",
+      "severity": "S2",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes",
+      "evidence": [
+        "loaders.py:482-484 dataset_download(...) no revision kwarg",
+        "loaders.py:611-613 dataset_download(...) no revision kwarg",
+        "grep hash -> NO_HASH_CHECK"
+      ],
+      "cross_refs": [],
+      "owner": "code",
+      "found_in_cycle": 900,
+      "phase": "finder",
+      "author_agent": "calibration__R",
+      "fixed": false,
+      "dedupe_key": "5598d7aa5870175d"
+    },
+    {
+      "id": "R-007",
+      "title": "SLURM job records no code revision, container hash, package freeze or seed",
+      "location": "case_studies/submit_ablation.slurm:80-100 (job info block)",
+      "snapshot": "cycle-900@8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+      "command": "grep -n -i 'seed\\|rev-parse\\|sha\\|freeze\\|pip list\\|conda list\\|version' case_studies/submit_ablation.slurm || echo NONE",
+      "expected": "The job log records the vangja git SHA (and image SHA-256) plus the package environment (pip/conda freeze) and sampler seed, so a completed run's outputs can be tied to inputs.",
+      "observed": "grep -> NONE. The script echoes only job id, hostname, CPUs, case study, mode, script and start date, then runs `singularity exec --bind ... case_studies/vangja.sif python ${SCRIPT_PATH}`; the image is referenced by mutable path only and no revision/version/seed is captured.",
+      "consequence": "Completed HPC jobs cannot be attributed to a code revision or image content; reruns after any repo or image change are indistinguishable, defeating audit of the reported ablation runs.",
+      "severity": "S2",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes",
+      "evidence": [
+        "grep -> NONE",
+        "submit_ablation.slurm:80-100 job info block lists only job/node/CPU/mode/script/date",
+        "singularity exec uses path case_studies/vangja.sif with no digest"
+      ],
+      "cross_refs": [],
+      "owner": "env",
+      "found_in_cycle": 900,
+      "phase": "finder",
+      "author_agent": "calibration__R",
+      "fixed": false,
+      "dedupe_key": "3553347acf7b9256"
+    },
+    {
+      "id": "R-004",
+      "title": "Documented one-command reproduction invokes scripts that do not exist at the snapshot",
+      "location": "case_studies/submit_ablation.slurm:58-60; case_studies/smart_home/README.md:18; case_studies/README.md:13-15,130-138",
+      "snapshot": "cycle-900@8028c5108d926c58ec4e9b29f72842f2b9d8d095",
+      "command": "python3 -c \"from pathlib import Path; print({m: (Path('case_studies/smart_home')/m).exists() for m in ['ablation_fast.py','ablation_full.py','classical_baselines.py','run.py','run_classical_baselines.py']})\"",
+      "expected": "`sbatch case_studies/submit_ablation.slurm smart_home fast|full|classical` and `python case_studies/smart_home/classical_baselines.py` run the scripts the docs and SLURM mode map name.",
+      "observed": "Output: {'ablation_fast.py': False, 'ablation_full.py': False, 'classical_baselines.py': False, 'run.py': True, 'run_classical_baselines.py': True}. submit_ablation.slurm maps fast->ablation_fast.py, full->ablation_full.py, classical->classical_baselines.py and exits with 'ERROR: Script not found' for all three modes; smart_home/README.md:18 and case_studies/README.md:130-138 document exactly those commands.",
+      "consequence": "The documented reproduction path fails at its first step for every mode; there is no documentation-consistent way to regenerate the classical-baseline results (results_classical/*) from this snapshot.",
+      "severity": "S2",
+      "confidence": "high",
+      "status": "verified",
+      "reproducible": "yes",
+      "evidence": [
+        "command output: {'ablation_fast.py': False, 'ablation_full.py': False, 'classical_baselines.py': False, 'run.py': True, 'run_classical_baselines.py': True}",
+        "case_studies/submit_ablation.slurm:58-60 mode->script map (fast->ablation_fast.py, full->ablation_full.py, classical->classical_baselines.py)",
+        "case_studies/smart_home/README.md:18 'python case_studies/smart_home/classical_baselines.py'"
+      ],
+      "cross_refs": [],
+      "owner": "docs",
+      "found_in_cycle": 900,
+      "phase": "finder",
+      "author_agent": "calibration__R",
+      "fixed": false,
+      "dedupe_key": "212cb2fd812c076c"
+    }
+  ]
+}

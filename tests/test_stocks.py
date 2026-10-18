@@ -76,8 +76,14 @@ def mock_constituents_df():
     return pd.DataFrame(
         {
             "ticker": [
-                "AAPL", "MSFT", "AMZN", "GOOGL", "META",
-                "ABNB", "BX", "TSLA",
+                "AAPL",
+                "MSFT",
+                "AMZN",
+                "GOOGL",
+                "META",
+                "ABNB",
+                "BX",
+                "TSLA",
             ],
             "date_added": pd.to_datetime(
                 [
@@ -92,8 +98,14 @@ def mock_constituents_df():
                 ]
             ),
             "security": [
-                "Apple", "Microsoft", "Amazon", "Alphabet", "Meta",
-                "Airbnb", "Blackstone", "Tesla",
+                "Apple",
+                "Microsoft",
+                "Amazon",
+                "Alphabet",
+                "Meta",
+                "Airbnb",
+                "Blackstone",
+                "Tesla",
             ],
         }
     )
@@ -104,9 +116,7 @@ def mock_changes_df():
     """Minimal historical-changes DataFrame."""
     return pd.DataFrame(
         {
-            "date": pd.to_datetime(
-                ["2023-09-18", "2023-09-18", "2020-12-21"]
-            ),
+            "date": pd.to_datetime(["2023-09-18", "2023-09-18", "2020-12-21"]),
             "added_ticker": ["ABNB", "BX", "TSLA"],
             "added_name": ["Airbnb", "Blackstone", "Tesla"],
             "removed_ticker": ["NWL", "LNC", "AIV"],
@@ -178,7 +188,6 @@ class TestSafeTickerFilename:
 
 
 class TestDownloadStockData:
-
     @staticmethod
     def _mock_yf(return_value):
         """Create a mock yfinance module and inject it into sys.modules."""
@@ -189,9 +198,7 @@ class TestDownloadStockData:
     def test_single_ticker(self, sample_ohlcv):
         ctx, mock_yf = self._mock_yf(sample_ohlcv)
         with ctx:
-            result = _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15"
-            )
+            result = _download_stock_data(["AAPL"])
 
         assert "ds" in result.columns
         assert "ticker" in result.columns
@@ -202,9 +209,7 @@ class TestDownloadStockData:
     def test_typical_price_values(self, sample_ohlcv):
         ctx, _ = self._mock_yf(sample_ohlcv)
         with ctx:
-            result = _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15"
-            )
+            result = _download_stock_data(["AAPL"])
 
         expected = (
             sample_ohlcv["Open"]
@@ -212,17 +217,13 @@ class TestDownloadStockData:
             + sample_ohlcv["Low"]
             + sample_ohlcv["Close"]
         ) / 4
-        np.testing.assert_allclose(
-            result["typical_price"].values, expected.values
-        )
+        np.testing.assert_allclose(result["typical_price"].values, expected.values)
 
     def test_caching_creates_file(self, sample_ohlcv, tmp_path):
         cache = tmp_path / "cache"
         ctx, _ = self._mock_yf(sample_ohlcv)
         with ctx:
-            _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15", cache_path=cache
-            )
+            _download_stock_data(["AAPL"], cache_path=cache)
 
         assert (cache / "AAPL.csv").exists()
 
@@ -230,23 +231,17 @@ class TestDownloadStockData:
         cache = tmp_path / "cache"
         ctx, mock_yf = self._mock_yf(sample_ohlcv)
         with ctx:
-            _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15", cache_path=cache
-            )
+            _download_stock_data(["AAPL"], cache_path=cache)
             assert mock_yf.download.call_count == 1
 
-            _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15", cache_path=cache
-            )
+            _download_stock_data(["AAPL"], cache_path=cache)
             # Should NOT have called download again
             assert mock_yf.download.call_count == 1
 
     def test_multi_ticker(self, multi_ohlcv):
         ctx, _ = self._mock_yf(multi_ohlcv)
         with ctx:
-            result = _download_stock_data(
-                ["AAPL", "MSFT"], "2020-01-01", "2020-01-10"
-            )
+            result = _download_stock_data(["AAPL", "MSFT"])
 
         assert set(result["ticker"].unique()) == {"AAPL", "MSFT"}
         aapl = result[result["ticker"] == "AAPL"]
@@ -257,9 +252,7 @@ class TestDownloadStockData:
     def test_empty_result(self):
         ctx, _ = self._mock_yf(pd.DataFrame())
         with ctx:
-            result = _download_stock_data(
-                ["INVALID"], "2020-01-01", "2020-01-10"
-            )
+            result = _download_stock_data(["INVALID"])
 
         assert result.empty
         assert "ds" in result.columns
@@ -269,9 +262,7 @@ class TestDownloadStockData:
         cache = tmp_path / "deeply" / "nested" / "cache"
         ctx, _ = self._mock_yf(sample_ohlcv)
         with ctx:
-            _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15", cache_path=cache
-            )
+            _download_stock_data(["AAPL"], cache_path=cache)
 
         assert cache.exists()
         assert (cache / "AAPL.csv").exists()
@@ -280,29 +271,26 @@ class TestDownloadStockData:
         """Without cache_path, data is returned but nothing written."""
         ctx, _ = self._mock_yf(sample_ohlcv)
         with ctx:
-            result = _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15", cache_path=None
-            )
+            result = _download_stock_data(["AAPL"], cache_path=None)
 
         assert not result.empty
 
     def test_ds_column_is_datetime(self, sample_ohlcv):
         ctx, _ = self._mock_yf(sample_ohlcv)
         with ctx:
-            result = _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15"
-            )
+            result = _download_stock_data(["AAPL"])
 
         assert pd.api.types.is_datetime64_any_dtype(result["ds"])
 
     def test_ds_is_tz_naive(self, sample_ohlcv):
         tz_ohlcv = sample_ohlcv.copy()
-        tz_ohlcv.index = tz_ohlcv.index.tz_localize("US/Eastern")
+        # Fixed-offset timezone avoids requiring system tzdata (e.g. in CI)
+        from dateutil.tz import tzoffset
+
+        tz_ohlcv.index = tz_ohlcv.index.tz_localize(tzoffset("EST", -5 * 3600))
         ctx, _ = self._mock_yf(tz_ohlcv)
         with ctx:
-            result = _download_stock_data(
-                ["AAPL"], "2020-01-01", "2020-01-15"
-            )
+            result = _download_stock_data(["AAPL"])
 
         assert result["ds"].dt.tz is None
 
@@ -313,7 +301,6 @@ class TestDownloadStockData:
 
 
 class TestParseConstituentsTable:
-
     def test_flat_columns(self):
         raw = pd.DataFrame(
             {
@@ -345,7 +332,6 @@ class TestParseConstituentsTable:
 
 
 class TestParseChangesTable:
-
     def test_flat_columns(self):
         raw = pd.DataFrame(
             {
@@ -416,10 +402,7 @@ class TestParseChangesTable:
 
 
 class TestFetchSP500WikiTables:
-
-    def test_returns_two_dataframes(
-        self, mock_constituents_df, mock_changes_df
-    ):
+    def test_returns_two_dataframes(self, mock_constituents_df, mock_changes_df):
         raw_const = pd.DataFrame(
             {
                 "Symbol": mock_constituents_df["ticker"],
@@ -489,7 +472,6 @@ class TestFetchSP500WikiTables:
 
 
 class TestGetSP500ConstituentsAtDate:
-
     def test_current_date_returns_current_set(
         self, mock_constituents_df, mock_changes_df
     ):
@@ -500,14 +482,18 @@ class TestGetSP500ConstituentsAtDate:
             changes_df=mock_changes_df,
         )
         expected = {
-            "AAPL", "MSFT", "AMZN", "GOOGL", "META",
-            "ABNB", "BX", "TSLA",
+            "AAPL",
+            "MSFT",
+            "AMZN",
+            "GOOGL",
+            "META",
+            "ABNB",
+            "BX",
+            "TSLA",
         }
         assert result == expected
 
-    def test_before_addition(
-        self, mock_constituents_df, mock_changes_df
-    ):
+    def test_before_addition(self, mock_constituents_df, mock_changes_df):
         """Tickers added after target_date should not appear."""
         # ABNB and BX were added 2023-09-18, TSLA on 2020-12-21
         result = _get_sp500_constituents_at_date(
@@ -529,9 +515,7 @@ class TestGetSP500ConstituentsAtDate:
         assert "AAPL" in result
         assert "MSFT" in result
 
-    def test_between_changes(
-        self, mock_constituents_df, mock_changes_df
-    ):
+    def test_between_changes(self, mock_constituents_df, mock_changes_df):
         """Date between changes should reflect the right set."""
         # After TSLA addition (2020-12-21) but before ABNB/BX (2023-09-18)
         result = _get_sp500_constituents_at_date(
@@ -551,33 +535,24 @@ class TestGetSP500ConstituentsAtDate:
 
 
 class TestGetSP500TickersForRange:
-
-    def test_returns_sorted_list(
-        self, mock_constituents_df, mock_changes_df
-    ):
+    def test_returns_sorted_list(self, mock_constituents_df, mock_changes_df):
         with patch(
             "vangja.datasets.stocks._fetch_sp500_wiki_tables",
             return_value=(mock_constituents_df, mock_changes_df),
         ):
-            result = get_sp500_tickers_for_range(
-                "2024-01-01", "2024-12-31"
-            )
+            result = get_sp500_tickers_for_range("2024-01-01", "2024-12-31")
 
         assert isinstance(result, list)
         assert result == sorted(result)
 
-    def test_excludes_removed_during_range(
-        self, mock_constituents_df, mock_changes_df
-    ):
+    def test_excludes_removed_during_range(self, mock_constituents_df, mock_changes_df):
         """Tickers removed during the range should be excluded."""
         # ABNB, BX added and NWL, LNC removed on 2023-09-18
         with patch(
             "vangja.datasets.stocks._fetch_sp500_wiki_tables",
             return_value=(mock_constituents_df, mock_changes_df),
         ):
-            result = get_sp500_tickers_for_range(
-                "2023-01-01", "2023-12-31"
-            )
+            result = get_sp500_tickers_for_range("2023-01-01", "2023-12-31")
 
         # NWL, LNC were removed during range → excluded
         assert "NWL" not in result
@@ -586,17 +561,13 @@ class TestGetSP500TickersForRange:
         assert "AAPL" in result
         assert "MSFT" in result
 
-    def test_no_changes_during_range(
-        self, mock_constituents_df, mock_changes_df
-    ):
+    def test_no_changes_during_range(self, mock_constituents_df, mock_changes_df):
         """If no changes during range, start-set is returned intact."""
         with patch(
             "vangja.datasets.stocks._fetch_sp500_wiki_tables",
             return_value=(mock_constituents_df, mock_changes_df),
         ):
-            result = get_sp500_tickers_for_range(
-                "2024-06-01", "2024-06-30"
-            )
+            result = get_sp500_tickers_for_range("2024-06-01", "2024-06-30")
 
         # No changes happened in June 2024 per mock data
         assert "AAPL" in result
@@ -607,16 +578,12 @@ class TestGetSP500TickersForRange:
         with pytest.raises(ValueError, match="must be before"):
             get_sp500_tickers_for_range("2025-01-01", "2020-01-01")
 
-    def test_all_items_are_strings(
-        self, mock_constituents_df, mock_changes_df
-    ):
+    def test_all_items_are_strings(self, mock_constituents_df, mock_changes_df):
         with patch(
             "vangja.datasets.stocks._fetch_sp500_wiki_tables",
             return_value=(mock_constituents_df, mock_changes_df),
         ):
-            result = get_sp500_tickers_for_range(
-                "2024-01-01", "2024-12-31"
-            )
+            result = get_sp500_tickers_for_range("2024-01-01", "2024-12-31")
 
         assert all(isinstance(t, str) for t in result)
 
@@ -627,7 +594,6 @@ class TestGetSP500TickersForRange:
 
 
 class TestLoadStockData:
-
     @pytest.fixture()
     def mock_download_data(self):
         """Sample data simulating _download_stock_data output."""
@@ -663,8 +629,8 @@ class TestLoadStockData:
                 horizon_size=30,
             )
 
-        assert all(train["ds"] < pd.Timestamp("2020-01-20"))
-        assert all(test["ds"] >= pd.Timestamp("2020-01-20"))
+        assert all(train["ds"] <= pd.Timestamp("2020-01-20"))
+        assert all(test["ds"] > pd.Timestamp("2020-01-20"))
 
     def test_output_columns(self, mock_download_data):
         with patch(
@@ -698,8 +664,14 @@ class TestLoadStockData:
     def test_empty_data(self):
         empty = pd.DataFrame(
             columns=[
-                "ds", "ticker", "Open", "High", "Low",
-                "Close", "Volume", "typical_price",
+                "ds",
+                "ticker",
+                "Open",
+                "High",
+                "Low",
+                "Close",
+                "Volume",
+                "typical_price",
             ]
         )
         with patch(
@@ -745,6 +717,129 @@ class TestLoadStockData:
 
         # Interpolated should have more rows (weekends filled too)
         assert len(train_interp) >= len(train_no_interp)
+
+    def test_no_cross_split_leak_with_gap_straddling_split(self):
+        """Train values must be independent of test truth (review F-9).
+
+        Remove the last training trading days so that the gap straddles the
+        split boundary, then perturb the test values and verify the training
+        frame (including interpolated rows) is unchanged.
+        """
+        dates = pd.bdate_range("2020-01-02", periods=40)
+        data = pd.DataFrame(
+            {
+                "ds": dates,
+                "ticker": "AAPL",
+                "Open": np.arange(100, 140, dtype=float),
+                "High": np.arange(102, 142, dtype=float),
+                "Low": np.arange(98, 138, dtype=float),
+                "Close": np.arange(101, 141, dtype=float),
+                "Volume": [1_000_000] * 40,
+                "typical_price": (
+                    np.arange(100, 140)
+                    + np.arange(102, 142)
+                    + np.arange(98, 138)
+                    + np.arange(101, 141)
+                )
+                / 4.0,
+            }
+        )
+        split = pd.Timestamp("2020-02-03")
+        # Drop the two trading days right before the split so the gap spans it
+        last_train_days = dates[(dates <= split)][-2:]
+        gapped = data[~data["ds"].isin(last_train_days)].copy()
+
+        with patch(
+            "vangja.datasets.stocks._download_stock_data",
+            return_value=gapped,
+        ):
+            train_a, _ = load_stock_data(
+                ["AAPL"],
+                split_date=split,
+                window_size=45,
+                horizon_size=30,
+                interpolate=True,
+            )
+
+        perturbed = gapped.copy()
+        after_split = perturbed["ds"] > split
+        for col in ["Open", "High", "Low", "Close", "typical_price"]:
+            perturbed.loc[after_split, col] *= 100.0
+
+        with patch(
+            "vangja.datasets.stocks._download_stock_data",
+            return_value=perturbed,
+        ):
+            train_b, _ = load_stock_data(
+                ["AAPL"],
+                split_date=split,
+                window_size=45,
+                horizon_size=30,
+                interpolate=True,
+            )
+
+        pd.testing.assert_frame_equal(train_a, train_b)
+        # The gap was straddling the split: train must not extend to the
+        # calendar split date via test-side observations.
+        assert train_a["ds"].max() < split
+
+    def test_no_synthetic_non_trading_days_at_window_edges(self):
+        """Interpolation must not create calendar rows outside each series'
+        own observed range within a split (no invented weekend rows at the
+        window boundaries)."""
+        dates = pd.bdate_range("2020-01-02", periods=40)
+        data = pd.DataFrame(
+            {
+                "ds": dates,
+                "ticker": "AAPL",
+                "Open": np.arange(100, 140, dtype=float),
+                "High": np.arange(102, 142, dtype=float),
+                "Low": np.arange(98, 138, dtype=float),
+                "Close": np.arange(101, 141, dtype=float),
+                "Volume": [1_000_000] * 40,
+                "typical_price": (
+                    np.arange(100, 140)
+                    + np.arange(102, 142)
+                    + np.arange(98, 138)
+                    + np.arange(101, 141)
+                )
+                / 4.0,
+            }
+        )
+        split = pd.Timestamp("2020-02-03")
+        with patch("vangja.datasets.stocks._download_stock_data", return_value=data):
+            train, test = load_stock_data(
+                ["AAPL"],
+                split_date=split,
+                window_size=45,
+                horizon_size=30,
+                interpolate=True,
+            )
+
+        for frame in (train, test):
+            assert not frame.empty
+            # Interpolated calendar rows must lie between the first and last
+            # observed trading day of the series within the split.
+            first_obs = frame["ds"].min()
+            last_obs = frame["ds"].max()
+            expected_start = (
+                data["ds"].min()
+                if frame is train
+                else data[data["ds"] > split]["ds"].min()
+            )
+            assert first_obs == expected_start
+
+        # With interpolate=False the data stays on trading days only.
+        with patch("vangja.datasets.stocks._download_stock_data", return_value=data):
+            train_raw, test_raw = load_stock_data(
+                ["AAPL"],
+                split_date=split,
+                window_size=45,
+                horizon_size=30,
+                interpolate=False,
+            )
+        assert train_raw["ds"].isin(pd.bdate_range("2019-12-01", "2020-03-01")).all()
+        assert test_raw["ds"].isin(pd.bdate_range("2020-02-01", "2020-04-01")).all()
 
     def test_ds_is_datetime(self, mock_download_data):
         with patch(

@@ -237,9 +237,7 @@ class TestGenerateHierarchicalProducts:
 
     def test_six_products_with_all_year(self):
         """Test that 6 products are generated with include_all_year=True."""
-        df, params = generate_hierarchical_products(
-            seed=42, include_all_year=True
-        )
+        df, params = generate_hierarchical_products(seed=42, include_all_year=True)
 
         assert df["series"].nunique() == 6
         assert len(params) == 6
@@ -265,9 +263,7 @@ class TestGenerateHierarchicalProducts:
 
     def test_all_year_group(self):
         """Test the all_year product group."""
-        _, params = generate_hierarchical_products(
-            seed=42, include_all_year=True
-        )
+        _, params = generate_hierarchical_products(seed=42, include_all_year=True)
 
         assert params["all_year"]["group"] == "all_year"
 
@@ -330,9 +326,7 @@ class TestGenerateHierarchicalProducts:
 
     def test_changepoint_count(self):
         """Test that delta arrays have correct length."""
-        _, params = generate_hierarchical_products(
-            n_changepoints=12, seed=42
-        )
+        _, params = generate_hierarchical_products(n_changepoints=12, seed=42)
 
         for name, p in params.items():
             assert len(p["delta"]) == 12, f"Wrong delta length for {name}"

@@ -91,7 +91,7 @@ def remove_random_gaps(
 
     if total_gap_size >= n:
         raise ValueError(
-            f"Cannot remove {n_gaps} gaps of {gap_fraction*100}% each from data"
+            f"Cannot remove {n_gaps} gaps of {gap_fraction * 100}% each from data"
         )
 
     # Generate non-overlapping gap start positions
@@ -322,6 +322,172 @@ def metrics(
     return pd.DataFrame(metrics_dict)
 
 
+def relative_mae(
+    y_true,
+    y_pred,
+    y_persistence,
+    epsilon: float | None = None,
+) -> float:
+    """Relative MAE of a forecast against the persistence forecast.
+
+    Computes ``MAE(y_true, y_pred) / MAE(y_true, y_persistence)`` for one
+    forecast unit (one target series over one forecast origin). Values
+    below 1 mean the model beats persistence; values above 1 mean it is
+    worse.
+
+    Parameters
+    ----------
+    y_true : array-like
+        True target values of the unit.
+    y_pred : array-like
+        Forecast of the model being evaluated (aligned with ``y_true``).
+    y_persistence : array-like
+        Persistence forecast (last observed value carried forward) aligned
+        with ``y_true``.
+    epsilon : float or None, default None
+        Denominator safeguard: units whose persistence MAE is strictly
+        below ``epsilon`` are excluded from the relative-MAE aggregate and
+        this function returns ``np.nan`` for them. The threshold should be
+        defined on the *scaled* target used for fitting/forecasting. When
+        ``None`` no safeguard is applied.
+
+    Returns
+    -------
+    float
+        ``mae(model) / mae(persistence)``, or ``np.nan`` when the unit is
+        excluded by the denominator rule or has no aligned observations.
+
+    Notes
+    -----
+    This is the primary metric of the revised study protocol: it is
+    scale-invariant, well-defined for near-zero series when combined with
+    the denominator rule, and its aggregate (median across units) is the
+    selection *and* reporting metric.
+    """
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+    y_persistence = np.asarray(y_persistence, dtype=float)
+
+    if y_true.size == 0:
+        return float("nan")
+
+    denom = mean_absolute_error(y_true, y_persistence)
+    if epsilon is not None and denom < epsilon:
+        return float("nan")
+    if denom == 0.0:
+        return float("nan")
+
+    return float(mean_absolute_error(y_true, y_pred) / denom)
+
+
+def persistence_forecast(train_df: pd.DataFrame, test_df: pd.DataFrame) -> pd.DataFrame:
+    """Build the persistence forecast (last observed value carried forward).
+
+    The persistence forecast for each series is its last training value
+    repeated over the test horizon. This is the denominator of the Relative
+    MAE metric and the primary study baseline.
+
+    Parameters
+    ----------
+    train_df : pd.DataFrame
+        Training data with at least columns ``ds``, ``y`` and ``series``.
+    test_df : pd.DataFrame
+        Test data with at least columns ``ds`` and ``series``. The
+        persistence forecast is aligned to the test dates of each series.
+
+    Returns
+    -------
+    pd.DataFrame
+        Long-format frame with columns ``ds``, ``series`` and ``yhat``,
+        containing the per-series persistence forecast on the test dates.
+
+    Examples
+    --------
+    >>> rel_mae = relative_mae(
+    ...     test["y"], yhat, persistence_forecast(train, test)["yhat"]
+    ... )
+    """
+    last_values = train_df.sort_values("ds").groupby("series")["y"].last().to_dict()
+    rows = []
+    for series_name, test_group in test_df.groupby("series"):
+        if series_name not in last_values:
+            continue
+        rows.append(
+            pd.DataFrame(
+                {
+                    "ds": test_group["ds"].values,
+                    "series": series_name,
+                    "yhat": np.full(len(test_group), last_values[series_name]),
+                }
+            )
+        )
+    if not rows:
+        return pd.DataFrame(columns=["ds", "series", "yhat"])
+    return pd.concat(rows, ignore_index=True)
+
+
+def _compare_waic_table(resolved: dict[str, az.InferenceData]) -> pd.DataFrame:
+    """Compute a WAIC comparison table for arviz >= 1.x (which removed ``ic``).
+
+    ArviZ 1.x removed the ``ic`` argument of ``az.compare`` (only PSIS-LOO is
+    supported) as well as ``az.waic``.  This helper computes WAIC manually
+    from the pointwise log-likelihood group of each InferenceData and returns
+    a minimal comparison table.
+
+    Parameters
+    ----------
+    resolved : dict[str, az.InferenceData]
+        Mapping of model names to InferenceData objects. Each must contain a
+        ``log_likelihood`` group with at least one data variable whose
+        trailing dimension is the observation dimension.
+
+    Returns
+    -------
+    pd.DataFrame
+        Table with columns ``rank``, ``elpd_waic``, ``p_waic``, ``waic``,
+        ``d_waic`` and ``weight``, sorted by WAIC (best first).
+    """
+    rows: list[dict] = []
+    for name, idt in resolved.items():
+        if not hasattr(idt, "log_likelihood"):
+            raise ValueError(
+                f"Model '{name}' is missing the log_likelihood group; "
+                "call model.compute_log_likelihood() before comparing models."
+            )
+        ll_group = idt.log_likelihood
+        if not ll_group.data_vars:
+            raise ValueError(f"Model '{name}' has an empty log_likelihood group.")
+        # Use the first data variable in the log_likelihood group
+        ll = ll_group[list(ll_group.data_vars)[0]].values
+        # Pointwise log-likelihood: shape (..., n_obs)
+        pointwise = ll.reshape(-1, ll.shape[-1])
+        with np.errstate(divide="ignore"):
+            lppd_i = np.log(np.exp(pointwise).mean(axis=0))
+        lppd = float(np.nansum(lppd_i))
+        p_waic = float(np.nansum(pointwise.var(axis=0, ddof=1)))
+        elpd_waic = lppd - p_waic
+        waic = -2.0 * elpd_waic
+        rows.append(
+            {
+                "name": name,
+                "elpd_waic": elpd_waic,
+                "p_waic": p_waic,
+                "waic": waic,
+            }
+        )
+
+    table = pd.DataFrame(rows)
+    if table.empty:
+        return table
+    min_waic = table["waic"].min()
+    table["d_waic"] = table["waic"] - min_waic
+    weights = np.exp(-0.5 * table["d_waic"].values)
+    table["weight"] = weights / weights.sum()
+    table["rank"] = table["waic"].rank(method="min").astype(int)
+    table = table.set_index("name")
+    return table.sort_values("waic")
+
+
 def compare_models(
     model_dict: dict,
     ic: str = "loo",
@@ -337,7 +503,9 @@ def compare_models(
         Mapping of model names to either ``arviz.InferenceData`` objects or
         fitted vangja model objects that expose a ``.trace`` attribute.
     ic : {"loo", "waic"}, default "loo"
-        Information criterion to use.
+        Information criterion to use.  With arviz >= 1.x only ``"loo"`` is
+        delegated to ``az.compare``; ``"waic"`` is computed directly from the
+        pointwise log-likelihood group.
 
     Returns
     -------
@@ -363,7 +531,19 @@ def compare_models(
                 f"Model '{name}' does not have posterior samples. "
                 "Fit with an MCMC or VI method."
             )
-    return az.compare(resolved, ic=ic)  # type: ignore[arg-type]
+
+    if ic == "waic":
+        try:
+            return az.compare(resolved, ic=ic)  # type: ignore[call-arg]
+        except TypeError:
+            # arviz >= 1.x dropped the ic argument and az.waic
+            return _compare_waic_table(resolved)
+    if ic == "loo":
+        try:
+            return az.compare(resolved, ic=ic)  # type: ignore[call-arg]
+        except TypeError:
+            return az.compare(resolved)  # type: ignore[arg-type]
+    raise ValueError(f"Unknown information criterion '{ic}'. Use 'loo' or 'waic'.")
 
 
 def prior_predictive_coverage(
@@ -776,7 +956,7 @@ def plot_prior_posterior(
     >>> plot_prior_posterior(
     ...     model.trace,
     ...     {
-    ...         "fs_0 - beta(p=365.25,n=6)": {"dist": "normal", "mu": 0, "sigma": 10},
+    ...         "fs_0 - beta": {"dist": "normal", "mu": 0, "sigma": 10},
     ...     },
     ... )
     """

@@ -382,9 +382,9 @@ def main() -> pd.DataFrame:
     all_metrics: list[dict] = []
 
     for start_date in start_dates:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Processing Start Date: {start_date}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         # Check if already processed
         results_file = OUTPUT_DIR / f"results_classical_{start_date}.csv"
