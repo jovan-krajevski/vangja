@@ -106,9 +106,9 @@ research_agent/
 
 ## How to build it
 
-**Status: S7 build complete on 2026-10-18 — GO** (self-verified in this
-session; independent verification pending, as for S0–S6). The environment is
-fully committed and self-contained: a fresh clone of the S7 commit runs
+**Status: S7 verified on 2026-10-18 — GO** (independent verification; see
+`REPORT_BUILD.md` § "S7 verification"). The environment is fully committed and
+self-contained: a fresh clone of the S7 commit runs
 `make -C .pi verify-env` green with no local state. Evidence per stage is in
 `REPORT_BUILD.md`; the final GO/NO-GO block is at the end of that file.
 

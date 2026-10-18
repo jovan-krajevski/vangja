@@ -340,7 +340,6 @@ export function writeGrade(root: string, cycle: number, grade: GradeResult): str
 		}
 		lines.push("");
 	}
-	lines.push("## Fix list", "");
 	lines.push(...fixSection(grade.fix_list));
 	const file = path.join(root, ".pi", "audit", `cycle-${cycle}`, "GRADE.md");
 	writeFileAtomic(file, `${lines.join("\n")}\n`);

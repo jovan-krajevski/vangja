@@ -116,6 +116,9 @@ test("the seeded audit caps the grade at weak reject and GRADE.md names the fail
 	assert.match(gradeMd, /## Rule trace/);
 	assert.match(gradeMd, /failed-gate/);
 	assert.match(gradeMd, /## Failing gates/);
+	const fixHeaders = gradeMd.match(/^## Fix list$/gm) ?? [];
+	assert.equal(fixHeaders.length, 1, "GRADE.md must carry exactly one fix-list header");
+	assert.match(gradeMd, /\| Finding \| Severity \| Owner \| Effort \| Feasible \| Blocking \| Fix \|/);
 	for (const gate of result.gate_failures) {
 		assert.match(gradeMd, new RegExp(gate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `GRADE.md must cite ${gate}`);
 	}

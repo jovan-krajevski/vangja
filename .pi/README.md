@@ -36,7 +36,7 @@ implementation.
 | `rubrics/` | five rubric trees + `SCHEMA.md` (`pr_review`, `readiness`, `paper`, `audit`, `decision`) | yes |
 | `audit/` | S6 audit templates + the frozen calibration expectation set and the real historical run | yes |
 | `calibrate.sh` | calibration runner: fixture mode and the read-only historical-snapshot finder run | yes |
-| `skills/` | six research & methodology skills (S1): manifests, protocol, Bayesian workflow, evaluation, anti-gaming, provenance | yes |
+| `skills/` | 15 skills: the six S1 research & methodology skills (manifests, protocol, Bayesian workflow, evaluation, anti-gaming, provenance) plus nine S2 engineering/writing/review/process skills | yes |
 
 ## Verify
 
@@ -56,7 +56,7 @@ make -C .pi audit-accept   # S6 audit acceptance transcript (offline fixtures)
 make -C .pi audit-calibrate # score the committed strong calibration fixture
 ```
 
-`verify-env` is green: 285 node tests, 162 python tests, 15/15 environment
+`verify-env` is green: 288 node tests, 163 python tests, 15/15 environment
 checks, 4/4 orchestrator checks, and 0 model-pin violations. `verify-env-strict`
 is an alias. `smoke` and `resilience` are deterministic (a stub child replaces the
 model) and never touch the real repository — they clone it under `.pi/state/`,

@@ -16,6 +16,9 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+# The node --test paths below are repo-root relative; be independent of the
+# caller's cwd (`make -C .pi <target>` starts in .pi/).
+cd "$ROOT"
 NODE="${NODE:-node}"
 CLI="$ROOT/.pi/extensions/orchestrator/cli.ts"
 STUB="$ROOT/.pi/tests/fixtures/orchestrator_stub_child.mjs"
